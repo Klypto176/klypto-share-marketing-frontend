@@ -883,9 +883,7 @@ async function fetchDataForIndicators(
     const response = await new Promise((resolve, reject) => {
       indicatorFetchQueue = indicatorFetchQueue.then(() => {
         return new Promise((innerResolve) => {
-          const tempSocket = io("http://192.168.1.15:8000", { transports: ["websocket", "polling"] });
-
-          tempSocket.emit("getIndicatorDetails", {
+          socket.emit("getIndicatorDetails", {
             symbol: selectedCurrency?.name,
             interval: timeframeValue,
             fromDate: fromDate,
@@ -903,17 +901,15 @@ async function fetchDataForIndicators(
             ...indicatorConfig,
           })
           const timeoutId = setTimeout(() => {
-            tempSocket.off("indicatorDetailsError", onError);
-            tempSocket.off("indicatorDetailsResponse", onResponse);
-            tempSocket.disconnect();
+            socket.off("indicatorDetailsError", onError);
+            socket.off("indicatorDetailsResponse", onResponse);
             innerResolve();
             reject(new Error("Timeout fetching indicator data"));
           }, 120000); // 2 minutes (effectively removed for normal operations)
 
           const onResponse = (data) => {
             clearTimeout(timeoutId);
-            tempSocket.off("indicatorDetailsError", onError);
-            tempSocket.disconnect();
+            socket.off("indicatorDetailsError", onError);
             innerResolve();
             resolve(data);
           };
@@ -921,14 +917,13 @@ async function fetchDataForIndicators(
           const onError = (err) => {
             clearTimeout(timeoutId);
             console.error("fetchDataForIndicators error:", err);
-            tempSocket.off("indicatorDetailsResponse", onResponse);
-            tempSocket.disconnect();
+            socket.off("indicatorDetailsResponse", onResponse);
             innerResolve();
             reject(err);
           };
 
-          tempSocket.once("indicatorDetailsResponse", onResponse);
-          tempSocket.once("indicatorDetailsError", onError);
+          socket.once("indicatorDetailsResponse", onResponse);
+          socket.once("indicatorDetailsError", onError);
         });
       });
     });
