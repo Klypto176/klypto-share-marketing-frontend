@@ -1,8 +1,61 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { FiSearch, FiSettings, FiX, FiPlus, FiMaximize2 } from "react-icons/fi";
-import useSocket from "../../util/useSocket";
+import useSocket, { globalCache } from "../../util/useSocket";
 import EVENTS from "../../services/websocket/socketEvent";
 import { Spinner } from "../tradingModals/Spinner";
+
+const normalizeWatchlistItem = (item) => ({
+  ...item,
+  percent_change:
+    item?.percent_change ??
+    item?.pChange ??
+    item?.percentChange ??
+    "0.00",
+});
+
+const mergeRealtimeIntoWatchlistItem = (stock, payload) => {
+  const livePrice =
+    payload?.ltp ??
+    payload?.last_traded_price ??
+    payload?.data?.last_traded_price ??
+    payload?.data?.close ??
+    stock?.ltp ??
+    "0.00";
+
+  const closeRefRaw =
+    payload?.close_price ??
+    payload?.close ??
+    payload?.raw?.close_price ??
+    payload?.raw?.close ??
+    0;
+
+  const lastPrice = parseFloat(livePrice);
+  const closeRef = parseFloat(closeRefRaw);
+  const canRecalc = Number.isFinite(lastPrice) && Number.isFinite(closeRef) && closeRef > 0;
+  const computedChange = canRecalc ? lastPrice - closeRef : null;
+  const computedPercent = canRecalc ? ((computedChange / closeRef) * 100).toFixed(2) : null;
+
+  return normalizeWatchlistItem({
+    ...stock,
+    ...payload,
+    ltp: Number.isFinite(lastPrice) ? lastPrice.toFixed(2) : stock?.ltp,
+    change:
+      payload?.change ??
+      payload?.net_change ??
+      payload?.raw?.net_change ??
+      (computedChange !== null
+        ? `${computedChange >= 0 ? "+" : ""}${computedChange.toFixed(2)}`
+        : stock?.change),
+    percent_change:
+      payload?.percent_change ??
+      payload?.pChange ??
+      payload?.percentChange ??
+      payload?.raw?.percent_change ??
+      payload?.raw?.percentChange ??
+      computedPercent ??
+      stock?.percent_change,
+  });
+};
 
 const LeftWatchlist = ({ onClose, setSelectedCurrency }) => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -23,7 +76,9 @@ const LeftWatchlist = ({ onClose, setSelectedCurrency }) => {
          indices = (payload.indices || []).map((item) => ({ ...item, category: "IDX" }));
       }
 
-      const combined = [...indices, ...equity, ...futures, ...options];
+      const combined = [...indices, ...equity, ...futures, ...options].map(
+        normalizeWatchlistItem,
+      );
       console.log("LeftWatchlist mapped stocks count:", combined.length);
       setStocksData(combined);
       setIsLoading(false);
@@ -33,8 +88,8 @@ const LeftWatchlist = ({ onClose, setSelectedCurrency }) => {
 
       setStocksData((prev) =>
         prev.map((stock) =>
-          stock.token === updatedStock.token
-            ? { ...stock, ...updatedStock }
+          String(stock.token) === String(updatedStock.token)
+            ? mergeRealtimeIntoWatchlistItem(stock, updatedStock)
             : stock,
         ),
       );
@@ -44,11 +99,8 @@ const LeftWatchlist = ({ onClose, setSelectedCurrency }) => {
 
       setStocksData((prev) =>
         prev.map((stock) =>
-          stock.token === tick.token
-            ? {
-                ...stock,
-                ...tick,
-              }
+          String(stock.token) === String(tick.token)
+            ? mergeRealtimeIntoWatchlistItem(stock, tick)
             : stock,
         ),
       );
@@ -56,6 +108,9 @@ const LeftWatchlist = ({ onClose, setSelectedCurrency }) => {
   });
 
   useEffect(() => {
+    if (globalCache.watchList) {
+      return;
+    }
     emit(EVENTS.WATCHLIST.GET);
   }, [emit]);
 

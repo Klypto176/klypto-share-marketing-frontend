@@ -59,6 +59,41 @@ import useDrawingTools from "../util/useDrawingTools";
 import DrawingToolbar from "../components/tradingModals/DrawingToolbar";
 import DrawingToolbox from "../components/tradingModals/DrawingToolbox";
 
+const getInitialLookbackDate = (timeframe) => {
+  const d = new Date();
+  if (["1m", "3m", "5m"].includes(timeframe)) {
+    d.setDate(d.getDate() - 20);
+  } else if (["15m", "30m"].includes(timeframe)) {
+    d.setDate(d.getDate() - 45);
+  } else if (["1h", "2h", "4h", "60m", "120m", "240m"].includes(timeframe)) {
+    d.setDate(d.getDate() - 180);
+  } else {
+    d.setFullYear(d.getFullYear() - 2);
+  }
+  return d;
+};
+
+const getTodayDateString = () => new Date().toISOString().split("T")[0];
+
+const mergeHistoricalSeries = (existing, incoming, mode = "replace") => {
+  if (mode === "replace" || !Array.isArray(existing) || existing.length === 0) {
+    return incoming;
+  }
+
+  const merged = new Map();
+  existing.forEach((candle) => merged.set(candle.time, candle));
+  incoming.forEach((candle) => merged.set(candle.time, candle));
+
+  return Array.from(merged.values()).sort((a, b) => a.time - b.time);
+};
+
+const getBackfillChunkDays = (timeframe) => {
+  if (["1m", "3m", "5m"].includes(timeframe)) return 20;
+  if (["10m", "15m", "30m"].includes(timeframe)) return 45;
+  if (["1h", "2h", "4h", "60m", "120m", "240m"].includes(timeframe)) return 90;
+  return 365;
+};
+
 export default function Candlestick() {
   const chartRef = useRef();
   const containerRef = useRef();
@@ -84,6 +119,14 @@ export default function Candlestick() {
   const lastIndicatorRequestRef = useRef(0);
   const lastHistoricalRequestRef = useRef({ key: null, at: 0 });
   const lastLiveTickRequestRef = useRef({ key: null, at: 0 });
+  const historicalMergeModeRef = useRef("replace");
+  const pendingHistoricalFromDateRef = useRef(null);
+  const suppressNextHistoricalReloadRef = useRef(false);
+  const historicalRequestOptionsRef = useRef(new Map());
+  const latestReplaceRequestIdRef = useRef(null);
+  const historicalVisibleRangeRef = useRef(null);
+  const historyBackfillInFlightRef = useRef(false);
+  const lastAutoBackfillFromRef = useRef(null);
   const [isDeployed, setIsDeployed] = useState(false);
 
   const normalize = (s) => s?.replace(/\s+/g, " ").trim().toUpperCase();
@@ -158,8 +201,7 @@ export default function Candlestick() {
       const saved = localStorage.getItem("chart_fromDate");
       if (saved) return saved;
     } catch (e) {}
-    const d = new Date();
-    d.setMonth(d.getMonth() - 7);
+    const d = getInitialLookbackDate("5m");
     const minDate = new Date("2024-10-01");
     if (d < minDate) return "2024-10-01";
     return d.toISOString().split("T")[0];
@@ -178,11 +220,14 @@ export default function Candlestick() {
     }
   };
   const [toDate, setToDate] = useState(() => {
+    const today = getTodayDateString();
     try {
       const saved = localStorage.getItem("chart_toDate");
-      if (saved) return saved;
+      if (saved) {
+        return saved < today ? today : saved;
+      }
     } catch (e) {}
-    return new Date().toISOString().split("T")[0];
+    return today;
   });
   const [selectedIndicator, setSelectedIndicator] = useState(() => {
     try {
@@ -1059,18 +1104,7 @@ json.dumps(result)
 
   // Update fromDate dynamically to optimize load times when timeframe changes
   useEffect(() => {
-    const d = new Date();
-    if (["1m", "3m", "5m"].includes(timeframeValue)) {
-      d.setDate(d.getDate() - 90); // 3 months for 1m-5m
-    } else if (["15m", "30m"].includes(timeframeValue)) {
-      d.setDate(d.getDate() - 120); // 4 months for 15m-30m
-    } else if (
-      ["1h", "2h", "4h", "60m", "120m", "240m"].includes(timeframeValue)
-    ) {
-      d.setDate(d.getDate() - 365); // 1 year for hourly
-    } else {
-      d.setFullYear(d.getFullYear() - 5); // 5 years for daily/weekly
-    }
+    const d = getInitialLookbackDate(timeframeValue);
     handleSetFromDate(d.toISOString().split("T")[0]);
   }, [timeframeValue]);
 
@@ -1133,6 +1167,11 @@ json.dumps(result)
   useEffect(() => {
     selectedCurrencyRef.current = selectedCurrency;
   }, [selectedCurrency]);
+
+  useEffect(() => {
+    historyBackfillInFlightRef.current = false;
+    lastAutoBackfillFromRef.current = null;
+  }, [selectedCurrency?.name, timeframeValue]);
 
   // Persist selectedCurrency so it survives page refresh
   useEffect(() => {
@@ -2288,16 +2327,21 @@ json.dumps(result)
 
   const emitRef = useRef(null);
 
-  const requestHistoricalData = useCallback((force = false) => {
+  const requestHistoricalData = useCallback((
+    force = false,
+    overrides = {},
+    options = {},
+  ) => {
     if (!selectedCurrency || !timeframeValue) return;
     setNoDataAvailable(false);
-    const historicalPayload = {
+    const historicalPayloadBase = {
       symbol: selectedCurrency?.name,
       interval: timeframeValue,
       fromDate: fromDate,
       toDate: toDate,
+      ...overrides,
     };
-    const requestKey = JSON.stringify(historicalPayload);
+    const requestKey = JSON.stringify(historicalPayloadBase);
     const now = Date.now();
     if (
       !force &&
@@ -2307,6 +2351,24 @@ json.dumps(result)
       return false;
     }
     lastHistoricalRequestRef.current = { key: requestKey, at: now };
+    const requestId = `hist_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const historicalPayload = {
+      ...historicalPayloadBase,
+      requestId,
+    };
+    historicalMergeModeRef.current = options.mergeMode || "replace";
+    pendingHistoricalFromDateRef.current = options.pendingFromDate || null;
+    historicalRequestOptionsRef.current.set(requestId, {
+      mergeMode: options.mergeMode || "replace",
+      pendingFromDate: options.pendingFromDate || null,
+      preserveVisibleRange: options.preserveVisibleRange || null,
+      symbol: selectedCurrency?.name,
+      timeframe: timeframeValue,
+      requestId,
+    });
+    if ((options.mergeMode || "replace") === "replace") {
+      latestReplaceRequestIdRef.current = requestId;
+    }
     console.log("📬 getManualHistoricalData Payload:", historicalPayload);
     if (emitRef.current) {
       emitRef.current(EVENTS.CHART.GET, historicalPayload);
@@ -2331,6 +2393,49 @@ json.dumps(result)
     return true;
   }, [selectedCurrency]);
 
+  const requestOlderHistoricalChunk = useCallback(() => {
+    if (
+      !chartRef.current ||
+      !selectedCurrency ||
+      !timeframeValue ||
+      historyBackfillInFlightRef.current
+    ) {
+      return false;
+    }
+
+    const visibleRange = chartRef.current.timeScale().getVisibleLogicalRange();
+    const currentFrom = new Date(fromDate);
+    if (Number.isNaN(currentFrom.getTime())) return false;
+
+    const chunkDays = getBackfillChunkDays(timeframeValue);
+    const newFrom = new Date(currentFrom);
+    newFrom.setDate(newFrom.getDate() - chunkDays);
+    const newFromDate = newFrom.toISOString().split("T")[0];
+
+    if (newFromDate === fromDate || lastAutoBackfillFromRef.current === newFromDate) {
+      return false;
+    }
+
+    historyBackfillInFlightRef.current = true;
+    lastAutoBackfillFromRef.current = newFromDate;
+    setMainChartLoading(true);
+
+    return requestHistoricalData(
+      true,
+      {
+        fromDate: newFromDate,
+        toDate: fromDate,
+      },
+      {
+        mergeMode: "prepend",
+        pendingFromDate: newFromDate,
+        preserveVisibleRange: visibleRange
+          ? { from: visibleRange.from, to: visibleRange.to }
+          : null,
+      },
+    );
+  }, [fromDate, requestHistoricalData, selectedCurrency, timeframeValue]);
+
   // ── Central Socket Hook ──
   const { emit, once, connect, connected, id, off } = useSocket({
     handleConnect: () => {
@@ -2352,10 +2457,52 @@ json.dumps(result)
     handleHistoricalData: (response) => {
       console.log("HISTORICAL DATA RESPONSE", response?.data);
       if (!chartRef.current || chartDisposedRef.current) return;
+      const requestId = response?.meta?.requestId || null;
+      const requestMeta = requestId
+        ? historicalRequestOptionsRef.current.get(requestId)
+        : null;
+      if (requestId) {
+        historicalRequestOptionsRef.current.delete(requestId);
+      }
+
+      const mergeMode =
+        requestMeta?.mergeMode || historicalMergeModeRef.current || "replace";
+
+      if (
+        mergeMode === "replace" &&
+        requestId &&
+        latestReplaceRequestIdRef.current &&
+        requestId !== latestReplaceRequestIdRef.current
+      ) {
+        return;
+      }
+
+      if (
+        requestMeta?.symbol &&
+        !isSameSymbolName(requestMeta.symbol, selectedCurrency?.name) &&
+        !isSameSymbolName(requestMeta.symbol, selectedCurrency?.symbol)
+      ) {
+        return;
+      }
+
+      if (
+        requestMeta?.timeframe &&
+        requestMeta.timeframe !== timeframeValue &&
+        mergeMode === "replace"
+      ) {
+        return;
+      }
 
       const raw = response?.data || [];
 
       if (raw.length === 0) {
+        historicalMergeModeRef.current = "replace";
+        pendingHistoricalFromDateRef.current = null;
+        historyBackfillInFlightRef.current = false;
+        if (mergeMode === "prepend") {
+          setMainChartLoading(false);
+          return;
+        }
         setNoDataAvailable(true);
         setMainChartLoading(false);
         if (seriesRef.current) {
@@ -2408,15 +2555,32 @@ json.dumps(result)
         }
       }
 
-      candlesRef.current = data;
+      const mergedData = mergeHistoricalSeries(
+        candlesRef.current,
+        data,
+        mergeMode,
+      );
+      const previousLength = candlesRef.current?.length || 0;
+      const addedPoints = Math.max(0, mergedData.length - previousLength);
+      candlesRef.current = mergedData;
+      historicalMergeModeRef.current = "replace";
+      historyBackfillInFlightRef.current = false;
 
-      if (!data.length) {
+      if (!mergedData.length) {
         setMainChartLoading(false);
         toast.error(`No historical data found for ${symbolFromResponse}`);
         return;
       }
 
-      const lastPoint = data[data.length - 1];
+      const pendingFromDate =
+        requestMeta?.pendingFromDate || pendingHistoricalFromDateRef.current;
+      if (mergeMode === "prepend" && pendingFromDate) {
+        suppressNextHistoricalReloadRef.current = true;
+        handleSetFromDate(pendingFromDate);
+        pendingHistoricalFromDateRef.current = null;
+      }
+
+      const lastPoint = mergedData[mergedData.length - 1];
 
       setDetailsList((prev) => {
         const existingIdx = prev.findIndex(
@@ -2475,7 +2639,7 @@ json.dumps(result)
           }
           try {
             seriesRef.current.setData(
-              data?.map((d) => ({ time: d.time, value: Number(d.close) })),
+              mergedData?.map((d) => ({ time: d.time, value: Number(d.close) })),
             );
           } catch (e) {
             console.error("Line setData error:", e);
@@ -2491,7 +2655,7 @@ json.dumps(result)
             seriesRef.current.customChartType = "bar";
           }
           try {
-            seriesRef.current.setData(data);
+            seriesRef.current.setData(mergedData);
           } catch (e) {
             console.error("Bar setData error:", e);
           }
@@ -2507,7 +2671,7 @@ json.dumps(result)
           }
           try {
             seriesRef.current.setData(
-              data?.map((d) => ({ time: d.time, value: Number(d.close) })),
+              mergedData?.map((d) => ({ time: d.time, value: Number(d.close) })),
             );
           } catch (e) {
             console.error("Area setData error:", e);
@@ -2517,17 +2681,23 @@ json.dumps(result)
           if (!seriesRef.current) {
             seriesRef.current = chartRef.current.addSeries(BaselineSeries, {
               ...chartSeriesStyles.baseline,
-              baseValue: { type: "price", price: Number(data[0]?.close ?? 0) },
+              baseValue: {
+                type: "price",
+                price: Number(mergedData[0]?.close ?? 0),
+              },
             });
             seriesRef.current.customChartType = "baseline";
           } else {
             seriesRef.current.applyOptions({
-              baseValue: { type: "price", price: Number(data[0]?.close ?? 0) },
+              baseValue: {
+                type: "price",
+                price: Number(mergedData[0]?.close ?? 0),
+              },
             });
           }
           try {
             seriesRef.current.setData(
-              data?.map((d) => ({ time: d.time, value: Number(d.close) })),
+              mergedData?.map((d) => ({ time: d.time, value: Number(d.close) })),
             );
           } catch (e) {
             console.error("Baseline setData error:", e);
@@ -2543,7 +2713,7 @@ json.dumps(result)
           }
           try {
             seriesRef.current.setData(
-              data?.map((d, index, arr) => {
+              mergedData?.map((d, index, arr) => {
                 const prev = arr[index - 1];
                 const isUp = prev ? d.close >= prev.close : true;
                 return {
@@ -2566,7 +2736,7 @@ json.dumps(result)
             seriesRef.current.customChartType = "heikinashi";
           }
           try {
-            seriesRef.current.setData(convertToHeikinAshi(data));
+            seriesRef.current.setData(convertToHeikinAshi(mergedData));
           } catch (e) {
             console.error("HA setData error:", e);
           }
@@ -2580,7 +2750,7 @@ json.dumps(result)
             seriesRef.current.customChartType = "hollowcandles";
           }
           try {
-            seriesRef.current.setData(data);
+            seriesRef.current.setData(mergedData);
           } catch (e) {
             console.error("Hollow setData error:", e);
           }
@@ -2594,7 +2764,7 @@ json.dumps(result)
             seriesRef.current.customChartType = chartType;
           }
           try {
-            seriesRef.current.setData(data);
+            seriesRef.current.setData(mergedData);
           } catch (e) {
             console.error("Default setData error:", e);
           }
@@ -2623,10 +2793,10 @@ json.dumps(result)
         }
       }
 
-      currentCandleRef.current = data[data?.length - 1];
+      currentCandleRef.current = mergedData[mergedData?.length - 1];
 
       setTimeout(() => {
-        const last = data[data?.length - 1];
+        const last = mergedData[mergedData?.length - 1];
         if (last && ohlcvDisplayRef.current) {
           const el = ohlcvDisplayRef.current;
           const isUp = last.close >= last.open;
@@ -2653,7 +2823,14 @@ json.dumps(result)
           if (sellPrice) sellPrice.textContent = formattedClose;
         }
 
-        chartRef.current?.timeScale().fitContent();
+        if (mergeMode === "prepend" && requestMeta?.preserveVisibleRange) {
+          chartRef.current?.timeScale().setVisibleLogicalRange({
+            from: requestMeta.preserveVisibleRange.from + addedPoints,
+            to: requestMeta.preserveVisibleRange.to + addedPoints,
+          });
+        } else {
+          chartRef.current?.timeScale().fitContent();
+        }
 
         setMainChartLoading(false);
         symbolTransitioningRef.current = false;
@@ -2661,6 +2838,9 @@ json.dumps(result)
       }, 150);
     },
     handleHistoricalError: (err) => {
+      historicalMergeModeRef.current = "replace";
+      pendingHistoricalFromDateRef.current = null;
+      historyBackfillInFlightRef.current = false;
       toast.error(err.message || "Failed to fetch historical data");
       console.error("❌ Historical data error:", err);
       setMainChartLoading(false);
@@ -2707,51 +2887,84 @@ json.dumps(result)
 
         if (!Number.isFinite(normalizedTime) || normalizedTime <= 0) return;
 
-        const price = Number(
+        const liveOpen = Number(liveData.open);
+        const liveHigh = Number(liveData.high);
+        const liveLow = Number(liveData.low);
+        const liveClose = Number(
           liveData.close ??
             liveData.price ??
             liveData.ltp ??
             liveData.last_traded_price,
         );
-        if (!Number.isFinite(price)) return;
+        const liveVolume = Number(liveData.volume || 0);
 
-        const previousCandle = currentCandleRef.current;
+        if (!Number.isFinite(liveClose)) return;
+
+        const existingIndex = candlesRef.current.findIndex(
+          (c) => c.time === normalizedTime,
+        );
+        const existingCandle = existingIndex >= 0 ? candlesRef.current[existingIndex] : null;
+        const latestCandle =
+          candlesRef.current.length > 0
+            ? candlesRef.current[candlesRef.current.length - 1]
+            : null;
+        const baseCandle = existingCandle || latestCandle || currentCandleRef.current;
+
         let updatedBar;
-        if (
-          !previousCandle ||
-          normalizedTime > previousCandle.time
-        ) {
+        if (existingCandle) {
+          updatedBar = {
+            ...existingCandle,
+            high: Math.max(
+              Number(existingCandle.high),
+              Number.isFinite(liveHigh) ? liveHigh : liveClose,
+            ),
+            low: Math.min(
+              Number(existingCandle.low),
+              Number.isFinite(liveLow) ? liveLow : liveClose,
+            ),
+            close: liveClose,
+            volume: liveVolume || Number(existingCandle.volume || 0),
+          };
+        } else if (!baseCandle || normalizedTime > baseCandle.time) {
           updatedBar = {
             time: normalizedTime,
-            open: price,
-            high: price,
-            low: price,
-            close: price,
-            volume: Number(liveData.volume || 0),
+            open: Number.isFinite(liveOpen) ? liveOpen : liveClose,
+            high: Number.isFinite(liveHigh) ? liveHigh : liveClose,
+            low: Number.isFinite(liveLow) ? liveLow : liveClose,
+            close: liveClose,
+            volume: liveVolume,
           };
+        } else if (normalizedTime < baseCandle.time) {
+          return;
         } else {
           updatedBar = {
-            ...previousCandle,
-            high: Math.max(previousCandle.high, price),
-            low: Math.min(previousCandle.low, price),
-            close: price,
-            volume: Number(liveData.volume || previousCandle.volume || 0),
+            ...baseCandle,
+            high: Math.max(
+              Number(baseCandle.high),
+              Number.isFinite(liveHigh) ? liveHigh : liveClose,
+            ),
+            low: Math.min(
+              Number(baseCandle.low),
+              Number.isFinite(liveLow) ? liveLow : liveClose,
+            ),
+            close: liveClose,
+            volume: liveVolume || Number(baseCandle.volume || 0),
           };
         }
 
         currentCandleRef.current = updatedBar;
-        const existingIndex = candlesRef.current.findIndex(
-          (c) => c.time === updatedBar.time,
-        );
         if (existingIndex >= 0) candlesRef.current[existingIndex] = updatedBar;
         else candlesRef.current.push(updatedBar);
+        candlesRef.current.sort((a, b) => a.time - b.time);
+        currentCandleRef.current =
+          candlesRef.current[candlesRef.current.length - 1] || updatedBar;
         lastCandleTimeRef.current = normalizedTime;
 
         const timeScale = chartRef.current?.timeScale();
         const oldRange = timeScale?.getVisibleLogicalRange();
         const isGap =
-          previousCandle &&
-          normalizedTime - previousCandle.time > intervalSec * 10;
+          latestCandle &&
+          normalizedTime - latestCandle.time > intervalSec * 10;
 
         if (isGap && timeScale) {
           timeScale.applyOptions({ shiftVisibleRangeOnNewBar: false });
@@ -2900,9 +3113,34 @@ json.dumps(result)
     socketRef.current = { emit, once, off, connected };
   }, [emit, once, off, connected]);
 
+  useEffect(() => {
+    if (!chartRef.current) return;
+
+    const handleVisibleRangeChange = (range) => {
+      historicalVisibleRangeRef.current = range || null;
+      if (!range || mainChartLoading || !connected || !candlesRef.current?.length) {
+        return;
+      }
+
+      if (range.from <= 25) {
+        requestOlderHistoricalChunk();
+      }
+    };
+
+    const timeScale = chartRef.current.timeScale();
+    timeScale.subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+    return () => {
+      timeScale.unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+    };
+  }, [connected, mainChartLoading, requestOlderHistoricalChunk]);
+
   // Main useEffect for chart type/data changes
   useEffect(() => {
     if (!selectedCurrency || !timeframeValue) return;
+    if (suppressNextHistoricalReloadRef.current) {
+      suppressNextHistoricalReloadRef.current = false;
+      return;
+    }
 
     seriesReadyRef.current = false; // Prevent live ticks from squishing the old chart data
 
@@ -2983,10 +3221,20 @@ json.dumps(result)
       pendingGoToDateRef.current = targetDate;
       setMainChartLoading(true);
 
-      // Update fromDate to 30 days before the target date just to be safe
       const newFrom = new Date(targetDate);
-      newFrom.setDate(newFrom.getDate() - 30);
-      handleSetFromDate(newFrom.toISOString().split("T")[0]);
+      newFrom.setDate(newFrom.getDate() - getBackfillChunkDays(timeframeValue));
+      const newFromDate = newFrom.toISOString().split("T")[0];
+      requestHistoricalData(
+        true,
+        {
+          fromDate: newFromDate,
+          toDate: fromDate,
+        },
+        {
+          mergeMode: "prepend",
+          pendingFromDate: newFromDate,
+        },
+      );
       return; // The useEffect above will call handleGoToDate again once loaded
     }
 

@@ -4,12 +4,58 @@ import { BsGrid, BsBell } from "react-icons/bs";
 import apiService from "../../services/apiServices";
 import { useNavigate } from "react-router-dom";
 import { isAuthenticated, logout, getUser } from "../../pages/auth/protected";
+import useSocket from "../../util/useSocket";
+
+const mergeRealtimeIntoStock = (stock, payload) => {
+  const livePrice =
+    payload?.ltp ??
+    payload?.last_traded_price ??
+    payload?.data?.last_traded_price ??
+    payload?.data?.close ??
+    stock?.ltp ??
+    "0.00";
+
+  const closeRefRaw =
+    payload?.close_price ??
+    payload?.close ??
+    payload?.raw?.close_price ??
+    payload?.raw?.close ??
+    0;
+
+  const lastPrice = parseFloat(livePrice);
+  const closeRef = parseFloat(closeRefRaw);
+  const canRecalc = Number.isFinite(lastPrice) && Number.isFinite(closeRef) && closeRef > 0;
+  const computedChange = canRecalc ? lastPrice - closeRef : null;
+  const computedPercent = canRecalc ? ((computedChange / closeRef) * 100).toFixed(2) : null;
+
+  return {
+    ...stock,
+    ...payload,
+    ltp: Number.isFinite(lastPrice) ? lastPrice.toFixed(2) : stock?.ltp,
+    change:
+      payload?.change ??
+      payload?.net_change ??
+      payload?.raw?.net_change ??
+      (computedChange !== null
+        ? `${computedChange >= 0 ? "+" : ""}${computedChange.toFixed(2)}`
+        : stock?.change),
+    percent_change:
+      payload?.percent_change ??
+      payload?.pChange ??
+      payload?.percentChange ??
+      payload?.raw?.percent_change ??
+      payload?.raw?.percentChange ??
+      computedPercent ??
+      stock?.percent_change,
+  };
+};
 
 const Navbar = ({ setSelectedCurrency, predictCount = 0 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [showRecent, setShowRecent] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [stocks, setStocks] = useState([]);
+  const [topIndex, setTopIndex] = useState(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const user = getUser();
@@ -42,8 +88,105 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0 }) => {
         setLoading(false);
       }
     };
+
+    const fetchTopIndex = async () => {
+      try {
+        const response = await apiService.get("equity/indices");
+        const indices = response?.data || [];
+        const nifty =
+          indices.find((item) => item.name?.toUpperCase() === "NIFTY") ||
+          indices[0] ||
+          null;
+        setTopIndex(nifty);
+      } catch (err) {
+        console.error("Failed to fetch top index:", err);
+      }
+    };
+
     fetchStocks();
+    fetchTopIndex();
   }, []);
+
+  useSocket({
+    handleStockUpdate: (updatedStock) => {
+      if (!updatedStock?.token) return;
+      setStocks((prev) =>
+        prev.map((stock) =>
+          String(stock.token) === String(updatedStock.token)
+            ? mergeRealtimeIntoStock(stock, updatedStock)
+            : stock,
+        ),
+      );
+      setTopIndex((prev) => {
+        if (!prev) return prev;
+        const sameToken =
+          prev.token && String(prev.token) === String(updatedStock.token);
+        const sameName =
+          prev.name?.toUpperCase() === updatedStock.name?.toUpperCase();
+        return sameToken || sameName
+          ? mergeRealtimeIntoStock(prev, updatedStock)
+          : prev;
+      });
+    },
+    handleLiveTick: (tick) => {
+      if (!tick?.token) return;
+      setStocks((prev) =>
+        prev.map((stock) =>
+          String(stock.token) === String(tick.token)
+            ? mergeRealtimeIntoStock(stock, tick)
+            : stock,
+        ),
+      );
+      setTopIndex((prev) => {
+        if (!prev) return prev;
+        const sameToken =
+          prev.token && String(prev.token) === String(tick.token);
+        const tickSymbol = tick.symbol || tick.symbolWithEq;
+        const sameName =
+          prev.name?.toUpperCase() ===
+          String(tickSymbol || "").replace("-EQ", "").toUpperCase();
+        return sameToken || sameName
+          ? mergeRealtimeIntoStock(prev, tick)
+          : prev;
+      });
+    },
+  });
+
+  // ✅ Format numbers to Indian locale
+  const formatLtp = (ltp) => {
+    const num = parseFloat(ltp);
+    if (isNaN(num)) return ltp;
+    return num.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
+
+  const topIndexDisplay = useMemo(() => {
+    const fallback = {
+      name: "NIFTY",
+      ltp: "0.00",
+      change: "0.00",
+      percent_change: "0.00",
+    };
+    const item = topIndex || fallback;
+    const percent = parseFloat(item.percent_change ?? item.pChange ?? 0);
+    const change = parseFloat(item.change ?? 0);
+    const isUp = (!Number.isNaN(percent) ? percent : change) >= 0;
+    return {
+      ...item,
+      isUp,
+      color: isUp ? "#26a69a" : "#ef5350",
+      arrow: isUp ? "▲" : "▼",
+      formattedLtp: formatLtp(item.ltp ?? "0.00"),
+      formattedChange: !Number.isNaN(change)
+        ? `${isUp ? "+" : ""}${change.toFixed(2)}`
+        : String(item.change ?? "0.00"),
+      formattedPercent: !Number.isNaN(percent)
+        ? `${isUp ? "+" : ""}${percent.toFixed(2)}%`
+        : `${item.percent_change ?? item.pChange ?? "0.00"}%`,
+    };
+  }, [topIndex]);
 
   // ✅ Filter stocks based on search term
   const filteredStocks = useMemo(() => {
@@ -77,16 +220,6 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0 }) => {
     if (seg.includes("FUT")) return "FUT";
     if (seg.includes("OPT") || stock.strike) return "OPT";
     return "EQ";
-  };
-
-  // ✅ Format numbers to Indian locale
-  const formatLtp = (ltp) => {
-    const num = parseFloat(ltp);
-    if (isNaN(num)) return ltp;
-    return num.toLocaleString("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
   };
 
   const styles = {
@@ -313,12 +446,16 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0 }) => {
         </div>
         <div className="d-none d-md-flex" style={styles.indexData}>
           <div style={styles.indexName}>
-            <span>NIFTY</span>
+            <span>{topIndexDisplay.name || "NIFTY"}</span>
             <span style={styles.expiryTag}>EXPIRY</span>
           </div>
           <div style={styles.indexValues}>
-            <span style={{ color: "#ef5350" }}>24,052.80</span>
-            <span style={{ color: "#ef5350" }}>▼ -66.50 (-0.28%)</span>
+            <span style={{ color: topIndexDisplay.color }}>
+              {topIndexDisplay.formattedLtp}
+            </span>
+            <span style={{ color: topIndexDisplay.color }}>
+              {topIndexDisplay.arrow} {topIndexDisplay.formattedChange} ({topIndexDisplay.formattedPercent})
+            </span>
           </div>
         </div>
       </div>
@@ -607,12 +744,16 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0 }) => {
           
           <div style={{...styles.indexData, fontSize: '1rem', padding: '10px 0', borderBottom: '1px solid var(--border-color)'}}>
             <div style={styles.indexName}>
-              <span>NIFTY</span>
+              <span>{topIndexDisplay.name || "NIFTY"}</span>
               <span style={styles.expiryTag}>EXPIRY</span>
             </div>
             <div style={styles.indexValues}>
-              <span style={{ color: "#ef5350" }}>24,052.80</span>
-              <span style={{ color: "#ef5350" }}>▼ -66.50 (-0.28%)</span>
+              <span style={{ color: topIndexDisplay.color }}>
+                {topIndexDisplay.formattedLtp}
+              </span>
+              <span style={{ color: topIndexDisplay.color }}>
+                {topIndexDisplay.arrow} {topIndexDisplay.formattedChange} ({topIndexDisplay.formattedPercent})
+              </span>
             </div>
           </div>
 

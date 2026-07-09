@@ -136,7 +136,10 @@ const useSocket = (props = {}) => {
     const bootstrap = () => {
       // Re-hydrate components from global cache upon mount
       if (globalCache.watchList && propsRef.current.handleWatchlistResponse) {
-        // Optional: immediately push cached data back to components so they don't wait for a socket event
+        propsRef.current.handleWatchlistResponse({ success: true, data: globalCache.watchList });
+      }
+      if (globalCache.stocksList && propsRef.current.setStocks) {
+        propsRef.current.setStocks(globalCache.stocksList);
       }
     };
 
