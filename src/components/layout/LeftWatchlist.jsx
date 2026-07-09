@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef, startTransition } from "react";
 import { FiSearch, FiSettings, FiX, FiPlus, FiMaximize2 } from "react-icons/fi";
 import useSocket, { globalCache } from "../../util/useSocket";
 import EVENTS from "../../services/websocket/socketEvent";
@@ -61,6 +61,39 @@ const LeftWatchlist = ({ onClose, setSelectedCurrency }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [stocksData, setStocksData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const pendingRealtimeUpdatesRef = useRef(new Map());
+  const realtimeFlushTimerRef = useRef(null);
+
+  const flushRealtimeUpdates = () => {
+    realtimeFlushTimerRef.current = null;
+    const pendingUpdates = pendingRealtimeUpdatesRef.current;
+    if (!pendingUpdates.size) return;
+
+    pendingRealtimeUpdatesRef.current = new Map();
+
+    startTransition(() => {
+      setStocksData((prev) => {
+        let hasChanges = false;
+        const next = prev.map((stock) => {
+          const payload = pendingUpdates.get(String(stock.token));
+          if (!payload) return stock;
+          hasChanges = true;
+          return mergeRealtimeIntoWatchlistItem(stock, payload);
+        });
+
+        return hasChanges ? next : prev;
+      });
+    });
+  };
+
+  const queueRealtimeUpdate = (payload) => {
+    if (!payload?.token) return;
+
+    pendingRealtimeUpdatesRef.current.set(String(payload.token), payload);
+    if (!realtimeFlushTimerRef.current) {
+      realtimeFlushTimerRef.current = setTimeout(flushRealtimeUpdates, 120);
+    }
+  };
 
   const { emit } = useSocket({
     handleWatchlistResponse: (data) => {
@@ -84,26 +117,10 @@ const LeftWatchlist = ({ onClose, setSelectedCurrency }) => {
       setIsLoading(false);
     },
     handleStockUpdate: (updatedStock) => {
-      if (!updatedStock?.token) return;
-
-      setStocksData((prev) =>
-        prev.map((stock) =>
-          String(stock.token) === String(updatedStock.token)
-            ? mergeRealtimeIntoWatchlistItem(stock, updatedStock)
-            : stock,
-        ),
-      );
+      queueRealtimeUpdate(updatedStock);
     },
     handleLiveTick: (tick) => {
-      if (!tick?.token) return;
-
-      setStocksData((prev) =>
-        prev.map((stock) =>
-          String(stock.token) === String(tick.token)
-            ? mergeRealtimeIntoWatchlistItem(stock, tick)
-            : stock,
-        ),
-      );
+      queueRealtimeUpdate(tick);
     }
   });
 
@@ -113,6 +130,16 @@ const LeftWatchlist = ({ onClose, setSelectedCurrency }) => {
     }
     emit(EVENTS.WATCHLIST.GET);
   }, [emit]);
+
+  useEffect(() => {
+    return () => {
+      if (realtimeFlushTimerRef.current) {
+        clearTimeout(realtimeFlushTimerRef.current);
+        realtimeFlushTimerRef.current = null;
+      }
+      pendingRealtimeUpdatesRef.current.clear();
+    };
+  }, []);
 
   const styles = {
     container: {

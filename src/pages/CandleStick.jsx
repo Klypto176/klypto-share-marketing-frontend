@@ -1151,6 +1151,8 @@ json.dumps(result)
   const candlesRef = useRef([]);
   const pendingLiveBarRef = useRef(null);
   const pendingLiveBarMetaRef = useRef({ shouldAutoScale: false });
+  const lastQueuedLiveBarSignatureRef = useRef(null);
+  const lastRenderedLiveBarSignatureRef = useRef(null);
   const liveBarFlushTimerRef = useRef(null);
   const liveAutoScaleResetTimerRef = useRef(null);
   const lastLiveBarPaintAtRef = useRef(0);
@@ -1164,7 +1166,23 @@ json.dumps(result)
   const selectedCurrencyRef = useRef(selectedCurrency);
   const intervalSecRef = useRef(TIMEFRAME_TO_SECONDS[timeframeValue] ?? 60);
   const IST_OFFSET = 19800;
-  const LIVE_BAR_RENDER_INTERVAL_MS = 350;
+  const LIVE_BAR_RENDER_INTERVAL_MS = 450;
+
+  const buildLiveBarSignature = useCallback((bar) => {
+    if (!bar) return "";
+
+    const normalizeNumber = (value) =>
+      Number.isFinite(Number(value)) ? Number(value).toFixed(2) : "NA";
+
+    return [
+      bar.time,
+      normalizeNumber(bar.open),
+      normalizeNumber(bar.high),
+      normalizeNumber(bar.low),
+      normalizeNumber(bar.close),
+      normalizeNumber(bar.volume),
+    ].join("|");
+  }, []);
 
   const setMainChartAutoScale = useCallback((enabled) => {
     if (!chartRef.current) return;
@@ -1672,10 +1690,17 @@ json.dumps(result)
     series.setData = (data) => {
       if (!Array.isArray(data)) return originalSetData(data);
 
+      const hasValidTime = (time) => {
+        if (time === undefined || time === null || time === "") return false;
+        if (typeof time === "number") return Number.isFinite(time);
+        return true;
+      };
+
       const cleanedData = [];
       for (let i = 0; i < data.length; i++) {
         const d = data[i];
         if (!d || typeof d !== "object") continue;
+        if (!hasValidTime(d.time)) continue;
 
         // Handle Line/Histogram/Area/Baseline series
         if ("value" in d) {
@@ -1717,7 +1742,7 @@ json.dumps(result)
             });
           }
         } else {
-          cleanedData.push(d);
+          cleanedData.push({ ...d });
         }
       }
 
@@ -1727,6 +1752,13 @@ json.dumps(result)
         for (const key in item) {
           if (item[key] === undefined) delete item[key];
         }
+      }
+
+      if (
+        cleanedData.length > 1 &&
+        cleanedData.every((item) => typeof item.time === "number")
+      ) {
+        cleanedData.sort((a, b) => a.time - b.time);
       }
 
       return originalSetData(cleanedData);
@@ -2468,6 +2500,15 @@ json.dumps(result)
       return;
     }
 
+    const barSignature = buildLiveBarSignature(updatedBar);
+    if (
+      barSignature &&
+      barSignature === lastRenderedLiveBarSignatureRef.current
+    ) {
+      pendingLiveBarRef.current = null;
+      return;
+    }
+
     if (pendingLiveBarMetaRef.current?.shouldAutoScale) {
       setMainChartAutoScale(true);
       if (liveAutoScaleResetTimerRef.current) {
@@ -2480,6 +2521,8 @@ json.dumps(result)
     }
 
     lastLiveBarPaintAtRef.current = Date.now();
+    lastRenderedLiveBarSignatureRef.current = barSignature;
+    pendingLiveBarRef.current = null;
 
     try {
       seriesRef.current.update(updatedBar);
@@ -2511,7 +2554,7 @@ json.dumps(result)
       if (buyPrice) buyPrice.textContent = formattedClose;
       if (sellPrice) sellPrice.textContent = formattedClose;
     }
-  }, [setMainChartAutoScale]);
+  }, [buildLiveBarSignature, setMainChartAutoScale]);
 
   useEffect(() => {
     return () => {
@@ -2528,6 +2571,7 @@ json.dumps(result)
 
   // ── Central Socket Hook ──
   const { emit, once, connect, connected, id, off } = useSocket({
+    disableOverviewLiveTickFallback: true,
     handleConnect: () => {
       console.log("✅ SOCKET CONNECTED", true);
       requestHistoricalData(true);
@@ -2671,6 +2715,13 @@ json.dumps(result)
       }
 
       const lastPoint = mergedData[mergedData.length - 1];
+      if (mergeMode === "replace") {
+        pendingLiveBarRef.current = null;
+        pendingLiveBarMetaRef.current = { shouldAutoScale: false };
+        lastQueuedLiveBarSignatureRef.current = null;
+        lastRenderedLiveBarSignatureRef.current =
+          buildLiveBarSignature(lastPoint);
+      }
 
       setDetailsList((prev) => {
         const existingIdx = prev.findIndex(
@@ -3049,6 +3100,15 @@ json.dumps(result)
           };
         }
 
+        const nextBarSignature = buildLiveBarSignature(updatedBar);
+        if (
+          nextBarSignature &&
+          (nextBarSignature === lastQueuedLiveBarSignatureRef.current ||
+            nextBarSignature === lastRenderedLiveBarSignatureRef.current)
+        ) {
+          return;
+        }
+
         currentCandleRef.current = updatedBar;
         if (existingIndex >= 0) candlesRef.current[existingIndex] = updatedBar;
         else candlesRef.current.push(updatedBar);
@@ -3056,6 +3116,7 @@ json.dumps(result)
         currentCandleRef.current =
           candlesRef.current[candlesRef.current.length - 1] || updatedBar;
         lastCandleTimeRef.current = normalizedTime;
+        lastQueuedLiveBarSignatureRef.current = nextBarSignature;
         pendingLiveBarMetaRef.current = {
           shouldAutoScale: !existingCandle && (!baseCandle || normalizedTime > baseCandle.time),
         };

@@ -7,8 +7,11 @@ const EVENTS = {
   },
   INDICATOR: {
     GET: "getIndicatorDetails",
+    BATCH_GET: "getIndicatorDetailsBatch",
     RESPONSE: "indicatorDetailsResponse",
     ERROR: "indicatorDetailsError",
+    BATCH_RESPONSE: "indicatorDetailsBatchResponse",
+    BATCH_ERROR: "indicatorDetailsBatchError",
     LIVE: "getLiveIndicatorUpdate",
     LIVE_RESPONSE: "liveIndicatorResponse",
     UPDATE_RESPONSE: "updateIndicatorResponse",

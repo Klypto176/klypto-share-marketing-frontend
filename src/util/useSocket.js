@@ -63,7 +63,13 @@ const useSocket = (props = {}) => {
       },
       
       [EVENTS.OVERVIEW.RESPONSE]: (tick) => {
-        if (propsRef.current.handleLiveTick) propsRef.current.handleLiveTick(tick);
+        if (propsRef.current.handleOverviewTick) {
+          propsRef.current.handleOverviewTick(tick);
+          return;
+        }
+        if (!propsRef.current.disableOverviewLiveTickFallback && propsRef.current.handleLiveTick) {
+          propsRef.current.handleLiveTick(tick);
+        }
       },
       
       [EVENTS.INDICATOR.RESPONSE]: (res) => {

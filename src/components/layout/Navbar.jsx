@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useMemo, useRef, useEffect, startTransition } from "react";
 import { FiSearch, FiSun, FiMoon } from "react-icons/fi";
 import { BsGrid, BsBell } from "react-icons/bs";
 import apiService from "../../services/apiServices";
@@ -59,6 +59,8 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0 }) => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const user = getUser();
+  const pendingRealtimeUpdatesRef = useRef(new Map());
+  const realtimeFlushTimerRef = useRef(null);
 
   const [theme, setTheme] = useState(
     localStorage.getItem("theme") || "dark"
@@ -74,6 +76,59 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0 }) => {
   };
 
   const searchContainerRef = useRef(null);
+
+  const flushRealtimeUpdates = () => {
+    realtimeFlushTimerRef.current = null;
+    const pendingUpdates = pendingRealtimeUpdatesRef.current;
+    if (!pendingUpdates.size) return;
+
+    pendingRealtimeUpdatesRef.current = new Map();
+
+    startTransition(() => {
+      setStocks((prev) => {
+        let hasChanges = false;
+        const next = prev.map((stock) => {
+          const payload = pendingUpdates.get(String(stock.token));
+          if (!payload) return stock;
+          hasChanges = true;
+          return mergeRealtimeIntoStock(stock, payload);
+        });
+
+        return hasChanges ? next : prev;
+      });
+
+      setTopIndex((prev) => {
+        if (!prev) return prev;
+
+        const matchingByToken = prev.token
+          ? pendingUpdates.get(String(prev.token))
+          : null;
+
+        const matchingByName = matchingByToken
+          || Array.from(pendingUpdates.values()).find((payload) => {
+            const payloadName = String(
+              payload?.name || payload?.symbol || payload?.symbolWithEq || "",
+            )
+              .replace("-EQ", "")
+              .toUpperCase();
+            return prev.name?.toUpperCase() === payloadName;
+          });
+
+        return matchingByName
+          ? mergeRealtimeIntoStock(prev, matchingByName)
+          : prev;
+      });
+    });
+  };
+
+  const queueRealtimeUpdate = (payload) => {
+    if (!payload?.token) return;
+
+    pendingRealtimeUpdatesRef.current.set(String(payload.token), payload);
+    if (!realtimeFlushTimerRef.current) {
+      realtimeFlushTimerRef.current = setTimeout(flushRealtimeUpdates, 120);
+    }
+  };
 
   // ✅ Fetch stocks from API on mount
   useEffect(() => {
@@ -109,48 +164,22 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0 }) => {
 
   useSocket({
     handleStockUpdate: (updatedStock) => {
-      if (!updatedStock?.token) return;
-      setStocks((prev) =>
-        prev.map((stock) =>
-          String(stock.token) === String(updatedStock.token)
-            ? mergeRealtimeIntoStock(stock, updatedStock)
-            : stock,
-        ),
-      );
-      setTopIndex((prev) => {
-        if (!prev) return prev;
-        const sameToken =
-          prev.token && String(prev.token) === String(updatedStock.token);
-        const sameName =
-          prev.name?.toUpperCase() === updatedStock.name?.toUpperCase();
-        return sameToken || sameName
-          ? mergeRealtimeIntoStock(prev, updatedStock)
-          : prev;
-      });
+      queueRealtimeUpdate(updatedStock);
     },
     handleLiveTick: (tick) => {
-      if (!tick?.token) return;
-      setStocks((prev) =>
-        prev.map((stock) =>
-          String(stock.token) === String(tick.token)
-            ? mergeRealtimeIntoStock(stock, tick)
-            : stock,
-        ),
-      );
-      setTopIndex((prev) => {
-        if (!prev) return prev;
-        const sameToken =
-          prev.token && String(prev.token) === String(tick.token);
-        const tickSymbol = tick.symbol || tick.symbolWithEq;
-        const sameName =
-          prev.name?.toUpperCase() ===
-          String(tickSymbol || "").replace("-EQ", "").toUpperCase();
-        return sameToken || sameName
-          ? mergeRealtimeIntoStock(prev, tick)
-          : prev;
-      });
+      queueRealtimeUpdate(tick);
     },
   });
+
+  useEffect(() => {
+    return () => {
+      if (realtimeFlushTimerRef.current) {
+        clearTimeout(realtimeFlushTimerRef.current);
+        realtimeFlushTimerRef.current = null;
+      }
+      pendingRealtimeUpdatesRef.current.clear();
+    };
+  }, []);
 
   // ✅ Format numbers to Indian locale
   const formatLtp = (ltp) => {
