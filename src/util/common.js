@@ -55,8 +55,8 @@ export const ChartProprties = {
     autoScale: true,
     mode: 0,
     scaleMargins: {
-      top: 0.2,
-      bottom: 0.2,
+      top: 0.28,
+      bottom: 0.18,
     },
     borderColor: "rgba(120, 123, 134, 0.4)",
   },

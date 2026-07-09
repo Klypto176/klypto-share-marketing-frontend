@@ -1,13 +1,99 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef, startTransition } from "react";
 import { FiSearch, FiSettings, FiX, FiPlus, FiMaximize2 } from "react-icons/fi";
-import useSocket from "../../util/useSocket";
+import useSocket, { globalCache } from "../../util/useSocket";
 import EVENTS from "../../services/websocket/socketEvent";
 import { Spinner } from "../tradingModals/Spinner";
+
+const normalizeWatchlistItem = (item) => ({
+  ...item,
+  percent_change:
+    item?.percent_change ??
+    item?.pChange ??
+    item?.percentChange ??
+    "0.00",
+});
+
+const mergeRealtimeIntoWatchlistItem = (stock, payload) => {
+  const livePrice =
+    payload?.ltp ??
+    payload?.last_traded_price ??
+    payload?.data?.last_traded_price ??
+    payload?.data?.close ??
+    stock?.ltp ??
+    "0.00";
+
+  const closeRefRaw =
+    payload?.close_price ??
+    payload?.close ??
+    payload?.raw?.close_price ??
+    payload?.raw?.close ??
+    0;
+
+  const lastPrice = parseFloat(livePrice);
+  const closeRef = parseFloat(closeRefRaw);
+  const canRecalc = Number.isFinite(lastPrice) && Number.isFinite(closeRef) && closeRef > 0;
+  const computedChange = canRecalc ? lastPrice - closeRef : null;
+  const computedPercent = canRecalc ? ((computedChange / closeRef) * 100).toFixed(2) : null;
+
+  return normalizeWatchlistItem({
+    ...stock,
+    ...payload,
+    ltp: Number.isFinite(lastPrice) ? lastPrice.toFixed(2) : stock?.ltp,
+    change:
+      payload?.change ??
+      payload?.net_change ??
+      payload?.raw?.net_change ??
+      (computedChange !== null
+        ? `${computedChange >= 0 ? "+" : ""}${computedChange.toFixed(2)}`
+        : stock?.change),
+    percent_change:
+      payload?.percent_change ??
+      payload?.pChange ??
+      payload?.percentChange ??
+      payload?.raw?.percent_change ??
+      payload?.raw?.percentChange ??
+      computedPercent ??
+      stock?.percent_change,
+  });
+};
 
 const LeftWatchlist = ({ onClose, setSelectedCurrency }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [stocksData, setStocksData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const pendingRealtimeUpdatesRef = useRef(new Map());
+  const realtimeFlushTimerRef = useRef(null);
+
+  const flushRealtimeUpdates = () => {
+    realtimeFlushTimerRef.current = null;
+    const pendingUpdates = pendingRealtimeUpdatesRef.current;
+    if (!pendingUpdates.size) return;
+
+    pendingRealtimeUpdatesRef.current = new Map();
+
+    startTransition(() => {
+      setStocksData((prev) => {
+        let hasChanges = false;
+        const next = prev.map((stock) => {
+          const payload = pendingUpdates.get(String(stock.token));
+          if (!payload) return stock;
+          hasChanges = true;
+          return mergeRealtimeIntoWatchlistItem(stock, payload);
+        });
+
+        return hasChanges ? next : prev;
+      });
+    });
+  };
+
+  const queueRealtimeUpdate = (payload) => {
+    if (!payload?.token) return;
+
+    pendingRealtimeUpdatesRef.current.set(String(payload.token), payload);
+    if (!realtimeFlushTimerRef.current) {
+      realtimeFlushTimerRef.current = setTimeout(flushRealtimeUpdates, 120);
+    }
+  };
 
   const { emit } = useSocket({
     handleWatchlistResponse: (data) => {
@@ -23,41 +109,37 @@ const LeftWatchlist = ({ onClose, setSelectedCurrency }) => {
          indices = (payload.indices || []).map((item) => ({ ...item, category: "IDX" }));
       }
 
-      const combined = [...indices, ...equity, ...futures, ...options];
+      const combined = [...indices, ...equity, ...futures, ...options].map(
+        normalizeWatchlistItem,
+      );
       console.log("LeftWatchlist mapped stocks count:", combined.length);
       setStocksData(combined);
       setIsLoading(false);
     },
     handleStockUpdate: (updatedStock) => {
-      if (!updatedStock?.token) return;
-
-      setStocksData((prev) =>
-        prev.map((stock) =>
-          stock.token === updatedStock.token
-            ? { ...stock, ...updatedStock }
-            : stock,
-        ),
-      );
+      queueRealtimeUpdate(updatedStock);
     },
     handleLiveTick: (tick) => {
-      if (!tick?.token) return;
-
-      setStocksData((prev) =>
-        prev.map((stock) =>
-          stock.token === tick.token
-            ? {
-                ...stock,
-                ...tick,
-              }
-            : stock,
-        ),
-      );
+      queueRealtimeUpdate(tick);
     }
   });
 
   useEffect(() => {
+    if (globalCache.watchList) {
+      return;
+    }
     emit(EVENTS.WATCHLIST.GET);
   }, [emit]);
+
+  useEffect(() => {
+    return () => {
+      if (realtimeFlushTimerRef.current) {
+        clearTimeout(realtimeFlushTimerRef.current);
+        realtimeFlushTimerRef.current = null;
+      }
+      pendingRealtimeUpdatesRef.current.clear();
+    };
+  }, []);
 
   const styles = {
     container: {
