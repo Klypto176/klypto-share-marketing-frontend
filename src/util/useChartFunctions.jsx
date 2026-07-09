@@ -1,10 +1,22 @@
 import apiService from "../services/apiServices";
 import { getRowsByIndicator } from "./common";
 import socket from "../services/websocket/socket";
-
+import { io } from "socket.io-client";
+import Swal from "sweetalert2";
 let globalFetchSessionId = 0;
+let globalFetchContextKey = "";
+const INDICATOR_REQUEST_TIMEOUT_MS = 45000;
+const INDICATOR_CONCURRENCY_LIMIT = 2;
 
 const IST_OFFSET = 19800;
+
+const getIndicatorFetchContextKey = (selectedCurrency, timeframeValue, fromDate, toDate) =>
+  JSON.stringify({
+    symbol: selectedCurrency?.name,
+    interval: timeframeValue,
+    fromDate,
+    toDate,
+  });
 
 export default function useChartFunctions({
   indicatorSeriesRef,
@@ -17,6 +29,7 @@ export default function useChartFunctions({
   candlesRef,
   onIndicatorLoaded,
   onIndicatorLoadingChange,
+  onIndicatorError,
 }) {
   /* ================= FETCH INDICATORS ================= */
   async function fetchIndicatorData(
@@ -26,22 +39,91 @@ export default function useChartFunctions({
   ) {
     if (!selectedIndicator?.length) return;
 
-    const currentSessionId = ++globalFetchSessionId;
+    const fetchContextKey = getIndicatorFetchContextKey(
+      selectedCurrency,
+      timeframeValue,
+      fromDate,
+      toDate,
+    );
 
-    // Process sequentially (1 at a time) to avoid overwhelming the backend and unblock UI thread
-    const CONCURRENCY_LIMIT = 1;
-    for (let i = 0; i < selectedIndicator.length; i += CONCURRENCY_LIMIT) {
+    if (fetchContextKey !== globalFetchContextKey) {
+      globalFetchContextKey = fetchContextKey;
+      globalFetchSessionId += 1;
+    }
+
+    const currentSessionId = globalFetchSessionId;
+
+    if (selectedIndicator.length > 1) {
+      const indicatorMeta = selectedIndicator.map((indItem) => ({
+        id: typeof indItem === "object" ? indItem.id : indItem,
+        type: typeof indItem === "object" ? indItem.type : indItem,
+      }));
+
+      try {
+        indicatorMeta.forEach(({ id }) => {
+          if (onIndicatorLoadingChange) onIndicatorLoadingChange(id, true);
+        });
+
+        const results = await fetchBatchIndicatorData(
+          indicatorMeta,
+          selectedCurrency,
+          timeframeValue,
+          fromDate,
+          toDate,
+          socketRef,
+          indicatorConfigs,
+        );
+
+        if (currentSessionId !== globalFetchSessionId) {
+          return;
+        }
+
+        for (const result of results) {
+          const id = result?.id;
+          const type = result?.type;
+          if (!id || !type) continue;
+          const mappedResult = await fetchDataForIndicators(
+            candlesRef.current,
+            selectedCurrency,
+            type,
+            timeframeValue,
+            fromDate,
+            toDate,
+            socketRef,
+            null,
+            result,
+          );
+          processIndicatorResponse(id, type, mappedResult);
+          if (typeof onIndicatorLoaded === "function") {
+            onIndicatorLoaded(id);
+          }
+        }
+        return;
+      } catch (error) {
+        console.warn(
+          "Batch indicator request failed, falling back to individual requests:",
+          error,
+        );
+      } finally {
+        if (currentSessionId === globalFetchSessionId && onIndicatorLoadingChange) {
+          indicatorMeta.forEach(({ id }) => onIndicatorLoadingChange(id, false));
+        }
+      }
+    }
+
+    for (let i = 0; i < selectedIndicator.length; i += INDICATOR_CONCURRENCY_LIMIT) {
       if (currentSessionId !== globalFetchSessionId) {
         console.log("Fetch session aborted due to symbol/timeframe change.");
         break; // Cancel the rest of the queue
       }
 
-      const batch = selectedIndicator.slice(i, i + CONCURRENCY_LIMIT);
+      const batch = selectedIndicator.slice(i, i + INDICATOR_CONCURRENCY_LIMIT);
       
       await Promise.all(
         batch.map(async (indItem) => {
           const id = typeof indItem === "object" ? indItem.id : indItem;
           const type = typeof indItem === "object" ? indItem.type : indItem;
+          const requestId = `indicator_${currentSessionId}_${id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
           try {
             if (onIndicatorLoadingChange) onIndicatorLoadingChange(id, true);
             const result = await fetchDataForIndicators(
@@ -52,6 +134,8 @@ export default function useChartFunctions({
               fromDate,
               toDate,
               socketRef,
+              indicatorConfigs?.[id] || {},
+              requestId,
             );
             
             // Critical: check if session changed while waiting for API
@@ -65,6 +149,22 @@ export default function useChartFunctions({
             }
           } catch (error) {
             console.error(`Failed to fetch indicator ${type}:`, error);
+            // Show error to user and remove the empty pane
+            try {
+              await Swal.fire({
+                icon: "error",
+                title: `${type} Indicator Failed`,
+                text:
+                  error?.message ||
+                  `Could not load ${type} data. Please try again.`,
+                confirmButtonText: "OK",
+                background: "var(--bg-secondary)",
+                color: "var(--text-primary)",
+              });
+            } catch (alertError) {
+              console.error("Failed to show indicator error alert:", alertError);
+            }
+            if (typeof onIndicatorError === "function") onIndicatorError(id);
           } finally {
             if (currentSessionId === globalFetchSessionId && onIndicatorLoadingChange) {
               onIndicatorLoadingChange(id, false);
@@ -821,9 +921,76 @@ export default function useChartFunctions({
     processIndicatorResponse,
   };
 }
-// Global queue to ensure sequential processing of getIndicatorDetails requests
-let indicatorFetchQueue = Promise.resolve();
+async function fetchBatchIndicatorData(
+  selectedIndicator,
+  selectedCurrency,
+  timeframeValue,
+  fromDate,
+  toDate,
+  socketRef,
+  indicatorConfigs,
+) {
+  const batchRequestId = `indicator_batch_${Date.now()}_${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
 
+  try {
+    const response = await new Promise((resolve, reject) => {
+      if (!socketRef.current || !socket.connected) {
+        reject(new Error("Socket disconnected"));
+        return;
+      }
+
+      const cleanup = () => {
+        socket.off("indicatorDetailsBatchResponse", onResponse);
+        socket.off("indicatorDetailsBatchError", onError);
+      };
+
+      const timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new Error("Timeout fetching indicator batch"));
+      }, INDICATOR_REQUEST_TIMEOUT_MS);
+
+      const onResponse = (data) => {
+        if (data?.batchRequestId !== batchRequestId) return;
+        clearTimeout(timeoutId);
+        cleanup();
+        resolve(data);
+      };
+
+      const onError = (err) => {
+        if (err?.batchRequestId !== batchRequestId) return;
+        clearTimeout(timeoutId);
+        cleanup();
+        reject(err);
+      };
+
+      socket.on("indicatorDetailsBatchResponse", onResponse);
+      socket.on("indicatorDetailsBatchError", onError);
+
+      socketRef.current.emit("getIndicatorDetailsBatch", {
+        batchRequestId,
+        symbol: selectedCurrency?.name,
+        interval: timeframeValue,
+        fromDate,
+        toDate,
+        requests: selectedIndicator.map(({ id, type }) => ({
+          id,
+          type,
+          requestId: `indicator_${id}_${Date.now()}_${Math.random()
+            .toString(36)
+            .slice(2, 8)}`,
+          ...(indicatorConfigs?.[id] || indicatorConfigs?.[type] || {}),
+        })),
+      });
+    });
+
+    return Array.isArray(response?.results) ? response.results : [];
+  } catch (error) {
+    console.error("fetchBatchIndicatorData error:", error);
+    throw error;
+  }
+}
 async function fetchDataForIndicators(
   candles,
   selectedCurrency,
@@ -832,6 +999,9 @@ async function fetchDataForIndicators(
   fromDate,
   toDate,
   socketRef,
+  indicatorConfig = {},
+  requestId,
+  preloadedResponse = null,
 ) {
   const isValidChartValue = (v) => {
     const num = Number(v);
@@ -839,49 +1009,51 @@ async function fetchDataForIndicators(
     return Number.isFinite(num) && Math.abs(num) < 90071992547409;
   };
   try {
-    const response = await new Promise((resolve, reject) => {
-      indicatorFetchQueue = indicatorFetchQueue.then(() => {
-        return new Promise((innerResolve) => {
-          if (!socketRef.current || !socket.connected) {
-            innerResolve();
-            return reject(new Error("Socket disconnected"));
-          }
+    const response =
+      preloadedResponse ||
+      (await new Promise((resolve, reject) => {
+        if (!socketRef.current || !socket.connected) {
+          reject(new Error("Socket disconnected"));
+          return;
+        }
 
-          socketRef.current?.emit("getIndicatorDetails", {
-            symbol: selectedCurrency?.name,
-            interval: timeframeValue,
-            fromDate: fromDate,
-            toDate: toDate,
-            type,
-          });
+        const cleanup = () => {
+          socket.off("indicatorDetailsResponse", onResponse);
+          socket.off("indicatorDetailsError", onError);
+        };
 
-          const timeoutId = setTimeout(() => {
-            socketRef.current?.off("indicatorDetailsError", onError);
-            socketRef.current?.off("indicatorDetailsResponse", onResponse);
-            innerResolve();
-            reject(new Error("Timeout fetching indicator data"));
-          }, 120000); // 2 minutes (effectively removed for normal operations)
+        const timeoutId = setTimeout(() => {
+          cleanup();
+          reject(new Error(`Timeout fetching indicator data for ${type}`));
+        }, INDICATOR_REQUEST_TIMEOUT_MS);
 
-          const onResponse = (data) => {
-            clearTimeout(timeoutId);
-            socketRef.current?.off("indicatorDetailsError", onError);
-            innerResolve();
-            resolve(data);
-          };
+        const onResponse = (data) => {
+          if (data?.requestId !== requestId) return;
+          clearTimeout(timeoutId);
+          cleanup();
+          resolve(data);
+        };
 
-          const onError = (err) => {
-            clearTimeout(timeoutId);
-            console.error("fetchDataForIndicators error:", err);
-            socketRef.current?.off("indicatorDetailsResponse", onResponse);
-            innerResolve();
-            reject(err);
-          };
+        const onError = (err) => {
+          if (err?.requestId !== requestId) return;
+          clearTimeout(timeoutId);
+          cleanup();
+          console.error("fetchDataForIndicators error:", err);
+          reject(err);
+        };
 
-          socketRef.current?.once("indicatorDetailsResponse", onResponse);
-          socketRef.current?.once("indicatorDetailsError", onError);
+        socket.on("indicatorDetailsResponse", onResponse);
+        socket.on("indicatorDetailsError", onError);
+
+        socketRef.current?.emit("getIndicatorDetails", {
+          requestId,
+          symbol: selectedCurrency?.name,
+          interval: timeframeValue,
+          fromDate: fromDate,
+          toDate: toDate,
+          type,
         });
-      });
-    });
+      }));
 
     if (!response || !response.data) {
       console.warn(`No indicator data received for ${type}`);

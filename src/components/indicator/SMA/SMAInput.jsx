@@ -51,6 +51,13 @@ export default function SMAInput(
   if (maType === "SMA + Bollinger Bands") {
     series.bbUpper?.setData(bbUpperData);
     series.bbLower?.setData(bbLowerData);
+    series.bbUpperData = bbUpperData;
+    series.bbLowerData = bbLowerData;
+  } else {
+    series.bbUpper?.setData([]);
+    series.bbLower?.setData([]);
+    series.bbUpperData = [];
+    series.bbLowerData = [];
   }
 
   if (!latestIndicatorValuesRef.current[indicatorId]) {

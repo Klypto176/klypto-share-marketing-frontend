@@ -11,7 +11,7 @@ export default function WilliamsRInput(
   const rData = rows
     .filter((d) => d.williamPercentR != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.williamPercentR),
     }))
     .sort((a, b) => a.time - b.time);

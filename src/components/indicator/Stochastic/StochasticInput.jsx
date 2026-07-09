@@ -8,7 +8,7 @@ export default function STOCHInput(
   const kData = rows
     .filter((d) => d?.stochastick != null && d?.time != null)
     .map((d) => ({
-      time: d.time,
+      time: d.time + 19800,
       value: d.stochastick,
     }));
 
@@ -16,7 +16,7 @@ export default function STOCHInput(
   const dData = rows
     .filter((d) => d?.stochasticd != null && d?.time != null)
     .map((d) => ({
-      time: d.time,
+      time: d.time +19800,
       value: d.stochasticd,
     }));
 

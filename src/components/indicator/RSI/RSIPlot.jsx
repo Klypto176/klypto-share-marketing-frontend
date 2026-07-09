@@ -15,7 +15,7 @@ export default function RSIPlot({
   indicatorVisibility,
 }) {
   const canvasRef = useRef(null);
-  console.log("📍 RSIPlot Render", { id, hasResult: !!result, hasPanes: !!panesRef?.current });
+  // console.log(" RSIPlot Render", { id, hasResult: !!result, hasPanes: !!panesRef?.current });
 
   /* ================= CREATE RSI ================= */
 
@@ -193,6 +193,8 @@ export default function RSIPlot({
     groupedSeries.bbUpperData = bbUpperData;
     groupedSeries.bbLowerData = bbLowerData;
 
+    groupedSeries.currentLevels = { upper, middle, lower };
+
     indicatorSeriesRef.current[id] = groupedSeries;
   }, [result]);
 
@@ -290,7 +292,6 @@ export default function RSIPlot({
       const x = paneChart.timeScale().timeToCoordinate(p.time);
       const y = rsiGroup.bbUpper.priceToCoordinate(p.value);
       
-      if (i === 0) console.log("📍 First Point:", { x, y, value: p.value, time: p.time });
 
       if (x == null || y == null) continue;
       if (i === 0) ctx.moveTo(x, y);

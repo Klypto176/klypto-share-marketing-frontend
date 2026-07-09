@@ -11,7 +11,7 @@ export default function BBPERBInput(
     response?.data
       ?.filter((d) => d.percentB != null && d.time != null)
       .map((d) => ({
-        time: Number(d.time),
+        time: Number(d.time)+ 19800,
         value: Number(d.percentB),
       })) ?? [];
 

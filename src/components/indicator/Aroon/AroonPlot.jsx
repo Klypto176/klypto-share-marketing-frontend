@@ -30,25 +30,53 @@ export default function AroonPlot({
 
     /* ================= MAIN LINES ================= */
 
-    Object.entries(result.data).forEach(([lineName, lineData]) => {
-      const rowConfig = rows?.find((r) => r.key === lineName);
-      const styleConfig = indicatorStyle?.AROON?.[lineName];
+    const dataArray = Array.isArray(result.data) ? result.data : [];
 
-      const series = addSeries("AROON", LineSeries, {
-        color: styleConfig?.color || rowConfig?.color || "rgb(38,166,154)",
+    const formattedUp = dataArray
+      .filter((d) => (d.aroonUp != null || d.value != null || d.up != null) && d.time != null)
+      .map((d) => ({
+        time: Number(d.time) + 19800,
+        value: Number(d.aroonUp ?? d.up ?? d.value),
+      }))
+      .sort((a, b) => a.time - b.time);
 
-        lineWidth: styleConfig?.width || 1,
-        lineStyle: styleConfig?.lineStyle ?? 0,
-        visible: styleConfig?.visible ?? true,
-        priceLineVisible: false,
-        lastValueVisible: true,
-      });
+    const formattedDown = dataArray
+      .filter((d) => (d.aroonDown != null || d.value != null || d.down != null) && d.time != null)
+      .map((d) => ({
+        time: Number(d.time) + 19800,
+        value: Number(d.aroonDown ?? d.down ?? d.value),
+      }))
+      .sort((a, b) => a.time - b.time);
 
-      if (!series) return;
-
-      series.setData(lineData);
-      groupedSeries[lineName] = series;
+    /* AROON UP */
+    const upStyle = indicatorStyle?.AROON?.aroonUp;
+    const upSeries = addSeries("AROON", LineSeries, {
+      color: upStyle?.color || "rgb(38,166,154)",
+      lineWidth: upStyle?.width || 1,
+      lineStyle: upStyle?.lineStyle ?? 0,
+      visible: upStyle?.visible ?? true,
+      priceLineVisible: false,
+      lastValueVisible: true,
     });
+    if (upSeries) {
+      upSeries.setData(formattedUp);
+      groupedSeries.aroonUp = upSeries;
+    }
+
+    /* AROON DOWN */
+    const downStyle = indicatorStyle?.AROON?.aroonDown;
+    const downSeries = addSeries("AROON", LineSeries, {
+      color: downStyle?.color || "rgb(239,83,80)",
+      lineWidth: downStyle?.width || 1,
+      lineStyle: downStyle?.lineStyle ?? 0,
+      visible: downStyle?.visible ?? true,
+      priceLineVisible: false,
+      lastValueVisible: true,
+    });
+    if (downSeries) {
+      downSeries.setData(formattedDown);
+      groupedSeries.aroonDown = downSeries;
+    }
 
     indicatorSeriesRef.current.AROON = groupedSeries;
   }, [result]);

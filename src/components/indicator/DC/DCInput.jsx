@@ -42,14 +42,32 @@ export default function DCInput(
 
   /* ================= STORE RESULT ================= */
 
-  if (!indicatorSeriesRef.current[instanceId || "DC"])
-    indicatorSeriesRef.current[instanceId || "DC"] = {};
+  const group = indicatorSeriesRef.current[instanceId || "DC"];
+  if (group) {
+    group.upper?.setData(upperData);
+    group.basis?.setData(basisData);
+    group.lower?.setData(lowerData);
 
-  indicatorSeriesRef.current[instanceId || "DC"].result = {
-    data: {
-      upper: upperData,
-      basis: basisData,
-      lower: lowerData,
-    },
-  };
+    group.upperData = upperData;
+    group.lowerData = lowerData;
+    group.redrawCloud?.();
+    
+    group.result = {
+      data: {
+        upper: upperData,
+        basis: basisData,
+        lower: lowerData,
+      },
+    };
+  } else {
+    indicatorSeriesRef.current[instanceId || "DC"] = {
+      result: {
+        data: {
+          upper: upperData,
+          basis: basisData,
+          lower: lowerData,
+        },
+      }
+    };
+  }
 }

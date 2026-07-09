@@ -4,9 +4,12 @@ export default function CMFInput(
   latestIndicatorValuesRef
 , instanceId) {
 
-  const rows = Array.isArray(response?.data)
-    ? response.data
-    : [];
+  let rows = [];
+  if (Array.isArray(response?.data)) {
+    rows = response.data;
+  } else if (response?.data?.cmf) {
+    rows = response.data.cmf;
+  }
 
   const cmfSeries = indicatorSeriesRef.current?.[instanceId || "CMF"]?.cmfLine;
   const zeroSeries = indicatorSeriesRef.current?.[instanceId || "CMF"]?.zeroLine;
@@ -16,7 +19,7 @@ export default function CMFInput(
   const cmfData = rows
     .filter((d) => d.value != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time)+ 19800,
       value: Number(d.value),
     }));
 

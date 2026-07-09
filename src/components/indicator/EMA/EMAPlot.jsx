@@ -97,15 +97,10 @@ export default function EMAPlot({
     const emaGroup = indicatorSeriesRef.current?.EMA;
     if (!emaGroup) return;
 
-    const upper = emaGroup.bbUpperData || [];
-    const lower = emaGroup.bbLowerData || [];
-
-    if (!upper.length || !lower.length) return;
     if (!canvasRef.current || !chart) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
-
     const rect = containerRef.getBoundingClientRect();
 
     canvas.width = rect.width;
@@ -113,13 +108,14 @@ export default function EMAPlot({
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const maType = indicatorConfigs?.EMA?.maType;
+    const upper = emaGroup.bbUpperData || [];
+    const lower = emaGroup.bbLowerData || [];
 
-    if (maType !== "SMA + Bollinger Bands") return;
+    if (!upper.length || !lower.length) return;
 
     const fill = indicatorStyle?.EMA?.bbFill;
 
-    if (!fill?.visible) return;
+    if (!(fill?.visible ?? true)) return;
 
     ctx.save();
     // Clip to timeScale width (prevent bleeding into y-axis) and canvas height (prevent bleeding into oscillators)
@@ -237,3 +233,4 @@ export default function EMAPlot({
 
   return null;
 }
+

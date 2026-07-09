@@ -1,4 +1,5 @@
-import { throttleChartEvents } from '../util/throttleChartEvents';
+import { throttleChartEvents } from "../util/throttleChartEvents";
+import { getMarketStatus } from "../util/common";
 import {
   createChart,
   CandlestickSeries,
@@ -58,6 +59,42 @@ import apiService from "../services/apiServices";
 import useDrawingTools from "../util/useDrawingTools";
 import DrawingToolbar from "../components/tradingModals/DrawingToolbar";
 import DrawingToolbox from "../components/tradingModals/DrawingToolbox";
+import ChartErrorState from "../components/tradingModals/ChartErrorState";
+
+const getInitialLookbackDate = (timeframe) => {
+  const d = new Date();
+  if (["1m", "3m", "5m"].includes(timeframe)) {
+    d.setDate(d.getDate() - 20);
+  } else if (["15m", "30m"].includes(timeframe)) {
+    d.setDate(d.getDate() - 45);
+  } else if (["1h", "2h", "4h", "60m", "120m", "240m"].includes(timeframe)) {
+    d.setDate(d.getDate() - 180);
+  } else {
+    d.setFullYear(d.getFullYear() - 2);
+  }
+  return d;
+};
+
+const getTodayDateString = () => new Date().toISOString().split("T")[0];
+
+const mergeHistoricalSeries = (existing, incoming, mode = "replace") => {
+  if (mode === "replace" || !Array.isArray(existing) || existing.length === 0) {
+    return incoming;
+  }
+
+  const merged = new Map();
+  existing.forEach((candle) => merged.set(candle.time, candle));
+  incoming.forEach((candle) => merged.set(candle.time, candle));
+
+  return Array.from(merged.values()).sort((a, b) => a.time - b.time);
+};
+
+const getBackfillChunkDays = (timeframe) => {
+  if (["1m", "3m", "5m"].includes(timeframe)) return 20;
+  if (["10m", "15m", "30m"].includes(timeframe)) return 45;
+  if (["1h", "2h", "4h", "60m", "120m", "240m"].includes(timeframe)) return 90;
+  return 365;
+};
 
 export default function Candlestick() {
   const chartRef = useRef();
@@ -82,6 +119,16 @@ export default function Candlestick() {
   const scannerIntervalRef = useRef(null);
   const pyodideRef = useRef(null);
   const lastIndicatorRequestRef = useRef(0);
+  const lastHistoricalRequestRef = useRef({ key: null, at: 0 });
+  const lastLiveTickRequestRef = useRef({ key: null, at: 0 });
+  const historicalMergeModeRef = useRef("replace");
+  const pendingHistoricalFromDateRef = useRef(null);
+  const suppressNextHistoricalReloadRef = useRef(false);
+  const historicalRequestOptionsRef = useRef(new Map());
+  const latestReplaceRequestIdRef = useRef(null);
+  const historicalVisibleRangeRef = useRef(null);
+  const historyBackfillInFlightRef = useRef(false);
+  const lastAutoBackfillFromRef = useRef(null);
   const [isDeployed, setIsDeployed] = useState(false);
 
   const normalize = (s) => s?.replace(/\s+/g, " ").trim().toUpperCase();
@@ -156,8 +203,7 @@ export default function Candlestick() {
       const saved = localStorage.getItem("chart_fromDate");
       if (saved) return saved;
     } catch (e) {}
-    const d = new Date();
-    d.setMonth(d.getMonth() - 7);
+    const d = getInitialLookbackDate("5m");
     const minDate = new Date("2024-10-01");
     if (d < minDate) return "2024-10-01";
     return d.toISOString().split("T")[0];
@@ -176,11 +222,14 @@ export default function Candlestick() {
     }
   };
   const [toDate, setToDate] = useState(() => {
+    const today = getTodayDateString();
     try {
       const saved = localStorage.getItem("chart_toDate");
-      if (saved) return saved;
+      if (saved) {
+        return saved < today ? today : saved;
+      }
     } catch (e) {}
-    return new Date().toISOString().split("T")[0];
+    return today;
   });
   const [selectedIndicator, setSelectedIndicator] = useState(() => {
     try {
@@ -200,6 +249,7 @@ export default function Candlestick() {
   const [symbolTransitioning, setSymbolTransitioning] = useState(false);
   const symbolTransitioningRef = useRef(false);
   const [noDataAvailable, setNoDataAvailable] = useState(false);
+  const [chartError, setChartError] = useState(null);
   const [editorCode, setEditorCode] = useState(
     `markers = []
 # user strategy here
@@ -1017,33 +1067,7 @@ json.dumps(result)
 
   useEffect(() => {
     const checkMarketStatus = () => {
-      const now = new Date();
-
-      // IST time
-      const istTime = new Date(
-        now.toLocaleString("en-US", {
-          timeZone: "Asia/Kolkata",
-        }),
-      );
-
-      const day = istTime.getDay(); // 0 = Sunday, 6 = Saturday
-      const hours = istTime.getHours();
-      const minutes = istTime.getMinutes();
-
-      const currentMinutes = hours * 60 + minutes;
-
-      // Market timings: 9:15 AM to 3:30 PM
-      const marketStart = 9 * 60 + 15;
-      const marketEnd = 15 * 60 + 30;
-
-      const isWeekday = day >= 1 && day <= 5;
-
-      const open =
-        isWeekday &&
-        currentMinutes >= marketStart &&
-        currentMinutes <= marketEnd;
-
-      setIsMarketOpen(open);
+      setIsMarketOpen(getMarketStatus());
     };
 
     // Initial check
@@ -1057,18 +1081,7 @@ json.dumps(result)
 
   // Update fromDate dynamically to optimize load times when timeframe changes
   useEffect(() => {
-    const d = new Date();
-    if (["1m", "3m", "5m"].includes(timeframeValue)) {
-      d.setDate(d.getDate() - 90); // 3 months for 1m-5m
-    } else if (["15m", "30m"].includes(timeframeValue)) {
-      d.setDate(d.getDate() - 120); // 4 months for 15m-30m
-    } else if (
-      ["1h", "2h", "4h", "60m", "120m", "240m"].includes(timeframeValue)
-    ) {
-      d.setDate(d.getDate() - 365); // 1 year for hourly
-    } else {
-      d.setFullYear(d.getFullYear() - 5); // 5 years for daily/weekly
-    }
+    const d = getInitialLookbackDate(timeframeValue);
     handleSetFromDate(d.toISOString().split("T")[0]);
   }, [timeframeValue]);
 
@@ -1113,6 +1126,13 @@ json.dumps(result)
   const currentCandleRef = useRef(null);
   const lastCandleTimeRef = useRef(null);
   const candlesRef = useRef([]);
+  const pendingLiveBarRef = useRef(null);
+  const pendingLiveBarMetaRef = useRef({ shouldAutoScale: false });
+  const lastQueuedLiveBarSignatureRef = useRef(null);
+  const lastRenderedLiveBarSignatureRef = useRef(null);
+  const liveBarFlushTimerRef = useRef(null);
+  const liveAutoScaleResetTimerRef = useRef(null);
+  const lastLiveBarPaintAtRef = useRef(0);
   const seriesReadyRef = useRef(false);
   const selectedIndicatorRef = useRef(selectedIndicator);
   const ohlcvDisplayRef = useRef(null);
@@ -1123,6 +1143,37 @@ json.dumps(result)
   const selectedCurrencyRef = useRef(selectedCurrency);
   const intervalSecRef = useRef(TIMEFRAME_TO_SECONDS[timeframeValue] ?? 60);
   const IST_OFFSET = 19800;
+  const LIVE_BAR_RENDER_INTERVAL_MS = 450;
+
+  const buildLiveBarSignature = useCallback((bar) => {
+    if (!bar) return "";
+
+    const normalizeNumber = (value) =>
+      Number.isFinite(Number(value)) ? Number(value).toFixed(2) : "NA";
+
+    return [
+      bar.time,
+      normalizeNumber(bar.open),
+      normalizeNumber(bar.high),
+      normalizeNumber(bar.low),
+      normalizeNumber(bar.close),
+      normalizeNumber(bar.volume),
+    ].join("|");
+  }, []);
+
+  const setMainChartAutoScale = useCallback((enabled) => {
+    if (!chartRef.current) return;
+    try {
+      chartRef.current.priceScale("right").applyOptions({
+        autoScale: enabled,
+        mode: 0,
+        scaleMargins: {
+          top: 0.28,
+          bottom: 0.18,
+        },
+      });
+    } catch {}
+  }, []);
 
   useEffect(() => {
     selectedIndicatorRef.current = selectedIndicator;
@@ -1131,6 +1182,11 @@ json.dumps(result)
   useEffect(() => {
     selectedCurrencyRef.current = selectedCurrency;
   }, [selectedCurrency]);
+
+  useEffect(() => {
+    historyBackfillInFlightRef.current = false;
+    lastAutoBackfillFromRef.current = null;
+  }, [selectedCurrency?.name, timeframeValue]);
 
   // Persist selectedCurrency so it survives page refresh
   useEffect(() => {
@@ -1190,25 +1246,37 @@ json.dumps(result)
 
   useEffect(() => {
     try {
-      localStorage.setItem("chart_selectedIndicator", JSON.stringify(selectedIndicator));
+      localStorage.setItem(
+        "chart_selectedIndicator",
+        JSON.stringify(selectedIndicator),
+      );
     } catch (e) {}
   }, [selectedIndicator]);
 
   useEffect(() => {
     try {
-      localStorage.setItem("chart_indicatorVisibility", JSON.stringify(indicatorVisibility));
+      localStorage.setItem(
+        "chart_indicatorVisibility",
+        JSON.stringify(indicatorVisibility),
+      );
     } catch (e) {}
   }, [indicatorVisibility]);
 
   useEffect(() => {
     try {
-      localStorage.setItem("chart_indicatorConfigs", JSON.stringify(indicatorConfigs));
+      localStorage.setItem(
+        "chart_indicatorConfigs",
+        JSON.stringify(indicatorConfigs),
+      );
     } catch (e) {}
   }, [indicatorConfigs]);
 
   useEffect(() => {
     try {
-      localStorage.setItem("chart_indicatorStyle", JSON.stringify(indicatorStyle));
+      localStorage.setItem(
+        "chart_indicatorStyle",
+        JSON.stringify(indicatorStyle),
+      );
     } catch (e) {}
   }, [indicatorStyle]);
   const isUp = liveOhlcv?.close >= liveOhlcv?.open;
@@ -1300,8 +1368,6 @@ json.dumps(result)
   }, [selectedCurrency?.name]);
 
   useEffect(() => {
-    if (!selectedIndicator?.length) return;
-
     const isContextChange =
       prevTimeframeRef.current !== timeframeValue ||
       prevCurrencyRef.current !== selectedCurrency?.name ||
@@ -1309,54 +1375,34 @@ json.dumps(result)
       prevFromDateRef.current !== fromDate ||
       prevToDateRef.current !== toDate;
 
-    let indicatorsToFetch = selectedIndicator;
+    let indicatorsToFetch = selectedIndicator || [];
 
     if (!isContextChange) {
       // ✅ Only fetch newly added instances
-      indicatorsToFetch = selectedIndicator.filter(
+      indicatorsToFetch = (selectedIndicator || []).filter(
         (ind) => !fetchedIndicatorsRef.current.has(ind.id),
       );
-
-      if (indicatorsToFetch?.length === 0) return;
     } else {
       // 🔥 Reset on timeframe / currency / chartType change
       fetchedIndicatorsRef.current.clear();
-
-      // Keep the series alive with their old data so the UI does not change
-      // until the new data response comes! (User request)
-      // if (allCreatedSeriesRef.current) {
-      //   allCreatedSeriesRef.current.forEach((item) => {
-      //     if (
-      //       item &&
-      //       item.series &&
-      //       typeof item.series.setData === "function"
-      //     ) {
-      //       try {
-      //         item.series.setData([]);
-      //       } catch (e) {}
-      //     }
-      //   });
-      // }
-
-      // Explicitly clear old data so it doesn't render over the new symbol's chart
-      // indicatorDataRef.current = {};
-      // DO NOT clear indicatorSeriesRef, panesRef, paneIndexRef!
-      // Keeping them allows the plot components to explicitly destroy the old series
-      // when they receive new data, preventing memory leaks and pane jumping.
+      // Keep previous indicator plots visible until the replacement response arrives.
+      // The plot components remove/recreate their series when indicatorDataRef gets new data.
     }
 
-    setIndicatorLoading(true);
-    fetchIndicatorData(indicatorsToFetch, selectedCurrency, timeframeValue)
-      .then(() => {
-        setIndicatorUpdateTrigger((v) => v + 1);
-      })
-      .finally(() => {
-        setIndicatorLoading(false);
-      });
+    if (indicatorsToFetch?.length > 0) {
+      setIndicatorLoading(true);
+      fetchIndicatorData(indicatorsToFetch, selectedCurrency, timeframeValue)
+        .then(() => {
+          setIndicatorUpdateTrigger((v) => v + 1);
+        })
+        .finally(() => {
+          setIndicatorLoading(false);
+        });
 
-    indicatorsToFetch.forEach((ind) =>
-      fetchedIndicatorsRef.current.add(ind.id),
-    );
+      indicatorsToFetch.forEach((ind) =>
+        fetchedIndicatorsRef.current.add(ind.id),
+      );
+    }
 
     // ✅ Explicitly clean up REMOVED indicators
     const currentIds = new Set(selectedIndicator?.map((ind) => ind.id) || []);
@@ -1511,7 +1557,7 @@ json.dumps(result)
           },
           paneIndex,
         );
-        dummy.setData([{ time: '2000-01-01', value: 0 }]);
+        dummy.setData([{ time: "2000-01-01", value: 0 }]);
         dummySeriesRef.current[paneIndex] = dummy;
       } catch (err) {}
     }
@@ -1571,19 +1617,21 @@ json.dumps(result)
 
     // ✅ Populate panesRef for sub-pane indicators using instanceId as key
     if (paneIndex !== 0) {
+      let panePopulateAttempts = 0;
       const tryPopulate = () => {
-        if (!chartRef.current) return;
+        if (!chartRef.current) return false;
+        panePopulateAttempts += 1;
         const panes = chartRef.current.panes();
         const paneObj = panes[paneIndex];
         if (paneObj) {
           const div = paneObj.getHTMLElement();
           if (div) {
-            console.log(
-              "💎 Populating panesRef for",
-              indicator,
-              "at index",
-              paneIndex,
-            );
+            // console.log(
+            //   "💎 Populating panesRef for",
+            //   indicator,
+            //   "at index",
+            //   paneIndex,
+            // );
             const indType = selectedIndicatorRef.current?.find(
               (ind) => ind.id === indicator,
             )?.type;
@@ -1600,8 +1648,13 @@ json.dumps(result)
         return false;
       };
 
+      const retryPopulate = () => {
+        if (tryPopulate() || panePopulateAttempts >= 20) return;
+        setTimeout(retryPopulate, 100);
+      };
+
       if (!tryPopulate()) {
-        setTimeout(tryPopulate, 100);
+        setTimeout(retryPopulate, 100);
       }
     }
 
@@ -1611,10 +1664,17 @@ json.dumps(result)
     series.setData = (data) => {
       if (!Array.isArray(data)) return originalSetData(data);
 
+      const hasValidTime = (time) => {
+        if (time === undefined || time === null || time === "") return false;
+        if (typeof time === "number") return Number.isFinite(time);
+        return true;
+      };
+
       const cleanedData = [];
       for (let i = 0; i < data.length; i++) {
         const d = data[i];
         if (!d || typeof d !== "object") continue;
+        if (!hasValidTime(d.time)) continue;
 
         // Handle Line/Histogram/Area/Baseline series
         if ("value" in d) {
@@ -1656,7 +1716,7 @@ json.dumps(result)
             });
           }
         } else {
-          cleanedData.push(d);
+          cleanedData.push({ ...d });
         }
       }
 
@@ -1666,6 +1726,13 @@ json.dumps(result)
         for (const key in item) {
           if (item[key] === undefined) delete item[key];
         }
+      }
+
+      if (
+        cleanedData.length > 1 &&
+        cleanedData.every((item) => typeof item.time === "number")
+      ) {
+        cleanedData.sort((a, b) => a.time - b.time);
       }
 
       return originalSetData(cleanedData);
@@ -1702,6 +1769,13 @@ json.dumps(result)
   const removeIndicator = useCallback((instanceId) => {
     setSelectedIndicator((prev) => prev.filter((i) => i.id !== instanceId));
 
+    // Clean up config for this instance so localStorage stays in sync
+    setIndicatorConfigs((prev) => {
+      const next = { ...prev };
+      delete next[instanceId];
+      return next;
+    });
+
     const entry = indicatorSeriesRef.current[instanceId];
     if (!entry) return;
 
@@ -1730,7 +1804,7 @@ json.dumps(result)
 
     const panesCountAfter =
       typeof chart.panes === "function" ? chart.panes().length : 0;
-    
+
     const rootId = instanceId;
     const paneIndex = paneIndexRef.current[rootId];
 
@@ -1739,12 +1813,15 @@ json.dumps(result)
         // First remove the dummy series for this pane (so the pane becomes empty & auto-collapses)
         const dummy = dummySeriesRef.current[paneIndex];
         if (dummy) {
-          try { chart.removeSeries(dummy); } catch (e) {}
+          try {
+            chart.removeSeries(dummy);
+          } catch (e) {}
           delete dummySeriesRef.current[paneIndex];
         }
-        
-        const panesCountAfterDummy = typeof chart.panes === "function" ? chart.panes().length : 0;
-        
+
+        const panesCountAfterDummy =
+          typeof chart.panes === "function" ? chart.panes().length : 0;
+
         if (panesCountAfterDummy === panesCountBefore) {
           // Lightweight charts STILL didn't auto-remove it, so we manually remove it
           try {
@@ -1797,9 +1874,11 @@ json.dumps(result)
     if (!containerRef.current) return;
     if (chartRef.current) return; // Prevent recreating the chart on every render
 
-    const chart = throttleChartEvents(createChart(containerRef.current, {
-      ...ChartProprties,
-    }));
+    const chart = throttleChartEvents(
+      createChart(containerRef.current, {
+        ...ChartProprties,
+      }),
+    );
 
     // Auto-cleanup our global refs whenever ANY series is physically removed
     const originalRemoveSeries = chart.removeSeries.bind(chart);
@@ -1927,15 +2006,17 @@ json.dumps(result)
 
     if (keysToShow) {
       const hiddenKeys = [
-        "upper",
         "middle",
-        "lower",
-        "bbUpper",
-        "bbLower",
+        "bgfill",
         "zeroLine",
         "bandBackground",
         "overboughtFill",
         "oversoldFill",
+        "bgSeries",
+        "oscillatorFill",
+        "bg",
+        "zero",
+        "bgFill"
       ];
 
       return keysToShow
@@ -1953,6 +2034,11 @@ json.dumps(result)
           const style =
             indicatorStyle?.[id]?.[key] || indicatorStyle?.[type]?.[key];
           if (style?.visible === false) return false;
+
+          // Hide keys whose series was never plotted (line doesn't exist in the chart)
+          const group = indicatorSeriesRef.current?.[id];
+          if (group && !(key in group)) return false;
+
           // Return true even if value is null, so the span is rendered for crosshair DOM updates
           return true;
         })
@@ -2102,7 +2188,8 @@ json.dumps(result)
         if (price !== undefined) {
           indicatorValues[lineName] = {
             value: typeof price === "object" ? price.value : price,
-            color: typeof price === "object" && price.color ? price.color : null
+            color:
+              typeof price === "object" && price.color ? price.color : null,
           };
         }
       });
@@ -2173,7 +2260,8 @@ json.dumps(result)
                   if (lastData.color) {
                     mainEl.style.color = lastData.color;
                   } else {
-                    const defaultColor = mainEl.getAttribute("data-default-color");
+                    const defaultColor =
+                      mainEl.getAttribute("data-default-color");
                     if (defaultColor) mainEl.style.color = defaultColor;
                   }
                 }
@@ -2266,6 +2354,13 @@ json.dumps(result)
     onIndicatorLoaded: () => {
       setIndicatorUpdateTrigger((v) => v + 1);
     },
+    onIndicatorError: (id) => {
+      if (indicatorDataRef.current?.[id] || indicatorSeriesRef.current?.[id]) {
+        return;
+      }
+
+      setSelectedIndicator((prev) => prev.filter((i) => i.id !== id));
+    },
   });
 
   // ATTACH MAIN CHART
@@ -2286,26 +2381,203 @@ json.dumps(result)
 
   const emitRef = useRef(null);
 
-  const requestHistoricalData = useCallback(() => {
+  const requestHistoricalData = useCallback((
+    force = false,
+    overrides = {},
+    options = {},
+  ) => {
     if (!selectedCurrency || !timeframeValue) return;
     setNoDataAvailable(false);
-    const historicalPayload = {
+    const historicalPayloadBase = {
       symbol: selectedCurrency?.name,
       interval: timeframeValue,
       fromDate: fromDate,
       toDate: toDate,
+      ...overrides,
     };
+    const requestKey = JSON.stringify(historicalPayloadBase);
+    const now = Date.now();
+    if (
+      !force &&
+      lastHistoricalRequestRef.current.key === requestKey &&
+      now - lastHistoricalRequestRef.current.at < 2000
+    ) {
+      return false;
+    }
+    lastHistoricalRequestRef.current = { key: requestKey, at: now };
+    const requestId = `hist_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const historicalPayload = {
+      ...historicalPayloadBase,
+      requestId,
+    };
+    historicalMergeModeRef.current = options.mergeMode || "replace";
+    pendingHistoricalFromDateRef.current = options.pendingFromDate || null;
+    historicalRequestOptionsRef.current.set(requestId, {
+      mergeMode: options.mergeMode || "replace",
+      pendingFromDate: options.pendingFromDate || null,
+      preserveVisibleRange: options.preserveVisibleRange || null,
+      symbol: selectedCurrency?.name,
+      timeframe: timeframeValue,
+      requestId,
+    });
+    if ((options.mergeMode || "replace") === "replace") {
+      latestReplaceRequestIdRef.current = requestId;
+    }
     console.log("📬 getManualHistoricalData Payload:", historicalPayload);
     if (emitRef.current) {
       emitRef.current(EVENTS.CHART.GET, historicalPayload);
     }
+    return true;
   }, [selectedCurrency, timeframeValue, fromDate, toDate]);
+
+  const requestLiveTick = useCallback((force = false) => {
+    const symbol = selectedCurrency?.name || selectedCurrency?.symbol;
+    if (!symbol || !emitRef.current) return;
+    const requestKey = symbol.toUpperCase();
+    const now = Date.now();
+    if (
+      !force &&
+      lastLiveTickRequestRef.current.key === requestKey &&
+      now - lastLiveTickRequestRef.current.at < 1500
+    ) {
+      return false;
+    }
+    lastLiveTickRequestRef.current = { key: requestKey, at: now };
+    emitRef.current(EVENTS.OVERVIEW.GET, { symbol });
+    return true;
+  }, [selectedCurrency]);
+
+  const requestOlderHistoricalChunk = useCallback(() => {
+    if (
+      !chartRef.current ||
+      !selectedCurrency ||
+      !timeframeValue ||
+      historyBackfillInFlightRef.current
+    ) {
+      return false;
+    }
+
+    const visibleRange = chartRef.current.timeScale().getVisibleLogicalRange();
+    const currentFrom = new Date(fromDate);
+    if (Number.isNaN(currentFrom.getTime())) return false;
+
+    const chunkDays = getBackfillChunkDays(timeframeValue);
+    const newFrom = new Date(currentFrom);
+    newFrom.setDate(newFrom.getDate() - chunkDays);
+    const newFromDate = newFrom.toISOString().split("T")[0];
+
+    if (newFromDate === fromDate || lastAutoBackfillFromRef.current === newFromDate) {
+      return false;
+    }
+
+    historyBackfillInFlightRef.current = true;
+    lastAutoBackfillFromRef.current = newFromDate;
+    setMainChartLoading(true);
+
+    return requestHistoricalData(
+      true,
+      {
+        fromDate: newFromDate,
+        toDate: fromDate,
+      },
+      {
+        mergeMode: "prepend",
+        pendingFromDate: newFromDate,
+        preserveVisibleRange: visibleRange
+          ? { from: visibleRange.from, to: visibleRange.to }
+          : null,
+      },
+    );
+  }, [fromDate, requestHistoricalData, selectedCurrency, timeframeValue]);
+
+  const flushPendingLiveBar = useCallback(() => {
+    liveBarFlushTimerRef.current = null;
+    const updatedBar = pendingLiveBarRef.current;
+    if (!updatedBar) return;
+    if (
+      !seriesRef.current ||
+      !seriesReadyRef.current ||
+      chartDisposedRef.current
+    ) {
+      return;
+    }
+
+    const barSignature = buildLiveBarSignature(updatedBar);
+    if (
+      barSignature &&
+      barSignature === lastRenderedLiveBarSignatureRef.current
+    ) {
+      pendingLiveBarRef.current = null;
+      return;
+    }
+
+    if (pendingLiveBarMetaRef.current?.shouldAutoScale) {
+      setMainChartAutoScale(true);
+      if (liveAutoScaleResetTimerRef.current) {
+        clearTimeout(liveAutoScaleResetTimerRef.current);
+      }
+      liveAutoScaleResetTimerRef.current = setTimeout(() => {
+        setMainChartAutoScale(false);
+        liveAutoScaleResetTimerRef.current = null;
+      }, 900);
+    }
+
+    lastLiveBarPaintAtRef.current = Date.now();
+    lastRenderedLiveBarSignatureRef.current = barSignature;
+    pendingLiveBarRef.current = null;
+
+    try {
+      seriesRef.current.update(updatedBar);
+    } catch (e) {
+      console.warn("[LiveTick] Series update failed:", e.message);
+    }
+
+    if (ohlcvDisplayRef.current) {
+      const el = ohlcvDisplayRef.current;
+      const isUp = updatedBar.close >= updatedBar.open;
+      const color = isUp ? "#22c55e" : "#ef4444";
+      const o = el.querySelector("[data-o]");
+      const h = el.querySelector("[data-h]");
+      const l = el.querySelector("[data-l]");
+      const c = el.querySelector("[data-c]");
+      if (o) o.textContent = Number(updatedBar.open).toFixed(2);
+      if (h) h.textContent = Number(updatedBar.high).toFixed(2);
+      if (l) l.textContent = Number(updatedBar.low).toFixed(2);
+      if (c) c.textContent = Number(updatedBar.close).toFixed(2);
+      if (c) c.style.color = color;
+    }
+
+    if (actionButtonsRef.current) {
+      const buyPrice =
+        actionButtonsRef.current.querySelector("[data-buy-price]");
+      const sellPrice =
+        actionButtonsRef.current.querySelector("[data-sell-price]");
+      const formattedClose = Number(updatedBar.close).toFixed(2);
+      if (buyPrice) buyPrice.textContent = formattedClose;
+      if (sellPrice) sellPrice.textContent = formattedClose;
+    }
+  }, [buildLiveBarSignature, setMainChartAutoScale]);
+
+  useEffect(() => {
+    return () => {
+      if (liveBarFlushTimerRef.current) {
+        clearTimeout(liveBarFlushTimerRef.current);
+        liveBarFlushTimerRef.current = null;
+      }
+      if (liveAutoScaleResetTimerRef.current) {
+        clearTimeout(liveAutoScaleResetTimerRef.current);
+        liveAutoScaleResetTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // ── Central Socket Hook ──
   const { emit, once, connect, connected, id, off } = useSocket({
+    disableOverviewLiveTickFallback: true,
     handleConnect: () => {
-      console.log("✅ SOCKET CONNECTED", connected);
-      requestHistoricalData();
+      console.log("✅ SOCKET CONNECTED", true);
+      requestHistoricalData(true);
+      requestLiveTick(true);
 
       if (
         selectedIndicatorRef.current &&
@@ -2321,10 +2593,52 @@ json.dumps(result)
     handleHistoricalData: (response) => {
       console.log("HISTORICAL DATA RESPONSE", response?.data);
       if (!chartRef.current || chartDisposedRef.current) return;
+      const requestId = response?.meta?.requestId || null;
+      const requestMeta = requestId
+        ? historicalRequestOptionsRef.current.get(requestId)
+        : null;
+      if (requestId) {
+        historicalRequestOptionsRef.current.delete(requestId);
+      }
+
+      const mergeMode =
+        requestMeta?.mergeMode || historicalMergeModeRef.current || "replace";
+
+      if (
+        mergeMode === "replace" &&
+        requestId &&
+        latestReplaceRequestIdRef.current &&
+        requestId !== latestReplaceRequestIdRef.current
+      ) {
+        return;
+      }
+
+      if (
+        requestMeta?.symbol &&
+        !isSameSymbolName(requestMeta.symbol, selectedCurrency?.name) &&
+        !isSameSymbolName(requestMeta.symbol, selectedCurrency?.symbol)
+      ) {
+        return;
+      }
+
+      if (
+        requestMeta?.timeframe &&
+        requestMeta.timeframe !== timeframeValue &&
+        mergeMode === "replace"
+      ) {
+        return;
+      }
 
       const raw = response?.data || [];
 
       if (raw.length === 0) {
+        historicalMergeModeRef.current = "replace";
+        pendingHistoricalFromDateRef.current = null;
+        historyBackfillInFlightRef.current = false;
+        if (mergeMode === "prepend") {
+          setMainChartLoading(false);
+          return;
+        }
         setNoDataAvailable(true);
         setMainChartLoading(false);
         if (seriesRef.current) {
@@ -2377,15 +2691,39 @@ json.dumps(result)
         }
       }
 
-      candlesRef.current = data;
+      const mergedData = mergeHistoricalSeries(
+        candlesRef.current,
+        data,
+        mergeMode,
+      );
+      const previousLength = candlesRef.current?.length || 0;
+      const addedPoints = Math.max(0, mergedData.length - previousLength);
+      candlesRef.current = mergedData;
+      historicalMergeModeRef.current = "replace";
+      historyBackfillInFlightRef.current = false;
 
-      if (!data.length) {
+      if (!mergedData.length) {
         setMainChartLoading(false);
         toast.error(`No historical data found for ${symbolFromResponse}`);
         return;
       }
 
-      const lastPoint = data[data.length - 1];
+      const pendingFromDate =
+        requestMeta?.pendingFromDate || pendingHistoricalFromDateRef.current;
+      if (mergeMode === "prepend" && pendingFromDate) {
+        suppressNextHistoricalReloadRef.current = true;
+        handleSetFromDate(pendingFromDate);
+        pendingHistoricalFromDateRef.current = null;
+      }
+
+      const lastPoint = mergedData[mergedData.length - 1];
+      if (mergeMode === "replace") {
+        pendingLiveBarRef.current = null;
+        pendingLiveBarMetaRef.current = { shouldAutoScale: false };
+        lastQueuedLiveBarSignatureRef.current = null;
+        lastRenderedLiveBarSignatureRef.current =
+          buildLiveBarSignature(lastPoint);
+      }
 
       setDetailsList((prev) => {
         const existingIdx = prev.findIndex(
@@ -2432,6 +2770,13 @@ json.dumps(result)
       try {
         chartRef.current.priceScale("right").applyOptions({ autoScale: true });
       } catch {}
+      if (liveAutoScaleResetTimerRef.current) {
+        clearTimeout(liveAutoScaleResetTimerRef.current);
+      }
+      liveAutoScaleResetTimerRef.current = setTimeout(() => {
+        setMainChartAutoScale(false);
+        liveAutoScaleResetTimerRef.current = null;
+      }, 1200);
 
       switch (chartType) {
         case "line":
@@ -2444,7 +2789,7 @@ json.dumps(result)
           }
           try {
             seriesRef.current.setData(
-              data?.map((d) => ({ time: d.time, value: Number(d.close) })),
+              mergedData?.map((d) => ({ time: d.time, value: Number(d.close) })),
             );
           } catch (e) {
             console.error("Line setData error:", e);
@@ -2460,7 +2805,7 @@ json.dumps(result)
             seriesRef.current.customChartType = "bar";
           }
           try {
-            seriesRef.current.setData(data);
+            seriesRef.current.setData(mergedData);
           } catch (e) {
             console.error("Bar setData error:", e);
           }
@@ -2476,7 +2821,7 @@ json.dumps(result)
           }
           try {
             seriesRef.current.setData(
-              data?.map((d) => ({ time: d.time, value: Number(d.close) })),
+              mergedData?.map((d) => ({ time: d.time, value: Number(d.close) })),
             );
           } catch (e) {
             console.error("Area setData error:", e);
@@ -2486,17 +2831,23 @@ json.dumps(result)
           if (!seriesRef.current) {
             seriesRef.current = chartRef.current.addSeries(BaselineSeries, {
               ...chartSeriesStyles.baseline,
-              baseValue: { type: "price", price: Number(data[0]?.close ?? 0) },
+              baseValue: {
+                type: "price",
+                price: Number(mergedData[0]?.close ?? 0),
+              },
             });
             seriesRef.current.customChartType = "baseline";
           } else {
             seriesRef.current.applyOptions({
-              baseValue: { type: "price", price: Number(data[0]?.close ?? 0) },
+              baseValue: {
+                type: "price",
+                price: Number(mergedData[0]?.close ?? 0),
+              },
             });
           }
           try {
             seriesRef.current.setData(
-              data?.map((d) => ({ time: d.time, value: Number(d.close) })),
+              mergedData?.map((d) => ({ time: d.time, value: Number(d.close) })),
             );
           } catch (e) {
             console.error("Baseline setData error:", e);
@@ -2512,7 +2863,7 @@ json.dumps(result)
           }
           try {
             seriesRef.current.setData(
-              data?.map((d, index, arr) => {
+              mergedData?.map((d, index, arr) => {
                 const prev = arr[index - 1];
                 const isUp = prev ? d.close >= prev.close : true;
                 return {
@@ -2535,7 +2886,7 @@ json.dumps(result)
             seriesRef.current.customChartType = "heikinashi";
           }
           try {
-            seriesRef.current.setData(convertToHeikinAshi(data));
+            seriesRef.current.setData(convertToHeikinAshi(mergedData));
           } catch (e) {
             console.error("HA setData error:", e);
           }
@@ -2549,7 +2900,7 @@ json.dumps(result)
             seriesRef.current.customChartType = "hollowcandles";
           }
           try {
-            seriesRef.current.setData(data);
+            seriesRef.current.setData(mergedData);
           } catch (e) {
             console.error("Hollow setData error:", e);
           }
@@ -2563,7 +2914,7 @@ json.dumps(result)
             seriesRef.current.customChartType = chartType;
           }
           try {
-            seriesRef.current.setData(data);
+            seriesRef.current.setData(mergedData);
           } catch (e) {
             console.error("Default setData error:", e);
           }
@@ -2592,10 +2943,10 @@ json.dumps(result)
         }
       }
 
-      currentCandleRef.current = data[data?.length - 1];
+      currentCandleRef.current = mergedData[mergedData?.length - 1];
 
       setTimeout(() => {
-        const last = data[data?.length - 1];
+        const last = mergedData[mergedData?.length - 1];
         if (last && ohlcvDisplayRef.current) {
           const el = ohlcvDisplayRef.current;
           const isUp = last.close >= last.open;
@@ -2622,7 +2973,14 @@ json.dumps(result)
           if (sellPrice) sellPrice.textContent = formattedClose;
         }
 
-        chartRef.current?.timeScale().fitContent();
+        if (mergeMode === "prepend" && requestMeta?.preserveVisibleRange) {
+          chartRef.current?.timeScale().setVisibleLogicalRange({
+            from: requestMeta.preserveVisibleRange.from + addedPoints,
+            to: requestMeta.preserveVisibleRange.to + addedPoints,
+          });
+        } else {
+          chartRef.current?.timeScale().fitContent();
+        }
 
         setMainChartLoading(false);
         symbolTransitioningRef.current = false;
@@ -2630,6 +2988,9 @@ json.dumps(result)
       }, 150);
     },
     handleHistoricalError: (err) => {
+      historicalMergeModeRef.current = "replace";
+      pendingHistoricalFromDateRef.current = null;
+      historyBackfillInFlightRef.current = false;
       toast.error(err.message || "Failed to fetch historical data");
       console.error("❌ Historical data error:", err);
       setMainChartLoading(false);
@@ -2655,7 +3016,13 @@ json.dumps(result)
         )
           return;
 
-        let rawTickTime = tick?.data?.time;
+        const liveData = tick?.data || tick?.tick || {};
+        let rawTickTime =
+          liveData?.time ??
+          liveData?.tickTime ??
+          liveData?.datetime ??
+          tick?.overview?.exchange_trade_time ??
+          tick?.raw?.exchange_timestamp;
         let tickTime = Number(rawTickTime);
 
         if (!Number.isFinite(tickTime)) {
@@ -2670,86 +3037,102 @@ json.dumps(result)
 
         if (!Number.isFinite(normalizedTime) || normalizedTime <= 0) return;
 
-        const price = Number(
-          tick.data.close ?? tick.data.price ?? tick.data.ltp,
+        const liveOpen = Number(liveData.open);
+        const liveHigh = Number(liveData.high);
+        const liveLow = Number(liveData.low);
+        const liveClose = Number(
+          liveData.close ??
+            liveData.price ??
+            liveData.ltp ??
+            liveData.last_traded_price,
         );
-        if (!Number.isFinite(price)) return;
+        const liveVolume = Number(liveData.volume || 0);
+
+        if (!Number.isFinite(liveClose)) return;
+
+        const existingIndex = candlesRef.current.findIndex(
+          (c) => c.time === normalizedTime,
+        );
+        const existingCandle = existingIndex >= 0 ? candlesRef.current[existingIndex] : null;
+        const latestCandle =
+          candlesRef.current.length > 0
+            ? candlesRef.current[candlesRef.current.length - 1]
+            : null;
+        const baseCandle = existingCandle || latestCandle || currentCandleRef.current;
 
         let updatedBar;
-        if (
-          !currentCandleRef.current ||
-          normalizedTime > currentCandleRef.current.time
-        ) {
+        if (existingCandle) {
+          updatedBar = {
+            ...existingCandle,
+            high: Math.max(
+              Number(existingCandle.high),
+              Number.isFinite(liveHigh) ? liveHigh : liveClose,
+            ),
+            low: Math.min(
+              Number(existingCandle.low),
+              Number.isFinite(liveLow) ? liveLow : liveClose,
+            ),
+            close: liveClose,
+            volume: liveVolume || Number(existingCandle.volume || 0),
+          };
+        } else if (!baseCandle || normalizedTime > baseCandle.time) {
           updatedBar = {
             time: normalizedTime,
-            open: price,
-            high: price,
-            low: price,
-            close: price,
-            volume: Number(tick.data.volume || 0),
+            open: Number.isFinite(liveOpen) ? liveOpen : liveClose,
+            high: Number.isFinite(liveHigh) ? liveHigh : liveClose,
+            low: Number.isFinite(liveLow) ? liveLow : liveClose,
+            close: liveClose,
+            volume: liveVolume,
           };
+        } else if (normalizedTime < baseCandle.time) {
+          return;
         } else {
           updatedBar = {
-            ...currentCandleRef.current,
-            high: Math.max(currentCandleRef.current.high, price),
-            low: Math.min(currentCandleRef.current.low, price),
-            close: price,
-            volume:
-              Number(currentCandleRef.current.volume || 0) +
-              Number(tick.data.volume || 0),
+            ...baseCandle,
+            high: Math.max(
+              Number(baseCandle.high),
+              Number.isFinite(liveHigh) ? liveHigh : liveClose,
+            ),
+            low: Math.min(
+              Number(baseCandle.low),
+              Number.isFinite(liveLow) ? liveLow : liveClose,
+            ),
+            close: liveClose,
+            volume: liveVolume || Number(baseCandle.volume || 0),
           };
+        }
+
+        const nextBarSignature = buildLiveBarSignature(updatedBar);
+        if (
+          nextBarSignature &&
+          (nextBarSignature === lastQueuedLiveBarSignatureRef.current ||
+            nextBarSignature === lastRenderedLiveBarSignatureRef.current)
+        ) {
+          return;
         }
 
         currentCandleRef.current = updatedBar;
-        const existingIndex = candlesRef.current.findIndex(
-          (c) => c.time === updatedBar.time,
-        );
         if (existingIndex >= 0) candlesRef.current[existingIndex] = updatedBar;
         else candlesRef.current.push(updatedBar);
+        candlesRef.current.sort((a, b) => a.time - b.time);
+        currentCandleRef.current =
+          candlesRef.current[candlesRef.current.length - 1] || updatedBar;
         lastCandleTimeRef.current = normalizedTime;
+        lastQueuedLiveBarSignatureRef.current = nextBarSignature;
+        pendingLiveBarMetaRef.current = {
+          shouldAutoScale: !existingCandle && (!baseCandle || normalizedTime > baseCandle.time),
+        };
 
-        const timeScale = chartRef.current?.timeScale();
-        const oldRange = timeScale?.getVisibleLogicalRange();
-        const isGap = currentCandleRef.current && (normalizedTime - currentCandleRef.current.time > intervalSec * 10);
-
-        if (isGap && timeScale) {
-          timeScale.applyOptions({ shiftVisibleRangeOnNewBar: false });
-        }
-
-        try {
-          seriesRef.current.update(updatedBar);
-        } catch (e) {
-          console.warn("[LiveTick] Series update failed:", e.message);
-        }
-
-        if (isGap && timeScale) {
-          if (oldRange) timeScale.setVisibleLogicalRange(oldRange);
-          timeScale.applyOptions({ shiftVisibleRangeOnNewBar: true });
-        }
-
-        if (ohlcvDisplayRef.current) {
-          const el = ohlcvDisplayRef.current;
-          const isUp = updatedBar.close >= updatedBar.open;
-          const color = isUp ? "#22c55e" : "#ef4444";
-          const o = el.querySelector("[data-o]");
-          const h = el.querySelector("[data-h]");
-          const l = el.querySelector("[data-l]");
-          const c = el.querySelector("[data-c]");
-          if (o) o.textContent = Number(updatedBar.open).toFixed(2);
-          if (h) h.textContent = Number(updatedBar.high).toFixed(2);
-          if (l) l.textContent = Number(updatedBar.low).toFixed(2);
-          if (c) c.textContent = Number(updatedBar.close).toFixed(2);
-          if (c) c.style.color = color;
-        }
-
-        if (actionButtonsRef.current) {
-          const buyPrice =
-            actionButtonsRef.current.querySelector("[data-buy-price]");
-          const sellPrice =
-            actionButtonsRef.current.querySelector("[data-sell-price]");
-          const formattedClose = Number(updatedBar.close).toFixed(2);
-          if (buyPrice) buyPrice.textContent = formattedClose;
-          if (sellPrice) sellPrice.textContent = formattedClose;
+        pendingLiveBarRef.current = updatedBar;
+        const now = Date.now();
+        const elapsed = now - (lastLiveBarPaintAtRef.current || 0);
+        if (elapsed >= LIVE_BAR_RENDER_INTERVAL_MS) {
+          flushPendingLiveBar();
+        } else if (!liveBarFlushTimerRef.current) {
+          liveBarFlushTimerRef.current = setTimeout(
+            flushPendingLiveBar,
+            LIVE_BAR_RENDER_INTERVAL_MS - elapsed,
+          );
         }
 
         const activeIndicators = selectedIndicatorRef.current;
@@ -2859,9 +3242,34 @@ json.dumps(result)
     socketRef.current = { emit, once, off, connected };
   }, [emit, once, off, connected]);
 
+  useEffect(() => {
+    if (!chartRef.current) return;
+
+    const handleVisibleRangeChange = (range) => {
+      historicalVisibleRangeRef.current = range || null;
+      if (!range || mainChartLoading || !connected || !candlesRef.current?.length) {
+        return;
+      }
+
+      if (range.from <= 25) {
+        requestOlderHistoricalChunk();
+      }
+    };
+
+    const timeScale = chartRef.current.timeScale();
+    timeScale.subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+    return () => {
+      timeScale.unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+    };
+  }, [connected, mainChartLoading, requestOlderHistoricalChunk]);
+
   // Main useEffect for chart type/data changes
   useEffect(() => {
     if (!selectedCurrency || !timeframeValue) return;
+    if (suppressNextHistoricalReloadRef.current) {
+      suppressNextHistoricalReloadRef.current = false;
+      return;
+    }
 
     seriesReadyRef.current = false; // Prevent live ticks from squishing the old chart data
 
@@ -2870,12 +3278,8 @@ json.dumps(result)
     setSymbolTransitioning(true);
 
     if (connected && selectedCurrency && timeframeValue) {
-      emit(EVENTS.CHART.GET, {
-        symbol: selectedCurrency?.name,
-        interval: timeframeValue,
-        fromDate: fromDate,
-        toDate: toDate,
-      });
+      requestHistoricalData();
+      requestLiveTick();
     }
 
     setMainChartLoading(true);
@@ -2885,7 +3289,16 @@ json.dumps(result)
     }, 10000);
 
     return () => clearTimeout(timeout);
-  }, [selectedCurrency, timeframeValue, chartType, fromDate, toDate]);
+  }, [
+    selectedCurrency,
+    timeframeValue,
+    chartType,
+    fromDate,
+    toDate,
+    connected,
+    requestHistoricalData,
+    requestLiveTick,
+  ]);
 
   const zoomCharts = (delta) => {
     const charts = [
@@ -2927,49 +3340,80 @@ json.dumps(result)
 
   const handleGoToDate = (targetDate) => {
     if (!chartRef.current) return;
+    console.log("Go To Date clicked, target date:", targetDate);
+
+    const IST_OFFSET = 19800;
+
+    // targetDate is a JS Date object from the dialog
+    // Candle times are stored as: Math.floor(utcSec) + IST_OFFSET
+    // So we convert targetDate to UTC seconds then add IST_OFFSET to match
+    const targetUtcSec = Math.floor(targetDate.getTime() / 1000);
+    const targetTimeSec = targetUtcSec + IST_OFFSET;
 
     // Check if the target date is earlier than our currently fetched fromDate
-    const adjustedDate = new Date(targetDate); const isIntraday = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "60m", "120m", "240m"].includes(timeframeValue); if (isIntraday) { adjustedDate.setHours(9, 15, 0, 0); } const targetTimeMs = adjustedDate.getTime();
     const currentFromTimeMs = new Date(fromDate).getTime();
 
-    if (targetTimeMs < currentFromTimeMs) {
+    if (targetDate.getTime() < currentFromTimeMs) {
       // Need to fetch older data first
       pendingGoToDateRef.current = targetDate;
       setMainChartLoading(true);
 
-      // Update fromDate to 30 days before the target date just to be safe
       const newFrom = new Date(targetDate);
-      newFrom.setDate(newFrom.getDate() - 30);
-      handleSetFromDate(newFrom.toISOString().split("T")[0]);
+      newFrom.setDate(newFrom.getDate() - getBackfillChunkDays(timeframeValue));
+      const newFromDate = newFrom.toISOString().split("T")[0];
+      requestHistoricalData(
+        true,
+        {
+          fromDate: newFromDate,
+          toDate: fromDate,
+        },
+        {
+          mergeMode: "prepend",
+          pendingFromDate: newFromDate,
+        },
+      );
       return; // The useEffect above will call handleGoToDate again once loaded
     }
 
     if (!candlesRef.current?.length) return;
 
-    const IST_OFFSET = 19800;
-    const targetTimeSec = Math.floor(targetTimeMs / 1000) + IST_OFFSET;
-
-    // Find the closest candle
+    // Find the closest candle to the target timestamp
     let closestIndex = 0;
     let minDiff = Infinity;
 
     for (let i = 0; i < candlesRef.current.length; i++) {
-      const candle = candlesRef.current[i];
-      const diff = Math.abs(candle.time - targetTimeSec);
+      const diff = Math.abs(candlesRef.current[i].time - targetTimeSec);
       if (diff < minDiff) {
         minDiff = diff;
         closestIndex = i;
       }
     }
 
-    // Calculate logical range to put the candle in the center
-    const fromIndex = Math.max(0, closestIndex - 25);
-    const toIndex = Math.min(candlesRef.current.length - 1, closestIndex + 25);
+    console.log(
+      "targetTimeSec:",
+      targetTimeSec,
+      "closest candle time:",
+      candlesRef.current[closestIndex]?.time,
+      "diff:",
+      minDiff,
+    );
 
-    chartRef.current.timeScale().setVisibleLogicalRange({
-      from: fromIndex,
-      to: toIndex,
-    });
+    // Use setVisibleRange with actual timestamps (Time objects)
+    const half = 25;
+    const fromCandle = candlesRef.current[Math.max(0, closestIndex - half)];
+    const toCandle =
+      candlesRef.current[
+        Math.min(candlesRef.current.length - 1, closestIndex + half)
+      ];
+
+    try {
+      chartRef.current.timeScale().setVisibleRange({
+        from: fromCandle.time,
+        to: toCandle.time,
+      });
+    } catch (e) {
+      console.warn("Could not set visible range:", e);
+    }
   };
 
   return (
@@ -3239,7 +3683,8 @@ json.dumps(result)
                         overflow: "hidden",
                         display: "flex",
                         flexDirection: "column",
-                        minHeight: 450, cursor: activeTool ? "crosshair" : "default",
+                        minHeight: 450,
+                        cursor: activeTool ? "crosshair" : "default",
                       }}
                     >
                       <DrawingToolbox
@@ -3662,8 +4107,12 @@ json.dumps(result)
                           >
                             {selectedIndicator
                               .filter((ind) => {
-                                // Only show indicator bar if data has arrived (series exists)
-                                if (!indicatorSeriesRef.current || !indicatorSeriesRef.current[ind.id]) return false;
+                                // Show once data has arrived; series refs can lag during pane setup.
+                                if (
+                                  !indicatorDataRef.current?.[ind.id] &&
+                                  !indicatorSeriesRef.current?.[ind.id]
+                                )
+                                  return false;
                                 return !PANE_INDICATORS.has(ind.type);
                               })
                               .map((ind) => {
@@ -3704,13 +4153,18 @@ json.dumps(result)
                           {/* Pane Indicators (Portals) */}
                           {selectedIndicator
                             .filter((ind) => {
-                              if (!indicatorSeriesRef.current || !indicatorSeriesRef.current[ind.id]) return false;
+                              if (
+                                !indicatorDataRef.current?.[ind.id] &&
+                                !indicatorSeriesRef.current?.[ind.id]
+                              )
+                                return false;
                               return PANE_INDICATORS.has(ind.type);
                             })
                             .map((ind) => {
                               const { id, type } = ind;
                               const value = liveIndicatorData[id];
                               const paneDiv =
+                                panesRef.current[id]?.div ||
                                 panesRef.current[id]?.pane?.getHTMLElement();
 
                               if (!paneDiv) return null;
@@ -3723,6 +4177,7 @@ json.dumps(result)
 
                               return createPortal(
                                 <div
+                                  key={id}
                                   style={{
                                     position: "absolute",
                                     top: 5,
@@ -3761,6 +4216,7 @@ json.dumps(result)
                                   />
                                 </div>,
                                 portalTarget,
+                                id
                               );
                             })}
                         </>
@@ -3935,7 +4391,9 @@ json.dumps(result)
                   height: "100%",
                 }}
               >
-                <OptionChain onBack={() => setActiveTab("Chart")} />
+                {activeTab === "Option Chain" && (
+                  <OptionChain onBack={() => setActiveTab("Chart")} />
+                )}
               </div>
 
               <div
@@ -4044,4 +4502,3 @@ json.dumps(result)
     </>
   );
 }
-

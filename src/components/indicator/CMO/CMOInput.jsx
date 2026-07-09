@@ -13,7 +13,7 @@ export default function CMOInput(
   const cmoData = rows
     .filter((d) => d.cmo != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time)+ 19800,
       value: Number(d.cmo),
     }));
 

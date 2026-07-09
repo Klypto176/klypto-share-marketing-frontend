@@ -57,13 +57,19 @@ const useSocket = (props = {}) => {
       },
       
       [EVENTS.CHART.LIVETICKS]: (tick) => {
-        // console.log(`[SOCKET] ${EVENTS.CHART.LIVETICKS} received:`, tick);
+        console.log(`[SOCKET] ${EVENTS.CHART.LIVETICKS} received:`, tick);
         if (propsRef.current.handleLiveTick) propsRef.current.handleLiveTick(tick);
         if (propsRef.current.handleAlertTick) propsRef.current.handleAlertTick({ type: EVENTS.CHART.LIVETICKS, data: tick });
       },
       
       [EVENTS.OVERVIEW.RESPONSE]: (tick) => {
-        if (propsRef.current.handleLiveTick) propsRef.current.handleLiveTick(tick);
+        if (propsRef.current.handleOverviewTick) {
+          propsRef.current.handleOverviewTick(tick);
+          return;
+        }
+        if (!propsRef.current.disableOverviewLiveTickFallback && propsRef.current.handleLiveTick) {
+          propsRef.current.handleLiveTick(tick);
+        }
       },
       
       [EVENTS.INDICATOR.RESPONSE]: (res) => {
@@ -71,6 +77,7 @@ const useSocket = (props = {}) => {
       },
       
       [EVENTS.INDICATOR.LIVE_RESPONSE]: (tick) => {
+        console.log(`[SOCKET] ${EVENTS.INDICATOR.LIVE_RESPONSE} received:`, tick);
         if (propsRef.current.handleLiveIndicator) propsRef.current.handleLiveIndicator(tick);
         if (propsRef.current.handleAlertTick) propsRef.current.handleAlertTick({ type: EVENTS.INDICATOR.LIVE_RESPONSE, data: tick });
       },
@@ -136,7 +143,10 @@ const useSocket = (props = {}) => {
     const bootstrap = () => {
       // Re-hydrate components from global cache upon mount
       if (globalCache.watchList && propsRef.current.handleWatchlistResponse) {
-        // Optional: immediately push cached data back to components so they don't wait for a socket event
+        propsRef.current.handleWatchlistResponse({ success: true, data: globalCache.watchList });
+      }
+      if (globalCache.stocksList && propsRef.current.setStocks) {
+        propsRef.current.setStocks(globalCache.stocksList);
       }
     };
 

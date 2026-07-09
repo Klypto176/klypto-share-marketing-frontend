@@ -3,7 +3,7 @@ import apiService from "../../services/apiServices";
 import SearchSelect from "./SearchSelect";
 import { s } from "../../util/common";
 import OrderBook from "./OrderBook";
-import useSocket from "../../util/useSocket";
+import useSocket, { globalCache } from "../../util/useSocket";
 import EVENTS from "../../services/websocket/socketEvent";
 
 const ACTIONS = [
@@ -367,6 +367,9 @@ const OrderPanel = ({
   });
 
   useEffect(() => {
+    if (globalCache.watchList) {
+      return;
+    }
     emit(EVENTS.WATCHLIST.GET);
   }, [emit]);
 

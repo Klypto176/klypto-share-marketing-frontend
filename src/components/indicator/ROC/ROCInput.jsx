@@ -11,7 +11,7 @@ export default function ROCInput(
   const rocData = rows
     .filter((d) => d.roc != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.roc),
     }))
     .sort((a, b) => a.time - b.time);
@@ -23,6 +23,7 @@ export default function ROCInput(
   /* ================= UPDATE ROC ================= */
 
   series.roc?.setData(rocData);
+  series.rocData = rocData;
 
   /* ================= UPDATE HOVER VALUES ================= */
 

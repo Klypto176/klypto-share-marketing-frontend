@@ -8,6 +8,7 @@ import { useDebounce } from "../../util/common";
 import { getStockLogo } from "../../util/stockSymbol/helper";
 import NSE from "../../assets/NSE.svg";
 import BSE from "../../assets/BSE.svg";
+import axios from "axios";
 
 
 const SymbolAvatar = ({ code, symbol }) => {
@@ -117,11 +118,11 @@ export const ListingModal = ({
     setError(null);
 
     try {
-      const response = await apiService.post(`/equity/getIndicators`);
+      const response = await apiService.post(`equity/getIndicators`);
 
-      console.log("indicator API response:", response);
+      console.log("indicator API response:", response?.data?.data);
 
-      setIndicators(response?.data || []);
+      setIndicators(response?.data?.data || []);
     } catch (err) {
       console.error(err);
       setError(err?.message || "Failed to fetch indicators");
@@ -595,7 +596,13 @@ export const ListingModal = ({
                             id: `${item.slug}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
                             type: item.slug,
                           };
-                          setSelectedIndicator((prev) => [...prev, newInst]);
+                          setSelectedIndicator((prev) => {
+                            const isExisting = prev.some((i) => i.type === item.slug);
+                            if (isExisting) {
+                              return [...prev.filter((i) => i.type !== item.slug), newInst];
+                            }
+                            return [...prev, newInst];
+                          });
                           // Modal stays open so user can add more indicators
                         }}
                         onMouseEnter={(e) => {
