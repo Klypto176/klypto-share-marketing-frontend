@@ -1149,6 +1149,11 @@ json.dumps(result)
   const currentCandleRef = useRef(null);
   const lastCandleTimeRef = useRef(null);
   const candlesRef = useRef([]);
+  const pendingLiveBarRef = useRef(null);
+  const pendingLiveBarMetaRef = useRef({ shouldAutoScale: false });
+  const liveBarFlushTimerRef = useRef(null);
+  const liveAutoScaleResetTimerRef = useRef(null);
+  const lastLiveBarPaintAtRef = useRef(0);
   const seriesReadyRef = useRef(false);
   const selectedIndicatorRef = useRef(selectedIndicator);
   const ohlcvDisplayRef = useRef(null);
@@ -1159,6 +1164,21 @@ json.dumps(result)
   const selectedCurrencyRef = useRef(selectedCurrency);
   const intervalSecRef = useRef(TIMEFRAME_TO_SECONDS[timeframeValue] ?? 60);
   const IST_OFFSET = 19800;
+  const LIVE_BAR_RENDER_INTERVAL_MS = 350;
+
+  const setMainChartAutoScale = useCallback((enabled) => {
+    if (!chartRef.current) return;
+    try {
+      chartRef.current.priceScale("right").applyOptions({
+        autoScale: enabled,
+        mode: 0,
+        scaleMargins: {
+          top: 0.28,
+          bottom: 0.18,
+        },
+      });
+    } catch {}
+  }, []);
 
   useEffect(() => {
     selectedIndicatorRef.current = selectedIndicator;
@@ -2436,6 +2456,76 @@ json.dumps(result)
     );
   }, [fromDate, requestHistoricalData, selectedCurrency, timeframeValue]);
 
+  const flushPendingLiveBar = useCallback(() => {
+    liveBarFlushTimerRef.current = null;
+    const updatedBar = pendingLiveBarRef.current;
+    if (!updatedBar) return;
+    if (
+      !seriesRef.current ||
+      !seriesReadyRef.current ||
+      chartDisposedRef.current
+    ) {
+      return;
+    }
+
+    if (pendingLiveBarMetaRef.current?.shouldAutoScale) {
+      setMainChartAutoScale(true);
+      if (liveAutoScaleResetTimerRef.current) {
+        clearTimeout(liveAutoScaleResetTimerRef.current);
+      }
+      liveAutoScaleResetTimerRef.current = setTimeout(() => {
+        setMainChartAutoScale(false);
+        liveAutoScaleResetTimerRef.current = null;
+      }, 900);
+    }
+
+    lastLiveBarPaintAtRef.current = Date.now();
+
+    try {
+      seriesRef.current.update(updatedBar);
+    } catch (e) {
+      console.warn("[LiveTick] Series update failed:", e.message);
+    }
+
+    if (ohlcvDisplayRef.current) {
+      const el = ohlcvDisplayRef.current;
+      const isUp = updatedBar.close >= updatedBar.open;
+      const color = isUp ? "#22c55e" : "#ef4444";
+      const o = el.querySelector("[data-o]");
+      const h = el.querySelector("[data-h]");
+      const l = el.querySelector("[data-l]");
+      const c = el.querySelector("[data-c]");
+      if (o) o.textContent = Number(updatedBar.open).toFixed(2);
+      if (h) h.textContent = Number(updatedBar.high).toFixed(2);
+      if (l) l.textContent = Number(updatedBar.low).toFixed(2);
+      if (c) c.textContent = Number(updatedBar.close).toFixed(2);
+      if (c) c.style.color = color;
+    }
+
+    if (actionButtonsRef.current) {
+      const buyPrice =
+        actionButtonsRef.current.querySelector("[data-buy-price]");
+      const sellPrice =
+        actionButtonsRef.current.querySelector("[data-sell-price]");
+      const formattedClose = Number(updatedBar.close).toFixed(2);
+      if (buyPrice) buyPrice.textContent = formattedClose;
+      if (sellPrice) sellPrice.textContent = formattedClose;
+    }
+  }, [setMainChartAutoScale]);
+
+  useEffect(() => {
+    return () => {
+      if (liveBarFlushTimerRef.current) {
+        clearTimeout(liveBarFlushTimerRef.current);
+        liveBarFlushTimerRef.current = null;
+      }
+      if (liveAutoScaleResetTimerRef.current) {
+        clearTimeout(liveAutoScaleResetTimerRef.current);
+        liveAutoScaleResetTimerRef.current = null;
+      }
+    };
+  }, []);
+
   // ── Central Socket Hook ──
   const { emit, once, connect, connected, id, off } = useSocket({
     handleConnect: () => {
@@ -2627,6 +2717,13 @@ json.dumps(result)
       try {
         chartRef.current.priceScale("right").applyOptions({ autoScale: true });
       } catch {}
+      if (liveAutoScaleResetTimerRef.current) {
+        clearTimeout(liveAutoScaleResetTimerRef.current);
+      }
+      liveAutoScaleResetTimerRef.current = setTimeout(() => {
+        setMainChartAutoScale(false);
+        liveAutoScaleResetTimerRef.current = null;
+      }, 1200);
 
       switch (chartType) {
         case "line":
@@ -2959,51 +3056,20 @@ json.dumps(result)
         currentCandleRef.current =
           candlesRef.current[candlesRef.current.length - 1] || updatedBar;
         lastCandleTimeRef.current = normalizedTime;
+        pendingLiveBarMetaRef.current = {
+          shouldAutoScale: !existingCandle && (!baseCandle || normalizedTime > baseCandle.time),
+        };
 
-        const timeScale = chartRef.current?.timeScale();
-        const oldRange = timeScale?.getVisibleLogicalRange();
-        const isGap =
-          latestCandle &&
-          normalizedTime - latestCandle.time > intervalSec * 10;
-
-        if (isGap && timeScale) {
-          timeScale.applyOptions({ shiftVisibleRangeOnNewBar: false });
-        }
-
-        try {
-          seriesRef.current.update(updatedBar);
-        } catch (e) {
-          console.warn("[LiveTick] Series update failed:", e.message);
-        }
-
-        if (isGap && timeScale) {
-          if (oldRange) timeScale.setVisibleLogicalRange(oldRange);
-          timeScale.applyOptions({ shiftVisibleRangeOnNewBar: true });
-        }
-
-        if (ohlcvDisplayRef.current) {
-          const el = ohlcvDisplayRef.current;
-          const isUp = updatedBar.close >= updatedBar.open;
-          const color = isUp ? "#22c55e" : "#ef4444";
-          const o = el.querySelector("[data-o]");
-          const h = el.querySelector("[data-h]");
-          const l = el.querySelector("[data-l]");
-          const c = el.querySelector("[data-c]");
-          if (o) o.textContent = Number(updatedBar.open).toFixed(2);
-          if (h) h.textContent = Number(updatedBar.high).toFixed(2);
-          if (l) l.textContent = Number(updatedBar.low).toFixed(2);
-          if (c) c.textContent = Number(updatedBar.close).toFixed(2);
-          if (c) c.style.color = color;
-        }
-
-        if (actionButtonsRef.current) {
-          const buyPrice =
-            actionButtonsRef.current.querySelector("[data-buy-price]");
-          const sellPrice =
-            actionButtonsRef.current.querySelector("[data-sell-price]");
-          const formattedClose = Number(updatedBar.close).toFixed(2);
-          if (buyPrice) buyPrice.textContent = formattedClose;
-          if (sellPrice) sellPrice.textContent = formattedClose;
+        pendingLiveBarRef.current = updatedBar;
+        const now = Date.now();
+        const elapsed = now - (lastLiveBarPaintAtRef.current || 0);
+        if (elapsed >= LIVE_BAR_RENDER_INTERVAL_MS) {
+          flushPendingLiveBar();
+        } else if (!liveBarFlushTimerRef.current) {
+          liveBarFlushTimerRef.current = setTimeout(
+            flushPendingLiveBar,
+            LIVE_BAR_RENDER_INTERVAL_MS - elapsed,
+          );
         }
 
         const activeIndicators = selectedIndicatorRef.current;
