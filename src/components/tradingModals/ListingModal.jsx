@@ -118,7 +118,7 @@ export const ListingModal = ({
     setError(null);
 
     try {
-      const response = await apiService.post(`equity/getIndicators`);
+      const response = await apiService.get(`equity/getIndicators`);
 
       console.log("indicator API response:", response?.data?.data);
 
