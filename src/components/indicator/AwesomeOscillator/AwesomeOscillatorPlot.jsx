@@ -38,7 +38,7 @@ export default function AWOPlot({
     });
 
     const coloredAO = awo.map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time)+ 19800,
       value: Number(d.ao ?? d.value ?? 0),
       color: d.ao >= 0 ? palette.up : palette.down,
     }));

@@ -13,7 +13,7 @@ export default function CKSInput(
     response?.data
       ?.filter((d) => d.stopLong != null && d.time != null)
       .map((d) => ({
-        time: Number(d.time),
+        time: Number(d.time)+ 19800,
         value: Number(d.stopLong),
       })) ?? [];
 
@@ -21,7 +21,7 @@ export default function CKSInput(
     response?.data
       ?.filter((d) => d.stopShort != null && d.time != null)
       .map((d) => ({
-        time: Number(d.time),
+        time: Number(d.time)+ 19800,
         value: Number(d.stopShort),
       })) ?? [];
 

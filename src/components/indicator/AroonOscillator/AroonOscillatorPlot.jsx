@@ -43,12 +43,19 @@ export default function AroonOscillatorPlot({
       lineStyle: style?.oscillator?.lineStyle ?? 0,
     });
 
-    osc.setData(data);
+    const formattedData = data
+      .filter((d) => d && d.time != null && (d.aroonOsc != null || d.value != null))
+      .map((d) => ({
+        time: Number(d.time) + 19800,
+        value: Number(d.aroonOsc ?? d.value),
+      }));
+
+    osc.setData(formattedData);
     grouped.oscillator = osc;
 
     /* ================= LEVELS ================= */
 
-    const make = (v) => data.map(p => ({ time: p.time, value: v }));
+    const make = (v) => formattedData.map(p => ({ time: p.time, value: v }));
 
     const center = addSeries("AO", LineSeries, {});
     const upper = addSeries("AO", LineSeries, {});

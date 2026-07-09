@@ -31,7 +31,7 @@ export default function CHOPInput(
 
   const makeLevel = (v) =>
     chopData.map((p) => ({
-      time: p.time,
+      time: p.time+ 19800,
       value: v,
     }));
 

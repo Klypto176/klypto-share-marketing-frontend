@@ -22,8 +22,7 @@ export default function BBPlot({
       Object.values(indicatorSeriesRef.current.BB).forEach((s) => {
         if (s?.setData) {
           try {
-            s.setData([]);
-            if (removeSeries) removeSeries(s);
+            chart?.removeSeries(s);
           } catch {}
         }
       });
@@ -65,6 +64,11 @@ export default function BBPlot({
     groupedSeries.lowerData = lowerData;
 
     indicatorSeriesRef.current.BB = groupedSeries;
+
+    // Trigger cloud redraw for symbol changes
+    if (groupedSeries.redrawCloud) {
+      groupedSeries.redrawCloud();
+    }
   }, [result]);
 
   /* ================= CANVAS INIT ================= */
@@ -87,13 +91,7 @@ export default function BBPlot({
 
   const drawBBCloud = () => {
     const bbGroup = indicatorSeriesRef.current?.BB;
-    if (!bbGroup) return;
-
-    const upper = bbGroup.upperData || [];
-    const lower = bbGroup.lowerData || [];
-
-    if (!upper?.length || !lower?.length) return;
-    if (!canvasRef.current || !chart) return;
+    if (!bbGroup || !canvasRef.current || !chart) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
@@ -104,6 +102,11 @@ export default function BBPlot({
     canvas.height = rect.height;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const upper = bbGroup.upperData || [];
+    const lower = bbGroup.lowerData || [];
+
+    if (!upper?.length || !lower?.length) return;
 
     const fill = indicatorStyle?.BB?.bbFill;
 
@@ -152,6 +155,10 @@ export default function BBPlot({
     if (!chart) return;
 
     const redraw = () => drawBBCloud();
+
+    if (indicatorSeriesRef.current?.BB) {
+      indicatorSeriesRef.current.BB.redrawCloud = redraw;
+    }
 
     chart.timeScale().subscribeVisibleTimeRangeChange(redraw);
     chart.subscribeCrosshairMove(redraw);

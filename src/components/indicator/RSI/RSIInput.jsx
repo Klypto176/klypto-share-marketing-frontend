@@ -68,6 +68,35 @@ export default function RSIInput(
   const indicatorId = instanceId || "RSI";
   console.log(indicatorId, "indicatorId");
 
+  /* ================= FILLS AND LEVELS ================= */
+  
+  // Extract levels that were saved by RSIPlot
+  const upper = series.currentLevels?.upper ?? 70;
+  const lower = series.currentLevels?.lower ?? 30;
+
+  const bandData = rsiData.map((p) => ({
+    time: p.time,
+    value: upper,
+  }));
+
+  const overboughtData = [];
+  const oversoldData = [];
+
+  rsiData.forEach((p) => {
+    overboughtData.push({
+      time: p.time,
+      value: p.value > upper ? p.value : upper,
+    });
+    oversoldData.push({
+      time: p.time,
+      value: p.value < lower ? p.value : lower,
+    });
+  });
+
+  series.bandBackground?.setData(bandData);
+  series.overboughtFill?.setData(overboughtData);
+  series.oversoldFill?.setData(oversoldData);
+
   /* ================= BOLLINGER BANDS ================= */
 
   if (maType === "SMA + Bollinger Bands") {

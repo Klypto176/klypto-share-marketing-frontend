@@ -34,7 +34,7 @@ export default function AroonOscillatorInput(
       return valid;
     })
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time)+ 19800,
       value: Number(d.aroonOsc),
     }))
     .sort((a, b) => a.time - b.time);

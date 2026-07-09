@@ -102,7 +102,7 @@ export default function STDDEVPlot({
 
     const style = indicatorStyle?.STDDEV?.stddev;
 
-    console.log("STDDEV STYLE UPDATE →", style);
+    // console.log("STDDEV STYLE UPDATE →", style);
 
     if (stdGroup.stddev) {
 

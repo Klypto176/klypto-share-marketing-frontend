@@ -11,7 +11,7 @@ export default function DCInput(
     response?.data
       ?.filter((d) => d.upper != null && d.time != null)
       .map((d) => ({
-        time: Number(d.time),
+        time: Number(d.time) + 19800,
         value: Number(d.upper),
       })) ?? [];
 
@@ -19,7 +19,7 @@ export default function DCInput(
     response?.data
       ?.filter((d) => d.lower != null && d.time != null)
       .map((d) => ({
-        time: Number(d.time),
+        time: Number(d.time) + 19800,
         value: Number(d.lower),
       })) ?? [];
 
@@ -27,7 +27,7 @@ export default function DCInput(
     response?.data
       ?.filter((d) => d.basis != null && d.time != null)
       .map((d) => ({
-        time: Number(d.time),
+        time: Number(d.time) + 19800,
         value: Number(d.basis),
       })) ?? [];
 
@@ -41,6 +41,7 @@ export default function DCInput(
 
   group.upperData = upper;
   group.lowerData = lower;
+  group.redrawCloud?.();
 
   /* ================= CROSSHAIR VALUES ================= */
 

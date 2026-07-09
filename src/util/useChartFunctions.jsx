@@ -1,10 +1,20 @@
 import apiService from "../services/apiServices";
 import { getRowsByIndicator } from "./common";
 import socket from "../services/websocket/socket";
-
+import { io } from "socket.io-client";
+import Swal from "sweetalert2";
 let globalFetchSessionId = 0;
+let globalFetchContextKey = "";
 
 const IST_OFFSET = 19800;
+
+const getIndicatorFetchContextKey = (selectedCurrency, timeframeValue, fromDate, toDate) =>
+  JSON.stringify({
+    symbol: selectedCurrency?.name,
+    interval: timeframeValue,
+    fromDate,
+    toDate,
+  });
 
 export default function useChartFunctions({
   indicatorSeriesRef,
@@ -17,6 +27,7 @@ export default function useChartFunctions({
   candlesRef,
   onIndicatorLoaded,
   onIndicatorLoadingChange,
+  onIndicatorError,
 }) {
   /* ================= FETCH INDICATORS ================= */
   async function fetchIndicatorData(
@@ -26,7 +37,19 @@ export default function useChartFunctions({
   ) {
     if (!selectedIndicator?.length) return;
 
-    const currentSessionId = ++globalFetchSessionId;
+    const fetchContextKey = getIndicatorFetchContextKey(
+      selectedCurrency,
+      timeframeValue,
+      fromDate,
+      toDate,
+    );
+
+    if (fetchContextKey !== globalFetchContextKey) {
+      globalFetchContextKey = fetchContextKey;
+      globalFetchSessionId += 1;
+    }
+
+    const currentSessionId = globalFetchSessionId;
 
     // Process sequentially (1 at a time) to avoid overwhelming the backend and unblock UI thread
     const CONCURRENCY_LIMIT = 1;
@@ -52,6 +75,7 @@ export default function useChartFunctions({
               fromDate,
               toDate,
               socketRef,
+              indicatorConfigs?.[id] || {},
             );
             
             // Critical: check if session changed while waiting for API
@@ -65,6 +89,22 @@ export default function useChartFunctions({
             }
           } catch (error) {
             console.error(`Failed to fetch indicator ${type}:`, error);
+            // Show error to user and remove the empty pane
+            try {
+              await Swal.fire({
+                icon: "error",
+                title: `${type} Indicator Failed`,
+                text:
+                  error?.message ||
+                  `Could not load ${type} data. Please try again.`,
+                confirmButtonText: "OK",
+                background: "var(--bg-secondary)",
+                color: "var(--text-primary)",
+              });
+            } catch (alertError) {
+              console.error("Failed to show indicator error alert:", alertError);
+            }
+            if (typeof onIndicatorError === "function") onIndicatorError(id);
           } finally {
             if (currentSessionId === globalFetchSessionId && onIndicatorLoadingChange) {
               onIndicatorLoadingChange(id, false);
@@ -832,6 +872,7 @@ async function fetchDataForIndicators(
   fromDate,
   toDate,
   socketRef,
+  indicatorConfig = {},
 ) {
   const isValidChartValue = (v) => {
     const num = Number(v);
@@ -842,29 +883,37 @@ async function fetchDataForIndicators(
     const response = await new Promise((resolve, reject) => {
       indicatorFetchQueue = indicatorFetchQueue.then(() => {
         return new Promise((innerResolve) => {
-          if (!socketRef.current || !socket.connected) {
-            innerResolve();
-            return reject(new Error("Socket disconnected"));
-          }
+          const tempSocket = io("http://192.168.1.15:8000", { transports: ["websocket", "polling"] });
 
-          socketRef.current?.emit("getIndicatorDetails", {
+          tempSocket.emit("getIndicatorDetails", {
             symbol: selectedCurrency?.name,
             interval: timeframeValue,
             fromDate: fromDate,
             toDate: toDate,
             type,
+            ...indicatorConfig,
           });
 
+          console.log(type,"payload",{
+            symbol: selectedCurrency?.name,
+            interval: timeframeValue,
+            fromDate: fromDate,
+            toDate: toDate,
+            type,
+            ...indicatorConfig,
+          })
           const timeoutId = setTimeout(() => {
-            socketRef.current?.off("indicatorDetailsError", onError);
-            socketRef.current?.off("indicatorDetailsResponse", onResponse);
+            tempSocket.off("indicatorDetailsError", onError);
+            tempSocket.off("indicatorDetailsResponse", onResponse);
+            tempSocket.disconnect();
             innerResolve();
             reject(new Error("Timeout fetching indicator data"));
           }, 120000); // 2 minutes (effectively removed for normal operations)
 
           const onResponse = (data) => {
             clearTimeout(timeoutId);
-            socketRef.current?.off("indicatorDetailsError", onError);
+            tempSocket.off("indicatorDetailsError", onError);
+            tempSocket.disconnect();
             innerResolve();
             resolve(data);
           };
@@ -872,13 +921,14 @@ async function fetchDataForIndicators(
           const onError = (err) => {
             clearTimeout(timeoutId);
             console.error("fetchDataForIndicators error:", err);
-            socketRef.current?.off("indicatorDetailsResponse", onResponse);
+            tempSocket.off("indicatorDetailsResponse", onResponse);
+            tempSocket.disconnect();
             innerResolve();
             reject(err);
           };
 
-          socketRef.current?.once("indicatorDetailsResponse", onResponse);
-          socketRef.current?.once("indicatorDetailsError", onError);
+          tempSocket.once("indicatorDetailsResponse", onResponse);
+          tempSocket.once("indicatorDetailsError", onError);
         });
       });
     });

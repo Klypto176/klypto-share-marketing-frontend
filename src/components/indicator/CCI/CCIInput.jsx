@@ -1,8 +1,10 @@
 export default function CCIInput(
   response,
   indicatorSeriesRef,
-  latestIndicatorValuesRef
-, instanceId) {
+  latestIndicatorValuesRef,
+  maType,
+  instanceId
+) {
   const rows = Array.isArray(response?.data) ? response.data : [];
   const IST_OFFSET = 19800;
 
@@ -45,9 +47,24 @@ export default function CCIInput(
 
   // Update series data if lines exist
   series.cciLine?.setData(cciData);
-  series.cciMa?.setData(cciMa);
-  series.bbUpper?.setData(bbUpper);
-  series.bbLower?.setData(bbLower);
+
+  if (maType !== "none") {
+    series.cciMa?.setData(cciMa);
+  } else {
+    series.cciMa?.setData([]);
+  }
+
+  if (maType === "SMA + Bollinger Bands") {
+    series.bbUpper?.setData(bbUpper);
+    series.bbLower?.setData(bbLower);
+    series.bbUpperData = bbUpper;
+    series.bbLowerData = bbLower;
+  } else {
+    series.bbUpper?.setData([]);
+    series.bbLower?.setData([]);
+    series.bbUpperData = [];
+    series.bbLowerData = [];
+  }
 
   // Update hover/latest values
   latestIndicatorValuesRef.current[instanceId || "CCI"] = {
@@ -56,6 +73,17 @@ export default function CCIInput(
     bbUpper: bbUpper[bbUpper?.length - 1]?.value,
     bbLower: bbLower[bbLower?.length - 1]?.value,
   };
+
+  // Update background fill if present
+  if (series.bgFill && series.currentLevels) {
+    const { upper = 100 } = series.currentLevels;
+    series.bgFill.setData(cciData.map((p) => ({ time: p.time, value: upper })));
+  }
+
+  // Update cloud data and trigger redraw
+  series.bbUpperData = bbUpper;
+  series.bbLowerData = bbLower;
+  series.redrawCloud?.();
 
   // Store result data
   series.result = {

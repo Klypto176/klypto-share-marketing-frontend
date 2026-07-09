@@ -14,7 +14,7 @@ export default function VOLInput(
   const volumeMAData = rows
     .filter((d) => d.volumeMA != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.volumeMA),
     }));
 

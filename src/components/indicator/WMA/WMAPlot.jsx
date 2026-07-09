@@ -45,7 +45,14 @@ export default function WMAPlot({
 
       if (!series) return;
 
-      series.setData(lineData);
+      const formattedData = lineData
+        .filter((d) => d != null && d.time != null)
+        .map((d) => ({
+          time: Number(d.time),
+          value: Number(d.value ?? d[lineName]),
+        }));
+
+      series.setData(formattedData);
 
       groupedSeries[lineName] = series;
     });

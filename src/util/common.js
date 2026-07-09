@@ -2394,3 +2394,33 @@ export const formatIST = (timestamp) => {
     hour12: false,
   });
 };
+
+// Returns true if the Indian stock market is currently open (IST, weekdays 9:15–15:30)
+export const getMarketStatus = () => {
+  const now = new Date();
+
+  // IST time
+  const istTime = new Date(
+    now.toLocaleString("en-US", {
+      timeZone: "Asia/Kolkata",
+    }),
+  );
+
+  const day = istTime.getDay(); // 0 = Sunday, 6 = Saturday
+  const hours = istTime.getHours();
+  const minutes = istTime.getMinutes();
+
+  const currentMinutes = hours * 60 + minutes;
+
+  // Market timings: 9:15 AM to 3:30 PM
+  const marketStart = 9 * 60 + 15;
+  const marketEnd = 15 * 60 + 30;
+
+  const isWeekday = day >= 1 && day <= 5;
+
+  return (
+    isWeekday &&
+    currentMinutes >= marketStart &&
+    currentMinutes <= marketEnd
+  );
+};

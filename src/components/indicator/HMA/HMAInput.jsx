@@ -10,7 +10,7 @@ export default function HMAInput(
   const hmaData = rows
     .filter((d) => d?.hma != null && d?.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.hma),
     }))
     .sort((a, b) => a.time - b.time);

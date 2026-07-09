@@ -24,8 +24,10 @@ export default function SMAPlot({
         if (s?.setData) {
           try {
             s.setData([]);
-            if (removeSeries) removeSeries(s);
-          } catch {}
+            chart?.removeSeries(s);
+          } catch (e) {
+            console.warn("SMAPlot removeSeries failed:", e);
+          }
         }
       });
 
@@ -88,13 +90,7 @@ export default function SMAPlot({
 
   const drawBBCloud = () => {
     const smaGroup = indicatorSeriesRef.current?.SMA;
-    if (!smaGroup) return;
-
-    const upper = smaGroup.bbUpperData || [];
-    const lower = smaGroup.bbLowerData || [];
-
-    if (!upper.length || !lower.length) return;
-    if (!canvasRef.current || !chart) return;
+    if (!smaGroup || !canvasRef.current || !chart) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
@@ -106,7 +102,15 @@ export default function SMAPlot({
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    const upper = smaGroup.bbUpperData || [];
+    const lower = smaGroup.bbLowerData || [];
+
+    // console.log("SMAPlot drawBBCloud data lengths:", upper.length, lower.length);
+
+    if (!upper.length || !lower.length) return;
+
     const fill = indicatorStyle?.SMA?.bbFill;
+    // console.log("SMAPlot drawBBCloud fill style:", fill);
 
     if (!(fill?.visible ?? true)) return;
 
@@ -116,6 +120,7 @@ export default function SMAPlot({
     ctx.clip();
 
     ctx.beginPath();
+    let drawnPoints = 0;
 
     for (let i = 0; i < upper.length; i++) {
       const p = upper[i];
@@ -127,6 +132,7 @@ export default function SMAPlot({
 
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
+      drawnPoints++;
     }
 
     for (let i = lower.length - 1; i >= 0; i--) {
@@ -138,35 +144,32 @@ export default function SMAPlot({
       if (x == null || y == null) continue;
 
       ctx.lineTo(x, y);
+      drawnPoints++;
     }
 
     ctx.closePath();
+    // console.log("SMAPlot drawBBCloud drawn points:", drawnPoints);
 
     ctx.fillStyle = fill?.topFillColor1 || "rgba(76,175,80,0.2)";
     ctx.fill();
     ctx.restore();
   };
 
-  /* ================= REDRAW EVENTS ================= */
-
   useEffect(() => {
     if (!chart) return;
 
     const redraw = () => drawBBCloud();
 
-    const unsubscribeTime = chart.timeScale().subscribeVisibleLogicalRangeChange
-      ? chart.timeScale().subscribeVisibleLogicalRangeChange(redraw)
-      : null;
+    chart.timeScale().subscribeVisibleTimeRangeChange(redraw);
+    chart.subscribeCrosshairMove(redraw);
 
-    const unsubscribeCrosshair = chart.subscribeCrosshairMove
-      ? chart.subscribeCrosshairMove(redraw)
-      : null;
+    drawBBCloud();
 
     return () => {
-      if (unsubscribeTime) unsubscribeTime();
-      if (unsubscribeCrosshair) unsubscribeCrosshair();
+      chart.timeScale().unsubscribeVisibleTimeRangeChange(redraw);
+      chart.unsubscribeCrosshairMove(redraw);
     };
-  }, [chart, indicatorStyle]);
+  }, [chart, indicatorStyle, result]);
 
   /* ================= STYLE UPDATE ================= */
 
@@ -190,6 +193,7 @@ export default function SMAPlot({
 
     drawBBCloud();
   }, [indicatorStyle, result]);
+  
   useEffect(() => {
     return () => {
       const canvas = canvasRef.current;

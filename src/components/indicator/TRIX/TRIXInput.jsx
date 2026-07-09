@@ -12,7 +12,7 @@ export default function TRIXInput(
   const trixData = rows
     .filter((d) => d.trix != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.trix),
     }));
 

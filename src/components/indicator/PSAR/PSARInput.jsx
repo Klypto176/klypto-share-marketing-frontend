@@ -10,7 +10,7 @@ export default function PSARInput(
   const psarData = rows
     .filter((d) => d.sar != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.sar),
     }))
     .sort((a, b) => a.time - b.time);

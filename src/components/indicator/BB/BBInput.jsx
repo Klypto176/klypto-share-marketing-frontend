@@ -7,29 +7,30 @@ export default function BBInput(
   const group = indicatorSeriesRef.current?.[instanceId || "BB"];
   if (!group) return;
 
-  const upper =
-    response?.data
-      ?.filter((d) => d.upper != null && d.time != null)
-      .map((d) => ({
-        time: Number(d.time),
-        value: Number(d.upper),
-      })) ?? [];
+  const upperRaw = Array.isArray(response?.data) ? response.data : (response?.data?.upper || []);
+  const lowerRaw = Array.isArray(response?.data) ? response.data : (response?.data?.lower || []);
+  const basisRaw = Array.isArray(response?.data) ? response.data : (response?.data?.basis || []);
 
-  const lower =
-    response?.data
-      ?.filter((d) => d.lower != null && d.time != null)
-      .map((d) => ({
-        time: Number(d.time),
-        value: Number(d.lower),
-      })) ?? [];
+  const upper = upperRaw
+    .filter((d) => (d.upper != null || d.value != null) && d.time != null)
+    .map((d) => ({
+      time: Number(d.time) + 19800,
+      value: Number(d.upper ?? d.value),
+    }));
 
-  const basis =
-    response?.data
-      ?.filter((d) => d.basis != null && d.time != null)
-      .map((d) => ({
-        time: Number(d.time),
-        value: Number(d.basis),
-      })) ?? [];
+  const lower = lowerRaw
+    .filter((d) => (d.lower != null || d.value != null) && d.time != null)
+    .map((d) => ({
+      time: Number(d.time) + 19800,
+      value: Number(d.lower ?? d.value),
+    }));
+
+  const basis = basisRaw
+    .filter((d) => (d.basis != null || d.value != null) && d.time != null)
+    .map((d) => ({
+      time: Number(d.time) + 19800,
+      value: Number(d.basis ?? d.value),
+    }));
 
   group?.upper?.setData(upper);
   group?.lower?.setData(lower);
@@ -38,6 +39,7 @@ export default function BBInput(
   if (group) {
     group.upperData = upper;
     group.lowerData = lower;
+    group.redrawCloud?.();
   }
 
   latestIndicatorValuesRef.current[instanceId || "BB"] = {

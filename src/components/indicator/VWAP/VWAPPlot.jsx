@@ -17,7 +17,7 @@ export default function VWAPPlot({
   useEffect(() => {
     if (!result?.data) return;
 
-    console.log("🔥 VWAP CREATE TRIGGERED");
+    console.log(" VWAP CREATE TRIGGERED");
 
     console.log("VWAP EFFECT", {
       vwap: result.data.vwap?.length,
@@ -29,7 +29,7 @@ export default function VWAPPlot({
 
     // CLEAR OLD
     if (indicatorSeriesRef.current?.VWAP) {
-      console.log("🧹 Clearing old VWAP series");
+      console.log(" Clearing old VWAP series");
 
       Object.values(indicatorSeriesRef.current.VWAP).forEach((s) => {
         if (s?.setData) {
@@ -134,7 +134,6 @@ export default function VWAPPlot({
 
     indicatorSeriesRef.current.VWAP = groupedSeries;
 
-    console.log("✅ FINAL SERIES", groupedSeries);
   }, [
     result,
     indicatorConfigs?.VWAP?.band1?.enabled,

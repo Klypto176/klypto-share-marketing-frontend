@@ -1,24 +1,26 @@
 export default function WMAInput(
   response,
   indicatorSeriesRef,
-  latestIndicatorValuesRef
-, instanceId) {
-
-  const rows = Array.isArray(response?.data) ? response.data : [];
-
-  /* ================= WMA ================= */
-
-  const wmaData = rows
-    .filter((d) => d.wma != null && d.time != null)
-    .map((d) => ({
-      time: Number(d.time),
-      value: Number(d.wma),
-    }))
-    .sort((a, b) => a.time - b.time);
+  latestIndicatorValuesRef,
+  instanceId
+) {
+  let rows = [];
+  if (Array.isArray(response?.data)) {
+    rows = response.data;
+  } else if (response?.data?.wma) {
+    rows = response.data.wma;
+  }
 
   const series = indicatorSeriesRef.current?.[instanceId || "WMA"];
-
   if (!series) return;
+
+  const wmaData = rows
+    .filter((d) => (d.wma != null || d.value != null) && d.time != null)
+    .map((d) => ({
+      time: Number(d.time) + 19800,
+      value: Number(d.wma ?? d.value),
+    }))
+    .sort((a, b) => a.time - b.time);
 
   /* ================= UPDATE WMA ================= */
 

@@ -132,10 +132,10 @@ export default function IchimokuCloudPlot({
 
       const bullishColor =
         indicatorStyle?.ICHIMOKU?.cloudFillBullish?.color ||
-        "rgba(0,200,0,0.25)";
+        "rgba(67, 160, 71, 0.1)";
       const bearishColor =
         indicatorStyle?.ICHIMOKU?.cloudFillBearish?.color ||
-        "rgba(255,0,0,0.25)";
+        "rgba(244, 67, 54, 0.1)";
 
       for (let i = 0; i < spanA.length - 1; i++) {
         const a1 = spanA[i];

@@ -108,6 +108,7 @@ export default function CCIPlot({
       groupedSeries.bgFill = bgSeries;
     }
 
+    groupedSeries.currentLevels = { upper, middle, lower };
     indicatorSeriesRef.current[id] = groupedSeries;
   }, [result, id]);
 
@@ -224,6 +225,10 @@ export default function CCIPlot({
     const redraw = () => {
       if (canvasRef.current) drawBBCloud();
     };
+
+    if (indicatorSeriesRef.current?.[id]) {
+      indicatorSeriesRef.current[id].redrawCloud = redraw;
+    }
 
     paneChart?.timeScale().subscribeVisibleTimeRangeChange(redraw);
     paneChart?.timeScale().subscribeVisibleLogicalRangeChange(redraw);

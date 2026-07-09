@@ -22,7 +22,7 @@ export default function ADInput(
   const adData = rows
     .filter((d) => d.ad != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time)+ 19800,
       value: Number(d.ad),
     }));
 
