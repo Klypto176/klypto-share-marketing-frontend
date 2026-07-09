@@ -84,6 +84,7 @@ export default function Candlestick() {
   const scannerIntervalRef = useRef(null);
   const pyodideRef = useRef(null);
   const lastIndicatorRequestRef = useRef(0);
+  const [goToMarker, setGoToMarker] = useState(null); // { x, y, label } for the GoTo box overlay
   const [isDeployed, setIsDeployed] = useState(false);
 
   const normalize = (s) => s?.replace(/\s+/g, " ").trim().toUpperCase();
@@ -2948,25 +2949,21 @@ json.dumps(result)
 
     if (!candlesRef.current?.length) return;
 
-    // Find the closest candle to the target timestamp
-    let closestIndex = 0;
-    let minDiff = Infinity;
-
+    // Find first candle at or AFTER the target timestamp.
+    // Using >= instead of min-abs-diff prevents e.g. "2 Jul 00:00" from
+    // snapping to "1 Jul 15:25" (which would be closer in absolute time).
+    let closestIndex = candlesRef.current.length - 1; // default to last candle
     for (let i = 0; i < candlesRef.current.length; i++) {
-      const diff = Math.abs(candlesRef.current[i].time - targetTimeSec);
-      if (diff < minDiff) {
-        minDiff = diff;
+      if (candlesRef.current[i].time >= targetTimeSec) {
         closestIndex = i;
+        break;
       }
     }
 
     console.log(
-      "targetTimeSec:",
-      targetTimeSec,
-      "closest candle time:",
-      candlesRef.current[closestIndex]?.time,
-      "diff:",
-      minDiff,
+      "targetTimeSec:", targetTimeSec,
+      "→ resolved candle time:", candlesRef.current[closestIndex]?.time,
+      "index:", closestIndex,
     );
 
     // Use setVisibleRange with actual timestamps (Time objects)
@@ -2984,6 +2981,34 @@ json.dumps(result)
       });
     } catch (e) {
       console.warn("Could not set visible range:", e);
+    }
+
+    // --- GO TO BOX MARKER (HTML overlay) ---
+    if (seriesRef.current && candlesRef.current[closestIndex]) {
+      const targetCandle = candlesRef.current[closestIndex];
+
+      // Format label lines — targetCandle.time already has +19800 embedded,
+      // so reading getUTC* gives correct IST time matching the chart x-axis
+      const labelDate = new Date(targetCandle.time * 1000);
+      const pad = (n) => String(n).padStart(2, '0');
+      const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const yy = String(labelDate.getUTCFullYear()).slice(2);
+      const line1 = `${days[labelDate.getUTCDay()]} ${pad(labelDate.getUTCDate())} ${months[labelDate.getUTCMonth()]} '${yy}`;
+      const line2 = `${pad(labelDate.getUTCHours())}:${pad(labelDate.getUTCMinutes())}`;
+
+      // Compute pixel position from chart APIs (runs after setVisibleRange)
+      requestAnimationFrame(() => {
+        try {
+          const xPx = chartRef.current.timeScale().timeToCoordinate(targetCandle.time);
+          const yPx = seriesRef.current.priceToCoordinate(targetCandle.high);
+          if (xPx != null && yPx != null) {
+            setGoToMarker({ x: xPx, y: yPx, line1, line2 });
+          }
+        } catch (e) {
+          console.warn("Could not place Go To marker:", e);
+        }
+      });
     }
   };
 
@@ -3257,7 +3282,55 @@ json.dumps(result)
                         minHeight: 450,
                         cursor: activeTool ? "crosshair" : "default",
                       }}
+                      onClick={() => setGoToMarker(null)}
                     >
+                      {/* Go To Date box marker overlay */}
+                      {goToMarker && (
+                        <div
+                          style={{
+                            position: "absolute",
+                            left: goToMarker.x,
+                            top: goToMarker.y - 58,
+                            transform: "translateX(-50%)",
+                            zIndex: 50,
+                            pointerEvents: "none",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            gap: 0,
+                          }}
+                        >
+                          <div
+                            style={{
+                              background: "#1e222d",
+                              border: "1px solid #434651",
+                              borderRadius: "4px",
+                              padding: "4px 8px",
+                              color: "#d1d4dc",
+                              fontSize: "11px",
+                              fontFamily: "'Inter', sans-serif",
+                              fontWeight: 500,
+                              lineHeight: "1.5",
+                              whiteSpace: "nowrap",
+                              textAlign: "center",
+                              boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
+                            }}
+                          >
+                            <div style={{ color: "#a3a6af", fontSize: "10px" }}>{goToMarker.line1}</div>
+                            <div style={{ color: "#ffffff", fontWeight: 700, fontSize: "12px" }}>{goToMarker.line2}</div>
+                          </div>
+                          {/* Arrow pointing down to candle */}
+                          <div
+                            style={{
+                              width: 0,
+                              height: 0,
+                              borderLeft: "5px solid transparent",
+                              borderRight: "5px solid transparent",
+                              borderTop: "5px solid #434651",
+                            }}
+                          />
+                        </div>
+                      )}
                       <DrawingToolbox
                         selectedLine={selectedLine}
                         position={toolboxPos}
