@@ -103,16 +103,18 @@ const LeftDepth = ({ onClose, predictResults, setSelectedCurrency, isPredicting,
           <div style={styles.progressHeader}>
             <span>{predictionStatus.phase === 'fetching_ticks' ? 'Fetching Ticks...' : 'Predicting AI...'}</span>
             <span>
-              {predictionStatus.total ? `${predictionStatus.processed || 0} / ${predictionStatus.total}` : ''}
+              {predictionStatus.total ? `${predictionStatus.processed || 0} / ${predictionStatus.total} (${predictionStatus.progress || Math.round(((predictionStatus.processed || 0) / predictionStatus.total) * 100)}%)` : ''}
             </span>
           </div>
           <div style={styles.progressBarBg}>
             <div 
               style={{
                 ...styles.progressBarFill, 
-                width: predictionStatus.total 
-                  ? `${Math.max(5, ((predictionStatus.processed || 0) / predictionStatus.total) * 100)}%` 
-                  : "5%"
+                width: predictionStatus.progress 
+                  ? `${Math.max(5, predictionStatus.progress)}%`
+                  : predictionStatus.total 
+                    ? `${Math.max(5, ((predictionStatus.processed || 0) / predictionStatus.total) * 100)}%` 
+                    : "5%"
               }} 
             />
           </div>
