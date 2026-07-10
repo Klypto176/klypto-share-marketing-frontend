@@ -39,7 +39,7 @@ export const ChartProprties = {
     mouseWheel: true,
     pressedMouseMove: true,
     horzTouchDrag: true,
-    vertTouchDrag: true,
+    vertTouchDrag: false,
   },
   handleScale: {
     mouseWheel: true,
@@ -55,8 +55,8 @@ export const ChartProprties = {
     autoScale: true,
     mode: 0,
     scaleMargins: {
-      top: 0.28,
-      bottom: 0.18,
+      top: 0.22,
+      bottom: 0.22,
     },
     borderColor: "rgba(120, 123, 134, 0.4)",
   },

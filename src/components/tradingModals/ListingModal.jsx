@@ -5,46 +5,31 @@ import { Form, InputGroup, ListGroup } from "react-bootstrap";
 import { Spinner } from "./Spinner";
 import apiService from "../../services/apiServices";
 import { useDebounce } from "../../util/common";
-import { getStockLogo } from "../../util/stockSymbol/helper";
 import NSE from "../../assets/NSE.svg";
 import BSE from "../../assets/BSE.svg";
 import axios from "axios";
 
 
 const SymbolAvatar = ({ code, symbol }) => {
-  const [error, setError] = useState(false);
-
-  if (error) {
-    const initial = (symbol || code || "S").charAt(0).toUpperCase();
-    return (
-      <div
-        style={{
-          width: 24,
-          height: 24,
-          borderRadius: "50%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "var(--accent-color)",
-          color: "#fff",
-          fontSize: "12px",
-          fontWeight: "bold",
-          flexShrink: 0,
-        }}
-      >
-        {initial}
-      </div>
-    );
-  }
-
+  const initial = (symbol || code || "S").charAt(0).toUpperCase();
   return (
-    <img
-      src={getStockLogo(code)}
-      width={24}
-      height={24}
-      style={{ borderRadius: "50%", flexShrink: 0, objectFit: "cover" }}
-      onError={() => setError(true)}
-    />
+    <div
+      style={{
+        width: 24,
+        height: 24,
+        borderRadius: "50%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "var(--accent-color)",
+        color: "#fff",
+        fontSize: "12px",
+        fontWeight: "bold",
+        flexShrink: 0,
+      }}
+    >
+      {initial}
+    </div>
   );
 };
 
