@@ -61,6 +61,11 @@ import DrawingToolbar from "../components/tradingModals/DrawingToolbar";
 import DrawingToolbox from "../components/tradingModals/DrawingToolbox";
 import ChartErrorState from "../components/tradingModals/ChartErrorState";
 
+const getLocalDateValue = (date = new Date()) =>
+  new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+    .toISOString()
+    .split("T")[0];
+
 export default function Candlestick() {
   const chartRef = useRef();
   const containerRef = useRef();
@@ -154,17 +159,7 @@ export default function Candlestick() {
   });
 
   const [activePropertyDialog, setActivePropertyDialog] = useState(null);
-  const [fromDate, setFromDate] = useState(() => {
-    try {
-      const saved = localStorage.getItem("chart_fromDate");
-      if (saved) return saved;
-    } catch (e) {}
-    const d = new Date();
-    d.setMonth(d.getMonth() - 7);
-    const minDate = new Date("2024-10-01");
-    if (d < minDate) return "2024-10-01";
-    return d.toISOString().split("T")[0];
-  });
+  const [fromDate, setFromDate] = useState("2024-10-01");
 
   const handleSetFromDate = (newDate) => {
     const minDate = new Date("2024-10-01");
@@ -178,13 +173,7 @@ export default function Candlestick() {
       setFromDate(d.toISOString().split("T")[0]);
     }
   };
-  const [toDate, setToDate] = useState(() => {
-    try {
-      const saved = localStorage.getItem("chart_toDate");
-      if (saved) return saved;
-    } catch (e) {}
-    return new Date().toISOString().split("T")[0];
-  });
+  const [toDate, setToDate] = useState(() => getLocalDateValue());
   const [selectedIndicator, setSelectedIndicator] = useState(() => {
     try {
       const saved = localStorage.getItem("chart_selectedIndicator");
@@ -2281,7 +2270,7 @@ json.dumps(result)
       fromDate: fromDate,
       toDate: toDate,
     };
-    console.log("📬 getManualHistoricalData Payload:", historicalPayload);
+    console.log("getManualHistoricalData Payload:", historicalPayload);
     if (emitRef.current) {
       emitRef.current(EVENTS.CHART.GET, historicalPayload);
     }
@@ -2305,7 +2294,7 @@ json.dumps(result)
       }
     },
     handleHistoricalData: (response) => {
-      console.log("HISTORICAL DATA RESPONSE", response?.data);
+      console.log(selectedCurrency?.name,"HISTORICAL DATA RESPONSE", response?.data);
       if (!chartRef.current || chartDisposedRef.current) return;
 
       const raw = response?.data || [];
@@ -2328,7 +2317,7 @@ json.dumps(result)
         response?.symbol || raw[0]?.symbol || selectedCurrency?.name;
 
       const parsedData = [];
-      for (let i = 0; i < raw.length; i++) {
+      for (let i = 0; i < raw?.length; i++) {
         const d = raw[i];
         const time = Number(d.time) + IST_OFFSET;
         const open = parseFloat(d.open);
@@ -2365,13 +2354,13 @@ json.dumps(result)
 
       candlesRef.current = data;
 
-      if (!data.length) {
+      if (!data?.length) {
         setMainChartLoading(false);
         toast.error(`No historical data found for ${symbolFromResponse}`);
         return;
       }
 
-      const lastPoint = data[data.length - 1];
+      const lastPoint = data[data?.length - 1];
 
       setDetailsList((prev) => {
         const existingIdx = prev.findIndex(
@@ -2624,9 +2613,11 @@ json.dumps(result)
       const ticks = Array.isArray(tickOrArray) ? tickOrArray : [tickOrArray];
 
       ticks.forEach((tick) => {
+        let updatedBar = null;
         try {
           const activeSymbol = normalize(selectedCurrency?.name);
           const tickSymbol = normalize(tick.symbol);
+          const tickData = tick?.tick ?? tick?.data ?? tick;
 
           if (!isSameSymbolName(tickSymbol, activeSymbol)) return;
 
@@ -2642,7 +2633,11 @@ json.dumps(result)
           )
             return;
 
-          let rawTickTime = tick?.data?.time;
+          let rawTickTime =
+            tickData?.time ??
+            tickData?.datetime ??
+            tickData?.exchange_feed_time ??
+            tickData?.exchange_trade_time;
           let tickTime = Number(rawTickTime);
 
           if (!Number.isFinite(tickTime)) {
@@ -2657,33 +2652,48 @@ json.dumps(result)
 
           if (!Number.isFinite(normalizedTime) || normalizedTime <= 0) return;
 
-          const price = Number(
-            tick.data.close ?? tick.data.price ?? tick.data.ltp,
+          const open = Number(tickData?.open);
+          const high = Number(tickData?.high);
+          const low = Number(tickData?.low);
+          const close = Number(
+            tickData?.close ??
+              tickData?.price ??
+              tickData?.ltp ??
+              tickData?.last_traded_price,
           );
+          const price = Number.isFinite(close)
+            ? close
+            : Number(tickData?.last_traded_price);
           if (!Number.isFinite(price)) return;
 
-          let updatedBar;
           if (
             !currentCandleRef.current ||
             normalizedTime > currentCandleRef.current.time
           ) {
             updatedBar = {
               time: normalizedTime,
-              open: price,
-              high: price,
-              low: price,
+              open: Number.isFinite(open) ? open : price,
+              high: Number.isFinite(high) ? high : price,
+              low: Number.isFinite(low) ? low : price,
               close: price,
-              volume: Number(tick.data.volume || 0),
+              volume: Number(tickData?.volume || 0),
             };
           } else {
             updatedBar = {
               ...currentCandleRef.current,
-              high: Math.max(currentCandleRef.current.high, price),
-              low: Math.min(currentCandleRef.current.low, price),
+              open: Number.isFinite(open)
+                ? open
+                : currentCandleRef.current.open,
+              high: Number.isFinite(high)
+                ? high
+                : Math.max(currentCandleRef.current.high, price),
+              low: Number.isFinite(low)
+                ? low
+                : Math.min(currentCandleRef.current.low, price),
               close: price,
               volume:
                 Number(currentCandleRef.current.volume || 0) +
-                Number(tick.data.volume || 0),
+                Number(tickData?.volume || 0),
             };
           }
 
@@ -2721,6 +2731,8 @@ json.dumps(result)
             e,
           );
         }
+
+        if (!updatedBar) return;
 
         if (ohlcvDisplayRef.current) {
           const el = ohlcvDisplayRef.current;
@@ -2865,12 +2877,14 @@ json.dumps(result)
     setSymbolTransitioning(true);
 
     if (connected && selectedCurrency && timeframeValue) {
-      emit(EVENTS.CHART.GET, {
+      const historicalPayload = {
         symbol: selectedCurrency?.name,
         interval: timeframeValue,
         fromDate: fromDate,
         toDate: toDate,
-      });
+      };
+      console.log("getManualHistoricalData Payload:", historicalPayload);
+      emit(EVENTS.CHART.GET, historicalPayload);
     }
 
     setMainChartLoading(true);

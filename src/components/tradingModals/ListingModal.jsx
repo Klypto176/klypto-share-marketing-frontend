@@ -118,7 +118,7 @@ export const ListingModal = ({
     setError(null);
 
     try {
-      const response = await axios.get(`http://192.168.1.15:8000/api/indicators`);
+      const response = await axios.get(`http://192.168.1.8:8000/api/indicators`);
 
       console.log("indicator API response:", response?.data?.data);
 

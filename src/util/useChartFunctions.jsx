@@ -883,7 +883,7 @@ async function fetchDataForIndicators(
     const response = await new Promise((resolve, reject) => {
       indicatorFetchQueue = indicatorFetchQueue.then(() => {
         return new Promise((innerResolve) => {
-          const tempSocket = io("http://192.168.1.15:8000", { transports: ["websocket", "polling"] });
+          const tempSocket = io("http://192.168.1.8:8000", { transports: ["websocket", "polling"] });
 
           tempSocket.emit("getIndicatorDetails", {
             symbol: selectedCurrency?.name,
