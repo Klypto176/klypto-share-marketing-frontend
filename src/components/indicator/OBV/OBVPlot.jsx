@@ -40,7 +40,7 @@ export default function OBVPlot({
       const styleConfig = indicatorStyle?.OBV?.[lineName];
 
       // Only add BB lines if MA is SMA and Bollinger Bands exist
-      if ((lineName === "bbUpper" || lineName === "bbLower") && !(maType === "SMA" && hasBB)) return;
+      if ((lineName === "bbUpper" || lineName === "bbLower") && !(maType === "SMA + Bollinger Bands" && hasBB)) return;
 
       const series = addSeries("OBV", LineSeries, {
         color: styleConfig?.color || rowConfig?.color || "#26a69a",
@@ -95,7 +95,7 @@ export default function OBVPlot({
     const fill = indicatorStyle?.OBV?.bbFill;
     const hasBB = upperData.length && lowerData.length;
 
-    if (!hasBB || !fill?.visible || maType !== "SMA") {
+    if (!hasBB || !fill?.visible || maType !== "SMA + Bollinger Bands") {
       // Clear canvas if BB not applicable
       if (canvasRef.current) {
         const ctx = canvasRef.current.getContext("2d");
@@ -145,6 +145,10 @@ export default function OBVPlot({
     if (!chart) return;
 
     const redraw = () => drawBBCloud();
+
+    if (indicatorSeriesRef.current?.OBV) {
+      indicatorSeriesRef.current.OBV.redrawCloud = redraw;
+    }
 
     const unsubscribeTime = chart.timeScale().subscribeVisibleLogicalRangeChange
       ? chart.timeScale().subscribeVisibleLogicalRangeChange(redraw)

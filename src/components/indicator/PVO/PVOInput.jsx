@@ -5,15 +5,15 @@ export default function PVOInput(response, indicatorSeriesRef, latestIndicatorVa
   // ---------- MAP DATA ----------
   const pvoData = rows
     .filter((d) => d.pvo != null && d.time != null)
-    .map((d) => ({ time: Number(d.time), value: Number(d.pvo) }));
+    .map((d) => ({ time: Number(d.time) + 19800, value: Number(d.pvo) }));
 
   const signalData = rows
     .filter((d) => d.signal != null && d.time != null)
-    .map((d) => ({ time: Number(d.time), value: Number(d.signal) }));
+    .map((d) => ({ time: Number(d.time) + 19800, value: Number(d.signal) }));
 
   const histData = rows
     .filter((d) => d.hist != null && d.time != null)
-    .map((d) => ({ time: Number(d.time), value: Number(d.hist) }));
+    .map((d) => ({ time: Number(d.time) + 19800, value: Number(d.hist) }));
 
   // ---------- UPDATE SERIES IF EXISTS ----------
   const series = indicatorSeriesRef.current?.[instanceId || "PVO"];

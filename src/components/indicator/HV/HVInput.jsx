@@ -10,7 +10,7 @@ export default function HVInput(
   const hvData = rows
     .filter((d) => d.historical_Vol != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.historical_Vol),
     }));
 

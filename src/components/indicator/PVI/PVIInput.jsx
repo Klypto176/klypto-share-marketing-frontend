@@ -13,14 +13,14 @@ if (!pviSeries && !emaSeries) return;
 const pviData = rows
 .filter((d) => d.pvi != null && d.time != null)
 .map((d) => ({
-time: Number(d.time),
+time: Number(d.time) + 19800,
 value: Number(d.pvi),
 }));
 
 const emaData = rows
 .filter((d) => d.pviEma != null && d.time != null)
 .map((d) => ({
-time: Number(d.time),
+time: Number(d.time) + 19800,
 value: Number(d.pviEma),
 }));
 

@@ -10,14 +10,25 @@ export default function BBPERBPlot({
   /* ================= CREATE ================= */
 
   useEffect(() => {
-    const percentB = result?.data?.percentB;
+    // Handle both flat array (with bbperb key) and nested object (percentB key)
+    const rawArr = Array.isArray(result?.data)
+      ? result.data
+      : Array.isArray(result?.data?.percentB)
+        ? result.data.percentB
+        : [];
 
-    console.log(percentB, "----------------------->>>>>>>>>>>");
+    const percentB = rawArr
+      .filter((d) => (d.percentB != null || d.bbperb != null || d.value != null) && d.time != null)
+      .map((d) => ({
+        time: Number(d.time) + 19800,
+        value: Number(d.percentB ?? d.bbperb ?? d.value),
+      }))
+      .sort((a, b) => a.time - b.time);
 
-    if (!Array.isArray(percentB) || percentB?.length === 0) {
-      console.log(":x: BBPERB not plotting", result);
+    if (!percentB.length) {
+      console.log("❌ BBPERB not plotting", result);
       return;
-    } // :fire: REMOVE OLD
+    } // fire: REMOVE OLD
 
     if (indicatorSeriesRef.current?.BBPERB) {
       Object.values(indicatorSeriesRef.current.BBPERB).forEach((s) => {
@@ -37,7 +48,7 @@ export default function BBPERBPlot({
       lastValueVisible: true,
     });
 
-    percentBSeries.setData(percentB); // dynamic band values
+    percentBSeries.setData(percentB);
 
     const overboughtVal = indicatorStyle?.BBPERB?.overbought?.value ?? 1;
     const middleVal = indicatorStyle?.BBPERB?.middleBand?.value ?? 0.5;

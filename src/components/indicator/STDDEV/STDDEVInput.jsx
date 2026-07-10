@@ -17,7 +17,7 @@ export default function STDDEVInput(
   if (!series) return;
 
   /* 🔥 UPDATE */
-  series.STDDEV?.setData(STDDEVData);
+  series.stddev?.setData(STDDEVData);
 
   /* 🔥 VALUES */
   latestIndicatorValuesRef.current[instanceId || "STDDEV"] = {

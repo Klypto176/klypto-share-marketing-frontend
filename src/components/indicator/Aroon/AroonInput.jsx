@@ -4,12 +4,24 @@ export default function AroonInput(
   latestIndicatorValuesRef,
   instanceId
 ) {
-  const upSeries = response?.data?.aroonUpSeries ?? [];
-  const downSeries = response?.data?.aroonDownSeries ?? [];
+  const upRaw = Array.isArray(response?.data) ? response.data : (response?.data?.aroonUp || response?.data?.aroonUpSeries || []);
+  const downRaw = Array.isArray(response?.data) ? response.data : (response?.data?.aroonDown || response?.data?.aroonDownSeries || []);
 
-  console.log(upSeries, downSeries, "serrrrrrrrrrrr")
+  const upSeries = upRaw
+    .filter((d) => (d.aroonUp != null || d.value != null) && d.time != null)
+    .map((d) => ({
+      time: Number(d.time) + 19800,
+      value: Number(d.aroonUp ?? d.value),
+    }))
+    .sort((a, b) => a.time - b.time);
 
-  /* ---------- SAFETY CHECK ---------- */
+  const downSeries = downRaw
+    .filter((d) => (d.aroonDown != null || d.value != null) && d.time != null)
+    .map((d) => ({
+      time: Number(d.time) + 19800,
+      value: Number(d.aroonDown ?? d.value),
+    }))
+    .sort((a, b) => a.time - b.time);
 
   if (!indicatorSeriesRef.current[instanceId || "AROON"]) {
     indicatorSeriesRef.current[instanceId || "AROON"] = {};
@@ -17,19 +29,13 @@ export default function AroonInput(
 
   const series = indicatorSeriesRef.current[instanceId || "AROON"];
 
-  /* ---------- UPDATE SERIES ---------- */
-
   series.aroonUp?.setData(upSeries);
   series.aroonDown?.setData(downSeries);
-
-  /* ---------- UPDATE LATEST VALUE ---------- */
 
   latestIndicatorValuesRef.current[instanceId || "AROON"] = {
     aroonUp: upSeries[upSeries?.length - 1]?.value,
     aroonDown: downSeries[downSeries?.length - 1]?.value,
   };
-
-  /* ---------- STORE RESULT ---------- */
 
   series.result = {
     data: {

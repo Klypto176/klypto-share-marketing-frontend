@@ -65,6 +65,13 @@ export default function EMAInput(
   if (maType === "SMA + Bollinger Bands") {
     series.bbUpper?.setData(bbUpperData);
     series.bbLower?.setData(bbLowerData);
+    series.bbUpperData = bbUpperData;
+    series.bbLowerData = bbLowerData;
+  } else {
+    series.bbUpper?.setData([]);
+    series.bbLower?.setData([]);
+    series.bbUpperData = [];
+    series.bbLowerData = [];
   }
 
   /* ================= UPDATE HOVER VALUES ================= */
@@ -72,14 +79,12 @@ export default function EMAInput(
     latestIndicatorValuesRef.current[indicatorId] = {};
   }
 
-  latestIndicatorValuesRef.current[indicatorId].ema =
-    emaData[emaData.length - 1]?.value ?? null;
-  latestIndicatorValuesRef.current[indicatorId].smoothingMA =
-    smoothingData[smoothingData.length - 1]?.value ?? null;
-  latestIndicatorValuesRef.current[indicatorId].bbUpper =
-    bbUpperData[bbUpperData.length - 1]?.value ?? null;
-  latestIndicatorValuesRef.current[indicatorId].bbLower =
-    bbLowerData[bbLowerData.length - 1]?.value ?? null;
+  latestIndicatorValuesRef.current[indicatorId] = {
+    ema: emaData[emaData.length - 1]?.value ?? null,
+    smoothingMA: smoothingData[smoothingData.length - 1]?.value ?? null,
+    bbUpper: bbUpperData[bbUpperData.length - 1]?.value ?? null,
+    bbLower: bbLowerData[bbLowerData.length - 1]?.value ?? null,
+  };
 
   /* ================= STORE RESULT ================= */
   indicatorSeriesRef.current[indicatorId].result = {

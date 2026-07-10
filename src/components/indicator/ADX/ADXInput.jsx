@@ -9,7 +9,7 @@ export default function ADXInput(
   const adxData = rows
     .filter((d) => d.adx != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time)+ 19800,
       value: Number(d.adx),
     }))
     .sort((a, b) => a.time - b.time);

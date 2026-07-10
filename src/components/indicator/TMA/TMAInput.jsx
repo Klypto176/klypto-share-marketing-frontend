@@ -10,7 +10,7 @@ export default function TMAInput(
     response?.data
       ?.filter((d) => d.tma != null && d.time != null)
       .map((d) => ({
-        time: Number(d.time),
+        time: Number(d.time)+ 19800,
         value: Number(d.tma),
       })) ?? [];
 

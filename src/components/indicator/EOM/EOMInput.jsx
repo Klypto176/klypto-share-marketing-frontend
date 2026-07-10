@@ -4,39 +4,42 @@ export default function EOMInput(
   latestIndicatorValuesRef,
   instanceId
 ) {
-  /* :fire: SAFE DATA */
-  const rows = Array.isArray(response?.data) ? response.data : [];
+  let rows = [];
+  if (Array.isArray(response?.data)) {
+    rows = response.data;
+  } else if (response?.data?.eom) {
+    rows = response.data.eom;
+  }
 
   if (!rows.length) {
-    console.log(":x: EOM rows empty");
+    console.log("❌ EOM rows empty");
     return;
   }
 
   const group = indicatorSeriesRef.current?.[instanceId || "EOM"];
 
   if (!group || !group.eom) {
-    console.log(":x: EOM series not ready");
+    console.log("❌ EOM series not ready");
     return;
-  } /* :fire: MAP DATA */
+  }
 
   const eomData = rows
-    .filter((d) => d.eom != null && d.time != null)
+    .filter((d) => (d.eom != null || d.value != null) && d.time != null)
     .map((d) => ({
       time: Number(d.time),
-      value: Number(d.eom),
+      value: Number(d.eom ?? d.value),
     }));
 
   if (!eomData.length) {
-    console.log(":x: EOM mapped empty");
+    console.log("❌ EOM mapped empty");
     return;
-  } /* :fire: FORCE UPDATE (IMPORTANT) */
+  }
 
   group.eom.setData([...eomData]); // clone = force refresh
-  /* :fire: UPDATE LAST VALUE */
 
   latestIndicatorValuesRef.current[instanceId || "EOM"] = {
     eom: eomData[eomData.length - 1]?.value ?? null,
   };
 
-  console.log(":white_check_mark: EOM updated", eomData.length);
+  console.log("✅ EOM updated", eomData.length);
 }

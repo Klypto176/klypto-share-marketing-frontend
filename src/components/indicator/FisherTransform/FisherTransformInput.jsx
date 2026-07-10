@@ -25,14 +25,14 @@ export default function FTInput(
   const fisherData = rows
     .filter((d) => d.fish != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.fish),
     }));
 
   const triggerData = rows
     .filter((d) => d.trigger != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.trigger),
     }));
 

@@ -192,9 +192,9 @@ const DrawingToolbox = ({ selectedLine, position, onUpdate, onDelete, onClose })
         <LuTrash2 size={16} />
       </button>
 
-      <div style={{ display: 'flex', alignItems: 'center', opacity: 0.6, cursor: 'pointer', padding: '4px' }}>
+      {/* <div style={{ display: 'flex', alignItems: 'center', opacity: 0.6, cursor: 'pointer', padding: '4px' }}>
          ...
-      </div>
+      </div> */}
     </div>
   );
 };

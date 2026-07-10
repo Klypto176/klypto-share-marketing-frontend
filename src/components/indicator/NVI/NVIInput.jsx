@@ -4,25 +4,26 @@ export default function NVIInput(
   latestIndicatorValuesRef,
   instanceId
 ) {
-  const rows = Array.isArray(response?.data) ? response.data : [];
+  const nviRaw = Array.isArray(response?.data) ? response.data : (response?.data?.nvi || []);
+  const emaRaw = Array.isArray(response?.data) ? response.data : (response?.data?.nviEma || response?.data?.pviEma || []);
 
   const nviSeries = indicatorSeriesRef.current?.[instanceId || "NVI"]?.nvi;
   const emaSeries = indicatorSeriesRef.current?.[instanceId || "NVI"]?.nviEma;
 
   if (!nviSeries && !emaSeries) return;
 
-  const nviData = rows
-    .filter((d) => d.nvi != null && d.time != null)
+  const nviData = nviRaw
+    .filter((d) => (d.nvi != null || d.value != null) && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
-      value: Number(d.nvi),
+      time: Number(d.time) + 19800,
+      value: Number(d.nvi ?? d.value),
     }));
 
-  const emaData = rows
-    .filter((d) => d.nviEma != null && d.time != null)
+  const emaData = emaRaw
+    .filter((d) => (d.nviEma != null || d.value != null || d.pviEma != null) && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
-      value: Number(d.nviEma),
+      time: Number(d.time) + 19800,
+      value: Number(d.nviEma ?? d.pviEma ?? d.value),
     }));
 
   if (nviSeries) nviSeries.setData(nviData);

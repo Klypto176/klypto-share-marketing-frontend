@@ -11,7 +11,7 @@ export default function IchimokuCloudInput(
   const conversionData = rows
     .filter((d) => d.conversionLine != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.conversionLine),
     }))
     .sort((a, b) => a.time - b.time);
@@ -21,7 +21,7 @@ export default function IchimokuCloudInput(
   const baseData = rows
     .filter((d) => d.baseLine != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.baseLine),
     }))
     .sort((a, b) => a.time - b.time);
@@ -31,7 +31,7 @@ export default function IchimokuCloudInput(
   const leadLine1Data = rows
     .filter((d) => d.leadLine1 != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.leadLine1),
     }))
     .sort((a, b) => a.time - b.time);
@@ -41,7 +41,7 @@ export default function IchimokuCloudInput(
   const leadLine2Data = rows
     .filter((d) => d.leadLine2 != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.leadLine2),
     }))
     .sort((a, b) => a.time - b.time);
@@ -51,7 +51,7 @@ export default function IchimokuCloudInput(
   const laggingData = rows
     .filter((d) => d.laggingSpan != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.laggingSpan),
     }))
     .sort((a, b) => a.time - b.time);
@@ -66,6 +66,11 @@ export default function IchimokuCloudInput(
   series.leadLine1?.setData(leadLine1Data);
   series.leadLine2?.setData(leadLine2Data);
   series.laggingSpan?.setData(laggingData);
+
+  series.spanA = leadLine1Data;
+  series.spanB = leadLine2Data;
+  
+  series.redrawCloud?.();
 
   /* ================= UPDATE HOVER VALUES ================= */
 

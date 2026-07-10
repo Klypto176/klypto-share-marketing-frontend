@@ -2,7 +2,7 @@ import axios from "axios";
 import { getToken } from "../pages/auth/protected";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://192.168.1.7:5000";
+  import.meta.env.VITE_API_BASE_URL ;
 
 // 🔹 Create axios instance
 const api = axios.create({

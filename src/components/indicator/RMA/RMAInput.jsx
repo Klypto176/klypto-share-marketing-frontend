@@ -10,7 +10,7 @@ export default function RMAInput(
     response?.data
       ?.filter((d) => d.rma != null && d.time != null)
       .map((d) => ({
-        time: Number(d.time),
+        time: Number(d.time) + 19800,
         value: Number(d.rma),
       })) ?? [];
 
