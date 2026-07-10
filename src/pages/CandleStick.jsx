@@ -3360,6 +3360,14 @@ json.dumps(result)
         from: fromCandle.time,
         to: toCandle.time,
       });
+      setMainChartAutoScale(true);
+      if (liveAutoScaleResetTimerRef.current) {
+        clearTimeout(liveAutoScaleResetTimerRef.current);
+      }
+      liveAutoScaleResetTimerRef.current = setTimeout(() => {
+        setMainChartAutoScale(false);
+        liveAutoScaleResetTimerRef.current = null;
+      }, 1200);
     } catch (e) {
       console.warn("Could not set visible range:", e);
     }
