@@ -5,7 +5,7 @@ import { io } from "socket.io-client";
 import Swal from "sweetalert2";
 let globalFetchSessionId = 0;
 let globalFetchContextKey = "";
-const INDICATOR_REQUEST_TIMEOUT_MS = 45000;
+const INDICATOR_REQUEST_TIMEOUT_MS = 120000;
 const INDICATOR_CONCURRENCY_LIMIT = 2;
 
 const IST_OFFSET = 19800;
@@ -90,6 +90,7 @@ export default function useChartFunctions({
             fromDate,
             toDate,
             socketRef,
+            null,
             null,
             result,
           );
@@ -933,6 +934,68 @@ async function fetchBatchIndicatorData(
   const batchRequestId = `indicator_batch_${Date.now()}_${Math.random()
     .toString(36)
     .slice(2, 8)}`;
+  const expectedContext = {
+    symbol: selectedCurrency?.name,
+    interval: timeframeValue,
+    fromDate,
+    toDate,
+  };
+  const requests = selectedIndicator.map(({ id, type }) => ({
+    id,
+    type,
+    requestId: `indicator_${id}_${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 8)}`,
+    ...(indicatorConfigs?.[id] || indicatorConfigs?.[type] || {}),
+  }));
+  const normalizeSymbol = (value) =>
+    value == null ? value : String(value).trim().toUpperCase();
+  const normalizeDate = (value) =>
+    value == null ? value : String(value).split("T")[0];
+  const normalizeInterval = (value) => {
+    if (value == null) return value;
+    const normalized = String(value).trim().toUpperCase();
+    const intervalMap = {
+      "1M": "ONE_MINUTE",
+      "1MIN": "ONE_MINUTE",
+      "1MINUTE": "ONE_MINUTE",
+      "ONE_MINUTE": "ONE_MINUTE",
+      "5M": "FIVE_MINUTE",
+      "5MIN": "FIVE_MINUTE",
+      "5MINUTE": "FIVE_MINUTE",
+      "FIVE_MINUTE": "FIVE_MINUTE",
+      "15M": "FIFTEEN_MINUTE",
+      "15MIN": "FIFTEEN_MINUTE",
+      "15MINUTE": "FIFTEEN_MINUTE",
+      "FIFTEEN_MINUTE": "FIFTEEN_MINUTE",
+      "1H": "ONE_HOUR",
+      "1HR": "ONE_HOUR",
+      "1HOUR": "ONE_HOUR",
+      "ONE_HOUR": "ONE_HOUR",
+      "1D": "ONE_DAY",
+      "1DAY": "ONE_DAY",
+      "ONE_DAY": "ONE_DAY",
+    };
+
+    return intervalMap[normalized] || normalized;
+  };
+  const responseContextMatches = (data) => {
+    const responseSymbol = data?.symbol ?? data?.meta?.symbol;
+    const responseInterval = data?.interval ?? data?.meta?.interval;
+    const responseFromDate = data?.fromDate ?? data?.meta?.fromDate;
+    const responseToDate = data?.toDate ?? data?.meta?.toDate;
+
+    return (
+      (responseSymbol == null ||
+        normalizeSymbol(responseSymbol) === normalizeSymbol(expectedContext.symbol)) &&
+      (responseInterval == null ||
+        normalizeInterval(responseInterval) === normalizeInterval(expectedContext.interval)) &&
+      (responseFromDate == null ||
+        normalizeDate(responseFromDate) === normalizeDate(expectedContext.fromDate)) &&
+      (responseToDate == null ||
+        normalizeDate(responseToDate) === normalizeDate(expectedContext.toDate))
+    );
+  };
 
   try {
     const response = await new Promise((resolve, reject) => {
@@ -953,6 +1016,7 @@ async function fetchBatchIndicatorData(
 
       const onResponse = (data) => {
         if (data?.batchRequestId !== batchRequestId) return;
+        if (!responseContextMatches(data)) return;
         clearTimeout(timeoutId);
         cleanup();
         resolve(data);
@@ -970,22 +1034,53 @@ async function fetchBatchIndicatorData(
 
       socketRef.current.emit("getIndicatorDetailsBatch", {
         batchRequestId,
-        symbol: selectedCurrency?.name,
-        interval: timeframeValue,
-        fromDate,
-        toDate,
-        requests: selectedIndicator.map(({ id, type }) => ({
-          id,
-          type,
-          requestId: `indicator_${id}_${Date.now()}_${Math.random()
-            .toString(36)
-            .slice(2, 8)}`,
-          ...(indicatorConfigs?.[id] || indicatorConfigs?.[type] || {}),
-        })),
+        ...expectedContext,
+        requests,
       });
     });
 
-    return Array.isArray(response?.results) ? response.results : [];
+    const rawResults = Array.isArray(response?.results) ? response.results : [];
+    const requestQueuesByType = requests.reduce((acc, request) => {
+      const key = request.type;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(request);
+      return acc;
+    }, {});
+    const usedRequestIds = new Set();
+
+    return rawResults.map((result, index) => {
+      const request =
+        requests.find(
+          (item) =>
+            !usedRequestIds.has(item.requestId) &&
+            item.requestId === result?.requestId,
+        ) ||
+        requests.find(
+          (item) =>
+            !usedRequestIds.has(item.requestId) &&
+            item.id === result?.id,
+        ) ||
+        requests.find(
+          (item) =>
+            !usedRequestIds.has(item.requestId) &&
+            result?.requestId &&
+            String(result.requestId).includes(`indicator_${item.id}_`),
+        ) ||
+        requestQueuesByType[result?.type]?.find(
+          (item) => !usedRequestIds.has(item.requestId),
+        ) ||
+        requests.find((item) => !usedRequestIds.has(item.requestId)) ||
+        requests[index];
+
+      if (request?.requestId) usedRequestIds.add(request.requestId);
+
+      return {
+        ...result,
+        id: result?.id || request?.id,
+        type: result?.type || request?.type,
+        requestId: result?.requestId || request?.requestId,
+      };
+    });
   } catch (error) {
     console.error("fetchBatchIndicatorData error:", error);
     throw error;

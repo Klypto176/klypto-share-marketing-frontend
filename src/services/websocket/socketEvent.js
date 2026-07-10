@@ -2,8 +2,8 @@ const EVENTS = {
   CHART: {
       GET: "getManualHistoricalData",
       RESPONSE: "historicalDataResponse",
-    ERROR: "historicalDataError",
-    LIVETICKS: "chartLiveTick",
+      ERROR: "historicalDataError",
+      LIVETICKS: "livetick",
   },
   INDICATOR: {
     GET: "getIndicatorDetails",

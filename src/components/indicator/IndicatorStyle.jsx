@@ -48,7 +48,9 @@ export default function IndicatorStyle({
         (section === "oscillator" && ["up", "down"].includes(key)) ||
         // âœ… AO fill palette
         (section === "oscillatorFill" &&
-          ["topFillColor1", "topFillColor2"].includes(key))
+          ["topFillColor1", "topFillColor2"].includes(key)) ||
+        // Cloud Fill Palette
+        (section === "cloudFillBullish" && ["color0", "color1"].includes(key))
       ) {
         return {
           ...prev,
@@ -93,23 +95,20 @@ export default function IndicatorStyle({
 
   /* ================= FILL / COLOR PREVIEW ================= */
   const getFillPreview = (row, selectedStyle) => {
-    // HISTOGRAM + VOLUME + AWO + AO (PALETTE CHILDREN)
     if (
-      (row.parent === "histogram" &&
-        selectedStyle?.histogram?.palette?.[row.key]) ||
-      (row.parent === "volumeBars" &&
-        selectedStyle?.volumeBars?.palette?.[row.key]) ||
-      (row.parent === "awoBars" &&
-        selectedStyle?.awoBars?.palette?.[row.key]) ||
-      // âœ… AO oscillator palette preview
-      (row.parent === "oscillator" &&
-        selectedStyle?.oscillator?.palette?.[row.key]) ||
-      // âœ… AO fill palette preview
-      (row.parent === "oscillatorFill" &&
-        selectedStyle?.oscillatorFill?.palette?.[row.key])
+      row.parent === "histogram" ||
+      row.parent === "volumeBars" ||
+      row.parent === "awoBars" ||
+      row.parent === "oscillator" ||
+      row.parent === "oscillatorFill" ||
+      row.parent === "cloudFillBullish"
     ) {
       const section = row.parent;
-      return selectedStyle?.[section]?.palette?.[row.key] || "#888";
+      let defaultColor = "#888";
+      if (section === "cloudFillBullish") {
+        defaultColor = row.key === "color0" ? "rgba(67,160,71,0.35)" : "rgba(244,67,54,0.35)";
+      }
+      return selectedStyle?.[section]?.palette?.[row.key] || defaultColor;
     }
 
     // ---------------- NORMAL STYLE ----------------
@@ -272,25 +271,16 @@ export default function IndicatorStyle({
                       <ColorPalettePanel
                         mode={row.type !== "fill" ? "line" : row.key}
                         currentStyle={
-                          row.parent === "histogram"
+                          ["histogram", "volumeBars", "awoBars", "oscillator", "oscillatorFill", "cloudFillBullish"].includes(row.parent)
                             ? {
                                 color:
-                                  selectedStyle?.histogram?.palette?.[row.key],
+                                  selectedStyle?.[row.parent]?.palette?.[row.key],
                               }
-                            : row.parent === "volumeBars"
-                              ? {
-                                  color:
-                                    selectedStyle?.volumeBars?.palette?.[
-                                      row.key
-                                    ],
-                                }
-                              : (selectedStyle?.[row.key] ?? row)
+                            : (selectedStyle?.[row.key] ?? row)
                         }
                         onChange={(style) => {
-                          if (row.parent === "histogram") {
-                            update("histogram", row.key, style.color);
-                          } else if (row.parent === "volumeBars") {
-                            update("volumeBars", row.key, style.color);
+                          if (["histogram", "volumeBars", "awoBars", "oscillator", "oscillatorFill", "cloudFillBullish"].includes(row.parent)) {
+                            update(row.parent, row.key, style.color);
                           } else {
                             Object.entries(style).forEach(([k, v]) =>
                               update(row.key, k, v),
