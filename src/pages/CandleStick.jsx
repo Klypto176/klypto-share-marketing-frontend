@@ -1,5 +1,4 @@
 import { throttleChartEvents } from "../util/throttleChartEvents";
-import { getMarketStatus } from "../util/common";
 import {
   createChart,
   CandlestickSeries,
@@ -59,28 +58,40 @@ import apiService from "../services/apiServices";
 import useDrawingTools from "../util/useDrawingTools";
 import DrawingToolbar from "../components/tradingModals/DrawingToolbar";
 import DrawingToolbox from "../components/tradingModals/DrawingToolbox";
-import ChartErrorState from "../components/tradingModals/ChartErrorState";
 
-const getLocalDateValue = (date = new Date()) =>
-  new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-    .toISOString()
-    .split("T")[0];
+const getInitialLookbackDate = (timeframe) => {
+  const d = new Date();
+  if (["1m", "3m", "5m"].includes(timeframe)) {
+    d.setDate(d.getDate() - 15);
+  } else if (["15m", "30m"].includes(timeframe)) {
+    d.setDate(d.getDate() - 30);
+  } else if (["1h", "2h", "4h", "60m", "120m", "240m"].includes(timeframe)) {
+    d.setDate(d.getDate() - 90);
+  } else {
+    d.setFullYear(d.getFullYear() - 1);
+  }
+  return d;
+};
 
-const CHART_FROM_DATE = "2024-10-01";
+const getTodayDateString = () => new Date().toISOString().split("T")[0];
 
-const mergeHistoricalSeries = (
-  existing = [],
-  incoming = [],
-  mode = "replace",
-) => {
-  if (mode === "replace") return incoming;
+const mergeHistoricalSeries = (existing, incoming, mode = "replace") => {
+  if (mode === "replace" || !Array.isArray(existing) || existing.length === 0) {
+    return incoming;
+  }
 
-  const mergedByTime = new Map();
-  [...existing, ...incoming].forEach((bar) => {
-    if (bar?.time != null) mergedByTime.set(bar.time, bar);
-  });
+  const merged = new Map();
+  existing.forEach((candle) => merged.set(candle.time, candle));
+  incoming.forEach((candle) => merged.set(candle.time, candle));
 
-  return Array.from(mergedByTime.values()).sort((a, b) => a.time - b.time);
+  return Array.from(merged.values()).sort((a, b) => a.time - b.time);
+};
+
+const getBackfillChunkDays = (timeframe) => {
+  if (["1m", "3m", "5m"].includes(timeframe)) return 15;
+  if (["10m", "15m", "30m"].includes(timeframe)) return 30;
+  if (["1h", "2h", "4h", "60m", "120m", "240m"].includes(timeframe)) return 60;
+  return 365;
 };
 
 export default function Candlestick() {
@@ -106,7 +117,18 @@ export default function Candlestick() {
   const scannerIntervalRef = useRef(null);
   const pyodideRef = useRef(null);
   const lastIndicatorRequestRef = useRef(0);
-  const [goToMarker, setGoToMarker] = useState(null); // { x, y, label } for the GoTo box overlay
+  const lastHistoricalRequestRef = useRef({ key: null, at: 0 });
+  const lastLiveTickRequestRef = useRef({ key: null, at: 0 });
+  const historicalMergeModeRef = useRef("replace");
+  const pendingHistoricalFromDateRef = useRef(null);
+  const pendingHistoricalToDateRef = useRef(null);
+  const suppressNextHistoricalReloadRef = useRef(false);
+  const historicalRequestOptionsRef = useRef(new Map());
+  const latestReplaceRequestIdRef = useRef(null);
+  const historicalVisibleRangeRef = useRef(null);
+  const historyBackfillInFlightRef = useRef(false);
+  const lastAutoBackfillFromRef = useRef(null);
+  const lastAutoForwardToRef = useRef(null);
   const [isDeployed, setIsDeployed] = useState(false);
 
   const normalize = (s) => s?.replace(/\s+/g, " ").trim().toUpperCase();
@@ -176,15 +198,39 @@ export default function Candlestick() {
   });
 
   const [activePropertyDialog, setActivePropertyDialog] = useState(null);
-  const [fromDate, setFromDate] = useState(CHART_FROM_DATE);
+  const [fromDate, setFromDate] = useState(() => {
+    try {
+      const saved = localStorage.getItem("chart_fromDate");
+      if (saved) return saved;
+    } catch (e) {}
+    const d = getInitialLookbackDate("5m");
+    const minDate = new Date("2024-10-01");
+    if (d < minDate) return "2024-10-01";
+    return d.toISOString().split("T")[0];
+  });
 
-  const handleSetFromDate = () => {
-    setFromDate(CHART_FROM_DATE);
+  const handleSetFromDate = (newDate) => {
+    const minDate = new Date("2024-10-01");
+    let d = new Date(newDate);
+    if (isNaN(d.getTime())) {
+      d = new Date();
+    }
+    if (d < minDate) {
+      setFromDate("2024-10-01");
+    } else {
+      setFromDate(d.toISOString().split("T")[0]);
+    }
   };
-  const [toDate, setToDate] = useState(() => getLocalDateValue());
-  const handleSetToDate = () => {
-    setToDate(getLocalDateValue());
-  };
+  const [toDate, setToDate] = useState(() => {
+    const today = getTodayDateString();
+    try {
+      const saved = localStorage.getItem("chart_toDate");
+      if (saved) {
+        return saved < today ? today : saved;
+      }
+    } catch (e) {}
+    return today;
+  });
   const [selectedIndicator, setSelectedIndicator] = useState(() => {
     try {
       const saved = localStorage.getItem("chart_selectedIndicator");
@@ -203,7 +249,6 @@ export default function Candlestick() {
   const [symbolTransitioning, setSymbolTransitioning] = useState(false);
   const symbolTransitioningRef = useRef(false);
   const [noDataAvailable, setNoDataAvailable] = useState(false);
-  const [chartError, setChartError] = useState(null);
   const [editorCode, setEditorCode] = useState(
     `markers = []
 # user strategy here
@@ -1021,7 +1066,33 @@ json.dumps(result)
 
   useEffect(() => {
     const checkMarketStatus = () => {
-      setIsMarketOpen(getMarketStatus());
+      const now = new Date();
+
+      // IST time
+      const istTime = new Date(
+        now.toLocaleString("en-US", {
+          timeZone: "Asia/Kolkata",
+        }),
+      );
+
+      const day = istTime.getDay(); // 0 = Sunday, 6 = Saturday
+      const hours = istTime.getHours();
+      const minutes = istTime.getMinutes();
+
+      const currentMinutes = hours * 60 + minutes;
+
+      // Market timings: 9:15 AM to 3:30 PM
+      const marketStart = 9 * 60 + 15;
+      const marketEnd = 15 * 60 + 30;
+
+      const isWeekday = day >= 1 && day <= 5;
+
+      const open =
+        isWeekday &&
+        currentMinutes >= marketStart &&
+        currentMinutes <= marketEnd;
+
+      setIsMarketOpen(open);
     };
 
     // Initial check
@@ -1033,17 +1104,11 @@ json.dumps(result)
     return () => clearInterval(interval);
   }, []);
 
+  // Update fromDate dynamically to optimize load times when timeframe changes
   useEffect(() => {
-    const syncToToday = () => {
-      const today = getLocalDateValue();
-      setToDate((current) => (current === today ? current : today));
-    };
-
-    syncToToday();
-    const interval = setInterval(syncToToday, 60000);
-
-    return () => clearInterval(interval);
-  }, []);
+    const d = getInitialLookbackDate(timeframeValue);
+    handleSetFromDate(d.toISOString().split("T")[0]);
+  }, [timeframeValue]);
 
   const addStockToDetails = (stock) => {
     if (detailsList.find((s) => s.symbol === stock.symbol)) return;
@@ -1083,7 +1148,6 @@ json.dumps(result)
   const prevChartTypeRef = useRef(chartType);
   const prevFromDateRef = useRef(fromDate);
   const prevToDateRef = useRef(toDate);
-  const suppressNextGoToMarkerClearRef = useRef(false);
   const currentCandleRef = useRef(null);
   const lastCandleTimeRef = useRef(null);
   const candlesRef = useRef([]);
@@ -1094,15 +1158,6 @@ json.dumps(result)
   const liveBarFlushTimerRef = useRef(null);
   const liveAutoScaleResetTimerRef = useRef(null);
   const lastLiveBarPaintAtRef = useRef(0);
-  const lastLiveTickRequestRef = useRef({ key: null, at: 0 });
-  const historyBackfillInFlightRef = useRef(false);
-  const lastAutoBackfillFromRef = useRef(null);
-  const historicalMergeModeRef = useRef("replace");
-  const pendingHistoricalFromDateRef = useRef(null);
-  const historicalVisibleRangeRef = useRef(null);
-  const suppressNextHistoricalReloadRef = useRef(false);
-  const historicalRequestOptionsRef = useRef(new Map());
-  const latestReplaceRequestIdRef = useRef(null);
   const seriesReadyRef = useRef(false);
   const selectedIndicatorRef = useRef(selectedIndicator);
   const ohlcvDisplayRef = useRef(null);
@@ -1131,15 +1186,15 @@ json.dumps(result)
     ].join("|");
   }, []);
 
-  const setMainChartAutoScale = useCallback(() => {
+  const setMainChartAutoScale = useCallback((enabled) => {
     if (!chartRef.current) return;
     try {
       chartRef.current.priceScale("right").applyOptions({
-        autoScale: true,
+        autoScale: enabled,
         mode: 0,
         scaleMargins: {
-          top: 0.22,
-          bottom: 0.22,
+          top: 0.28,
+          bottom: 0.18,
         },
       });
     } catch {}
@@ -1156,6 +1211,27 @@ json.dumps(result)
   useEffect(() => {
     historyBackfillInFlightRef.current = false;
     lastAutoBackfillFromRef.current = null;
+    lastAutoForwardToRef.current = null;
+  }, [selectedCurrency?.name, timeframeValue]);
+
+  const lastSelectedCurrencyRef = useRef(selectedCurrency?.name);
+
+  useEffect(() => {
+    if (
+      selectedCurrency?.name &&
+      selectedCurrency.name !== lastSelectedCurrencyRef.current
+    ) {
+      lastSelectedCurrencyRef.current = selectedCurrency.name;
+
+      const d = getInitialLookbackDate(timeframeValue);
+      const minDate = new Date("2024-10-01");
+      const initialFrom =
+        d < minDate ? "2024-10-01" : d.toISOString().split("T")[0];
+      const initialTo = getTodayDateString();
+
+      handleSetFromDate(initialFrom);
+      setToDate(initialTo);
+    }
   }, [selectedCurrency?.name, timeframeValue]);
 
   // Persist selectedCurrency so it survives page refresh
@@ -1337,43 +1413,9 @@ json.dumps(result)
     }
   }, [selectedCurrency?.name]);
 
-  const clearIndicatorPlotState = useCallback(() => {
-    const chart = chartRef.current;
-
-    if (chart && allCreatedSeriesRef.current?.length) {
-      allCreatedSeriesRef.current.forEach((item) => {
-        try {
-          chart.removeSeries(item.series);
-        } catch (error) {
-          console.warn("Failed to remove indicator series during reset", error);
-        }
-      });
-    }
-
-    if (chart && dummySeriesRef.current) {
-      Object.values(dummySeriesRef.current).forEach((series) => {
-        try {
-          chart.removeSeries(series);
-        } catch (error) {
-          console.warn(
-            "Failed to remove dummy indicator series during reset",
-            error,
-          );
-        }
-      });
-    }
-
-    allCreatedSeriesRef.current = [];
-    dummySeriesRef.current = {};
-    indicatorDataRef.current = {};
-    indicatorSeriesRef.current = {};
-    latestIndicatorValuesRef.current = {};
-    panesRef.current = {};
-    paneIndexRef.current = {};
-    setLiveIndicatorData({});
-  }, []);
-
   useEffect(() => {
+    if (!selectedIndicator?.length) return;
+
     const isContextChange =
       prevTimeframeRef.current !== timeframeValue ||
       prevCurrencyRef.current !== selectedCurrency?.name ||
@@ -1381,34 +1423,54 @@ json.dumps(result)
       prevFromDateRef.current !== fromDate ||
       prevToDateRef.current !== toDate;
 
-    let indicatorsToFetch = selectedIndicator || [];
+    let indicatorsToFetch = selectedIndicator;
 
     if (!isContextChange) {
       // ✅ Only fetch newly added instances
-      indicatorsToFetch = (selectedIndicator || []).filter(
+      indicatorsToFetch = selectedIndicator.filter(
         (ind) => !fetchedIndicatorsRef.current.has(ind.id),
       );
+
+      if (indicatorsToFetch?.length === 0) return;
     } else {
-      // Reset on timeframe / currency / chartType change so stale indicator series
-      // cannot remain mapped to the newly selected symbol.
-      clearIndicatorPlotState();
+      // 🔥 Reset on timeframe / currency / chartType change
       fetchedIndicatorsRef.current.clear();
+
+      // Keep the series alive with their old data so the UI does not change
+      // until the new data response comes! (User request)
+      // if (allCreatedSeriesRef.current) {
+      //   allCreatedSeriesRef.current.forEach((item) => {
+      //     if (
+      //       item &&
+      //       item.series &&
+      //       typeof item.series.setData === "function"
+      //     ) {
+      //       try {
+      //         item.series.setData([]);
+      //       } catch (e) {}
+      //     }
+      //   });
+      // }
+
+      // Explicitly clear old data so it doesn't render over the new symbol's chart
+      // indicatorDataRef.current = {};
+      // DO NOT clear indicatorSeriesRef, panesRef, paneIndexRef!
+      // Keeping them allows the plot components to explicitly destroy the old series
+      // when they receive new data, preventing memory leaks and pane jumping.
     }
 
-    if (indicatorsToFetch?.length > 0) {
-      setIndicatorLoading(true);
-      fetchIndicatorData(indicatorsToFetch, selectedCurrency, timeframeValue)
-        .then(() => {
-          setIndicatorUpdateTrigger((v) => v + 1);
-        })
-        .finally(() => {
-          setIndicatorLoading(false);
-        });
+    setIndicatorLoading(true);
+    fetchIndicatorData(indicatorsToFetch, selectedCurrency, timeframeValue)
+      .then(() => {
+        setIndicatorUpdateTrigger((v) => v + 1);
+      })
+      .finally(() => {
+        setIndicatorLoading(false);
+      });
 
-      indicatorsToFetch.forEach((ind) =>
-        fetchedIndicatorsRef.current.add(ind.id),
-      );
-    }
+    indicatorsToFetch.forEach((ind) =>
+      fetchedIndicatorsRef.current.add(ind.id),
+    );
 
     // ✅ Explicitly clean up REMOVED indicators
     const currentIds = new Set(selectedIndicator?.map((ind) => ind.id) || []);
@@ -1453,7 +1515,6 @@ json.dumps(result)
     chartType,
     fromDate,
     toDate,
-    clearIndicatorPlotState,
   ]);
 
   const toggleIndicatorVisibility = (indicator) => {
@@ -1531,6 +1592,32 @@ json.dumps(result)
     paneIndexRef.current[rootId] = nextPane;
 
     return nextPane;
+  };
+
+  const clearIndicatorSeries = () => {
+    if (allCreatedSeriesRef.current) {
+      allCreatedSeriesRef.current.forEach((item) => {
+        try {
+          chartRef.current?.removeSeries(item.series);
+        } catch (e) {}
+      });
+      allCreatedSeriesRef.current = [];
+    }
+
+    if (dummySeriesRef.current) {
+      Object.values(dummySeriesRef.current).forEach((dummy) => {
+        try {
+          chartRef.current?.removeSeries(dummy);
+        } catch (e) {}
+      });
+      dummySeriesRef.current = {};
+    }
+
+    indicatorSeriesRef.current = {};
+    indicatorDataRef.current = {};
+    latestIndicatorValuesRef.current = {};
+    fetchedIndicatorsRef.current.clear();
+    setIndicatorUpdateTrigger((v) => v + 1);
   };
 
   const closeAlert = () => {
@@ -1624,21 +1711,19 @@ json.dumps(result)
 
     // ✅ Populate panesRef for sub-pane indicators using instanceId as key
     if (paneIndex !== 0) {
-      let panePopulateAttempts = 0;
       const tryPopulate = () => {
-        if (!chartRef.current) return false;
-        panePopulateAttempts += 1;
+        if (!chartRef.current) return;
         const panes = chartRef.current.panes();
         const paneObj = panes[paneIndex];
         if (paneObj) {
           const div = paneObj.getHTMLElement();
           if (div) {
-            // console.log(
-            //   "💎 Populating panesRef for",
-            //   indicator,
-            //   "at index",
-            //   paneIndex,
-            // );
+            console.log(
+              "💎 Populating panesRef for",
+              indicator,
+              "at index",
+              paneIndex,
+            );
             const indType = selectedIndicatorRef.current?.find(
               (ind) => ind.id === indicator,
             )?.type;
@@ -1655,13 +1740,8 @@ json.dumps(result)
         return false;
       };
 
-      const retryPopulate = () => {
-        if (tryPopulate() || panePopulateAttempts >= 20) return;
-        setTimeout(retryPopulate, 100);
-      };
-
       if (!tryPopulate()) {
-        setTimeout(retryPopulate, 100);
+        setTimeout(tryPopulate, 100);
       }
     }
 
@@ -1748,30 +1828,6 @@ json.dumps(result)
     return series;
   };
 
-  const refreshIndicatorPaneRefs = useCallback(() => {
-    const chart = chartRef.current;
-    if (!chart || typeof chart.panes !== "function") return;
-
-    const panes = chart.panes();
-    selectedIndicatorRef.current?.forEach((indicator) => {
-      if (!indicator?.id || !PANE_INDICATORS.has(indicator.type)) return;
-
-      const paneIndex = paneIndexRef.current[indicator.id];
-      if (paneIndex === undefined || paneIndex === 0) return;
-
-      const paneObj = panes[paneIndex];
-      const div = paneObj?.getHTMLElement?.();
-      if (!paneObj || !div) return;
-
-      panesRef.current[indicator.id] = {
-        chart,
-        pane: paneObj,
-        div,
-        type: indicator.type,
-      };
-    });
-  }, []);
-
   //  ✅ CHART SYNC ENGINE
   function syncCharts(sourceChart, logicalRange) {
     if (!logicalRange || syncingRef.current) return;
@@ -1797,117 +1853,101 @@ json.dumps(result)
   }
 
   //  ✅ INDICATOR REMOVAL — accepts instance id
-  const removeIndicator = useCallback(
-    (instanceId) => {
-      setSelectedIndicator((prev) => prev.filter((i) => i.id !== instanceId));
+  const removeIndicator = useCallback((instanceId) => {
+    setSelectedIndicator((prev) => prev.filter((i) => i.id !== instanceId));
 
-      // Clean up config for this instance so localStorage stays in sync
-      setIndicatorConfigs((prev) => {
-        const next = { ...prev };
-        delete next[instanceId];
-        return next;
-      });
+    const entry = indicatorSeriesRef.current[instanceId];
+    if (!entry) return;
 
-      const entry = indicatorSeriesRef.current[instanceId];
-      if (!entry) return;
+    const paneKey = instanceId; // each instance has its own pane key
+    const pane = panesRef.current[paneKey];
+    const chart = pane?.chart ?? chartRef.current;
+    if (!chart) return;
 
-      const paneKey = instanceId; // each instance has its own pane key
-      const pane = panesRef.current[paneKey];
-      const chart = pane?.chart ?? chartRef.current;
-      if (!chart) return;
+    const panesCountBefore =
+      typeof chart.panes === "function" ? chart.panes().length : 0;
 
-      const panesCountBefore =
-        typeof chart.panes === "function" ? chart.panes().length : 0;
-
-      // Use global series tracking to remove ALL series associated with this indicator
-      if (allCreatedSeriesRef.current) {
-        allCreatedSeriesRef.current = allCreatedSeriesRef.current.filter(
-          (item) => {
-            if (item.id === instanceId) {
-              try {
-                chart.removeSeries(item.series);
-              } catch (e) {}
-              return false;
-            }
-            return true;
-          },
-        );
-      }
-
-      const panesCountAfter =
-        typeof chart.panes === "function" ? chart.panes().length : 0;
-
-      const rootId = instanceId;
-      const paneIndex = paneIndexRef.current[rootId];
-
-      if (paneIndex !== undefined && paneIndex !== 0) {
-        if (panesCountAfter === panesCountBefore) {
-          // First remove the dummy series for this pane (so the pane becomes empty & auto-collapses)
-          const dummy = dummySeriesRef.current[paneIndex];
-          if (dummy) {
+    // Use global series tracking to remove ALL series associated with this indicator
+    if (allCreatedSeriesRef.current) {
+      allCreatedSeriesRef.current = allCreatedSeriesRef.current.filter(
+        (item) => {
+          if (item.id === instanceId) {
             try {
-              chart.removeSeries(dummy);
+              chart.removeSeries(item.series);
             } catch (e) {}
-            delete dummySeriesRef.current[paneIndex];
+            return false;
           }
+          return true;
+        },
+      );
+    }
 
-          const panesCountAfterDummy =
-            typeof chart.panes === "function" ? chart.panes().length : 0;
+    const panesCountAfter =
+      typeof chart.panes === "function" ? chart.panes().length : 0;
 
-          if (panesCountAfterDummy === panesCountBefore) {
-            // Lightweight charts STILL didn't auto-remove it, so we manually remove it
-            try {
-              if (typeof chart.removePane === "function") {
-                chart.removePane(paneIndex);
-              }
-            } catch (err) {
-              console.warn("Failed to remove pane explicitly", err);
-            }
-          }
-        } else {
-          // Pane auto-removed — still need to clear the stale dummy ref
+    const rootId = instanceId;
+    const paneIndex = paneIndexRef.current[rootId];
+
+    if (paneIndex !== undefined && paneIndex !== 0) {
+      if (panesCountAfter === panesCountBefore) {
+        // First remove the dummy series for this pane (so the pane becomes empty & auto-collapses)
+        const dummy = dummySeriesRef.current[paneIndex];
+        if (dummy) {
+          try {
+            chart.removeSeries(dummy);
+          } catch (e) {}
           delete dummySeriesRef.current[paneIndex];
         }
-      }
 
-      // ALWAYS shift paneIndexRef AND dummySeriesRef for all indicators whose index is above the removed pane.
-      // This must happen regardless of auto-remove vs manual-remove, because in both
-      // cases, LightweightCharts renumbers all subsequent panes by -1.
-      if (paneIndex !== undefined && paneIndex !== 0) {
-        Object.keys(paneIndexRef.current).forEach((key) => {
-          if (key !== rootId && paneIndexRef.current[key] > paneIndex) {
-            paneIndexRef.current[key] -= 1;
+        const panesCountAfterDummy =
+          typeof chart.panes === "function" ? chart.panes().length : 0;
+
+        if (panesCountAfterDummy === panesCountBefore) {
+          // Lightweight charts STILL didn't auto-remove it, so we manually remove it
+          try {
+            if (typeof chart.removePane === "function") {
+              chart.removePane(paneIndex);
+            }
+          } catch (err) {
+            console.warn("Failed to remove pane explicitly", err);
           }
-        });
-        // Shift dummy series indices down too
-        const newDummyRef = {};
-        Object.keys(dummySeriesRef.current).forEach((k) => {
-          const ki = Number(k);
-          if (ki > paneIndex) {
-            newDummyRef[ki - 1] = dummySeriesRef.current[k];
-          } else {
-            newDummyRef[ki] = dummySeriesRef.current[k];
-          }
-        });
-        dummySeriesRef.current = newDummyRef;
+        }
+      } else {
+        // Pane auto-removed — still need to clear the stale dummy ref
+        delete dummySeriesRef.current[paneIndex];
       }
+    }
 
-      delete indicatorSeriesRef.current[instanceId];
-      delete latestIndicatorValuesRef.current[instanceId];
-      fetchedIndicatorsRef.current.delete(instanceId);
-      delete paneIndexRef.current[rootId];
+    // ALWAYS shift paneIndexRef AND dummySeriesRef for all indicators whose index is above the removed pane.
+    // This must happen regardless of auto-remove vs manual-remove, because in both
+    // cases, LightweightCharts renumbers all subsequent panes by -1.
+    if (paneIndex !== undefined && paneIndex !== 0) {
+      Object.keys(paneIndexRef.current).forEach((key) => {
+        if (key !== rootId && paneIndexRef.current[key] > paneIndex) {
+          paneIndexRef.current[key] -= 1;
+        }
+      });
+      // Shift dummy series indices down too
+      const newDummyRef = {};
+      Object.keys(dummySeriesRef.current).forEach((k) => {
+        const ki = Number(k);
+        if (ki > paneIndex) {
+          newDummyRef[ki - 1] = dummySeriesRef.current[k];
+        } else {
+          newDummyRef[ki] = dummySeriesRef.current[k];
+        }
+      });
+      dummySeriesRef.current = newDummyRef;
+    }
 
-      // the DOM pane cleanup
-      delete panesRef.current[paneKey];
+    delete indicatorSeriesRef.current[instanceId];
+    delete latestIndicatorValuesRef.current[instanceId];
+    fetchedIndicatorsRef.current.delete(instanceId);
+    delete paneIndexRef.current[rootId];
 
-      refreshIndicatorPaneRefs();
-      setTimeout(() => {
-        refreshIndicatorPaneRefs();
-        setIndicatorUpdateTrigger((v) => v + 1);
-      }, 0);
-    },
-    [refreshIndicatorPaneRefs],
-  );
+    // the DOM pane cleanup
+    delete panesRef.current[paneKey];
+  }, []);
   // ----------Main chart------------
   useEffect(() => {
     chartDisposedRef.current = false;
@@ -2046,17 +2086,15 @@ json.dumps(result)
 
     if (keysToShow) {
       const hiddenKeys = [
+        "upper",
         "middle",
-        "bgfill",
+        "lower",
+        "bbUpper",
+        "bbLower",
         "zeroLine",
         "bandBackground",
         "overboughtFill",
         "oversoldFill",
-        "bgSeries",
-        "oscillatorFill",
-        "bg",
-        "zero",
-        "bgFill",
       ];
 
       return keysToShow
@@ -2074,11 +2112,6 @@ json.dumps(result)
           const style =
             indicatorStyle?.[id]?.[key] || indicatorStyle?.[type]?.[key];
           if (style?.visible === false) return false;
-
-          // Hide keys whose series was never plotted (line doesn't exist in the chart)
-          const group = indicatorSeriesRef.current?.[id];
-          if (group && !(key in group)) return false;
-
           // Return true even if value is null, so the span is rendered for crosshair DOM updates
           return true;
         })
@@ -2185,6 +2218,12 @@ json.dumps(result)
         return addSeries(id, SeriesType, options);
       };
 
+      const scopedRemoveSeries = (series) => {
+        try {
+          chartRef.current?.removeSeries(series);
+        } catch (e) {}
+      };
+
       return (
         <Component
           key={id}
@@ -2194,6 +2233,7 @@ json.dumps(result)
           indicatorStyle={scopedIndicatorStyle}
           indicatorSeriesRef={scopedSeriesRef}
           addSeries={scopedAddSeries}
+          removeSeries={scopedRemoveSeries}
           indicatorVisibility={indicatorVisibility}
           containerRef={containerRef.current}
           chart={chartRef.current}
@@ -2394,13 +2434,6 @@ json.dumps(result)
     onIndicatorLoaded: () => {
       setIndicatorUpdateTrigger((v) => v + 1);
     },
-    onIndicatorError: (id) => {
-      if (indicatorDataRef.current?.[id] || indicatorSeriesRef.current?.[id]) {
-        return;
-      }
-
-      setSelectedIndicator((prev) => prev.filter((i) => i.id !== id));
-    },
   });
 
   // ATTACH MAIN CHART
@@ -2425,26 +2458,44 @@ json.dumps(result)
     (force = false, overrides = {}, options = {}) => {
       if (!selectedCurrency || !timeframeValue) return;
       setNoDataAvailable(false);
-      const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const historicalPayload = {
+      const historicalPayloadBase = {
         symbol: selectedCurrency?.name,
         interval: timeframeValue,
         fromDate: fromDate,
         toDate: toDate,
         ...overrides,
       };
-      historicalMergeModeRef.current = options?.mergeMode || "replace";
-      if (options?.pendingFromDate) {
-        pendingHistoricalFromDateRef.current = options.pendingFromDate;
+      const requestKey = JSON.stringify(historicalPayloadBase);
+      const now = Date.now();
+      if (
+        !force &&
+        lastHistoricalRequestRef.current.key === requestKey &&
+        now - lastHistoricalRequestRef.current.at < 2000
+      ) {
+        return false;
       }
+      lastHistoricalRequestRef.current = { key: requestKey, at: now };
+      const requestId = `hist_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const historicalPayload = {
+        ...historicalPayloadBase,
+        requestId,
+      };
+      historicalMergeModeRef.current = options.mergeMode || "replace";
+      pendingHistoricalFromDateRef.current = options.pendingFromDate || null;
+      pendingHistoricalToDateRef.current = options.pendingToDate || null;
       historicalRequestOptionsRef.current.set(requestId, {
-        symbol: historicalPayload.symbol,
-        ...options,
+        mergeMode: options.mergeMode || "replace",
+        pendingFromDate: options.pendingFromDate || null,
+        pendingToDate: options.pendingToDate || null,
+        preserveVisibleRange: options.preserveVisibleRange || null,
+        symbol: selectedCurrency?.name,
+        timeframe: timeframeValue,
+        requestId,
       });
-      if (historicalMergeModeRef.current === "replace") {
+      if ((options.mergeMode || "replace") === "replace") {
         latestReplaceRequestIdRef.current = requestId;
       }
-      console.log("getManualHistoricalData Payload:", historicalPayload);
+      console.log("📬 getManualHistoricalData Payload:", historicalPayload);
       if (emitRef.current) {
         emitRef.current(EVENTS.CHART.GET, historicalPayload);
       }
@@ -2472,6 +2523,103 @@ json.dumps(result)
     },
     [selectedCurrency],
   );
+
+  const requestOlderHistoricalChunk = useCallback(() => {
+    if (
+      !chartRef.current ||
+      !selectedCurrency ||
+      !timeframeValue ||
+      historyBackfillInFlightRef.current
+    ) {
+      return false;
+    }
+
+    const visibleRange = chartRef.current.timeScale().getVisibleLogicalRange();
+    const currentFrom = new Date(fromDate);
+    if (Number.isNaN(currentFrom.getTime())) return false;
+
+    const chunkDays = getBackfillChunkDays(timeframeValue);
+    const newFrom = new Date(currentFrom);
+    newFrom.setDate(newFrom.getDate() - chunkDays);
+    const newFromDate = newFrom.toISOString().split("T")[0];
+
+    if (
+      newFromDate === fromDate ||
+      lastAutoBackfillFromRef.current === newFromDate
+    ) {
+      return false;
+    }
+
+    historyBackfillInFlightRef.current = true;
+    lastAutoBackfillFromRef.current = newFromDate;
+    setMainChartLoading(true);
+
+    return requestHistoricalData(
+      true,
+      {
+        fromDate: newFromDate,
+        toDate: fromDate,
+      },
+      {
+        mergeMode: "prepend",
+        pendingFromDate: newFromDate,
+        preserveVisibleRange: visibleRange
+          ? { from: visibleRange.from, to: visibleRange.to }
+          : null,
+      },
+    );
+  }, [fromDate, requestHistoricalData, selectedCurrency, timeframeValue]);
+
+  const requestNewerHistoricalChunk = useCallback(() => {
+    if (
+      !chartRef.current ||
+      !selectedCurrency ||
+      !timeframeValue ||
+      historyBackfillInFlightRef.current
+    ) {
+      return false;
+    }
+
+    const visibleRange = chartRef.current.timeScale().getVisibleLogicalRange();
+    const currentTo = new Date(toDate);
+    if (Number.isNaN(currentTo.getTime())) return false;
+
+    const today = new Date();
+    const currentToStr = currentTo.toISOString().split("T")[0];
+    const todayStr = today.toISOString().split("T")[0];
+    if (currentToStr >= todayStr) {
+      return false;
+    }
+
+    const chunkDays = getBackfillChunkDays(timeframeValue);
+    const newTo = new Date(currentTo);
+    newTo.setDate(newTo.getDate() + chunkDays);
+    const newToDate =
+      newTo > today ? todayStr : newTo.toISOString().split("T")[0];
+
+    if (newToDate === toDate || lastAutoForwardToRef.current === newToDate) {
+      return false;
+    }
+
+    historyBackfillInFlightRef.current = true;
+    lastAutoForwardToRef.current = newToDate;
+    setMainChartLoading(true);
+
+    return requestHistoricalData(
+      true,
+      {
+        fromDate: toDate,
+        toDate: newToDate,
+      },
+      {
+        mergeMode: "append",
+        pendingToDate: newToDate,
+        preserveVisibleRange: visibleRange
+          ? { from: visibleRange.from, to: visibleRange.to }
+          : null,
+      },
+    );
+  }, [toDate, requestHistoricalData, selectedCurrency, timeframeValue]);
 
   const flushPendingLiveBar = useCallback(() => {
     liveBarFlushTimerRef.current = null;
@@ -2574,11 +2722,7 @@ json.dumps(result)
       }
     },
     handleHistoricalData: (response) => {
-      console.log(
-        selectedCurrency?.name,
-        "HISTORICAL DATA RESPONSE",
-        response?.data,
-      );
+      console.log("HISTORICAL DATA RESPONSE", response?.data);
       if (!chartRef.current || chartDisposedRef.current) return;
       const requestId = response?.meta?.requestId || null;
       const requestMeta = requestId
@@ -2643,7 +2787,7 @@ json.dumps(result)
         response?.symbol || raw[0]?.symbol || selectedCurrency?.name;
 
       const parsedData = [];
-      for (let i = 0; i < raw?.length; i++) {
+      for (let i = 0; i < raw.length; i++) {
         const d = raw[i];
         const time = Number(d.time) + IST_OFFSET;
         const open = parseFloat(d.open);
@@ -2689,13 +2833,36 @@ json.dumps(result)
       historicalMergeModeRef.current = "replace";
       historyBackfillInFlightRef.current = false;
 
-      if (!data?.length) {
+      if (!mergedData.length) {
         setMainChartLoading(false);
         toast.error(`No historical data found for ${symbolFromResponse}`);
         return;
       }
 
-      const lastPoint = data[data?.length - 1];
+      const pendingFromDate =
+        requestMeta?.pendingFromDate || pendingHistoricalFromDateRef.current;
+      if (mergeMode === "prepend" && pendingFromDate) {
+        suppressNextHistoricalReloadRef.current = true;
+        handleSetFromDate(pendingFromDate);
+        pendingHistoricalFromDateRef.current = null;
+      }
+
+      const pendingToDate =
+        requestMeta?.pendingToDate || pendingHistoricalToDateRef.current;
+      if (mergeMode === "append" && pendingToDate) {
+        suppressNextHistoricalReloadRef.current = true;
+        setToDate(pendingToDate);
+        pendingHistoricalToDateRef.current = null;
+      }
+
+      const lastPoint = mergedData[mergedData.length - 1];
+      if (mergeMode === "replace") {
+        pendingLiveBarRef.current = null;
+        pendingLiveBarMetaRef.current = { shouldAutoScale: false };
+        lastQueuedLiveBarSignatureRef.current = null;
+        lastRenderedLiveBarSignatureRef.current =
+          buildLiveBarSignature(lastPoint);
+      }
 
       setDetailsList((prev) => {
         const existingIdx = prev.findIndex(
@@ -2959,7 +3126,15 @@ json.dumps(result)
             from: requestMeta.preserveVisibleRange.from + addedPoints,
             to: requestMeta.preserveVisibleRange.to + addedPoints,
           });
-        } else {
+        } else if (
+          mergeMode === "append" &&
+          requestMeta?.preserveVisibleRange
+        ) {
+          chartRef.current?.timeScale().setVisibleLogicalRange({
+            from: requestMeta.preserveVisibleRange.from,
+            to: requestMeta.preserveVisibleRange.to,
+          });
+        } else if (mergeMode === "replace") {
           chartRef.current?.timeScale().fitContent();
         }
 
@@ -2971,6 +3146,7 @@ json.dumps(result)
     handleHistoricalError: (err) => {
       historicalMergeModeRef.current = "replace";
       pendingHistoricalFromDateRef.current = null;
+      pendingHistoricalToDateRef.current = null;
       historyBackfillInFlightRef.current = false;
       toast.error(err.message || "Failed to fetch historical data");
       console.error("❌ Historical data error:", err);
@@ -2979,170 +3155,166 @@ json.dumps(result)
     handleLiveTick: (tickOrArray) => {
       const ticks = Array.isArray(tickOrArray) ? tickOrArray : [tickOrArray];
 
-      console.log("[handleLiveTick] tick data:", tickOrArray);
-
       ticks.forEach((tick) => {
-        try {
-          const activeSymbol = normalize(selectedCurrency?.name);
-          const tickSymbol = normalize(tick?.symbol || tick?.name);
-          const tickData = tick?.tick ?? tick?.data ?? tick;
+        const activeSymbol = normalize(selectedCurrency?.name);
+        const tickSymbol = normalize(tick.symbol);
 
-          if (!isSameSymbolName(tickSymbol, activeSymbol)) return;
+        if (!isSameSymbolName(tickSymbol, activeSymbol)) return;
 
-          if (
-            !seriesRef.current ||
-            !seriesReadyRef.current ||
-            chartDisposedRef.current
-          )
-            return;
+        // console.log(
+        //   `[LIVE TICK] Symbol: ${tickSymbol}, Active: ${activeSymbol}`,
+        //   tick,
+        // );
 
-          let rawTickTime =
-            tickData?.time ??
-            tickData?.datetime ??
-            tickData?.exchange_feed_time ??
-            tickData?.exchange_trade_time;
-          let tickTime = Number(rawTickTime);
+        if (
+          !seriesRef.current ||
+          !seriesReadyRef.current ||
+          chartDisposedRef.current
+        )
+          return;
 
-          if (!Number.isFinite(tickTime)) {
-            tickTime = Math.floor(new Date(rawTickTime).getTime() / 1000);
-          }
-          if (tickTime > 10000000000) tickTime = Math.floor(tickTime / 1000);
-          if (!Number.isFinite(tickTime)) return;
+        const liveData = tick?.data || tick?.tick || {};
+        let rawTickTime =
+          liveData?.time ??
+          liveData?.tickTime ??
+          liveData?.datetime ??
+          tick?.overview?.exchange_trade_time ??
+          tick?.raw?.exchange_timestamp;
+        let tickTime = Number(rawTickTime);
 
-          const adjustedTime = tickTime + IST_OFFSET;
-          const normalizedTime =
-            Math.floor(adjustedTime / intervalSec) * intervalSec;
+        if (!Number.isFinite(tickTime)) {
+          tickTime = Math.floor(new Date(rawTickTime).getTime() / 1000);
+        }
+        if (tickTime > 10000000000) tickTime = Math.floor(tickTime / 1000);
+        if (!Number.isFinite(tickTime)) return;
 
-          if (!Number.isFinite(normalizedTime) || normalizedTime <= 0) return;
+        const adjustedTime = tickTime + IST_OFFSET;
+        const normalizedTime =
+          Math.floor(adjustedTime / intervalSec) * intervalSec;
 
-          const liveOpen = Number(tickData?.open);
-          const liveHigh = Number(tickData?.high);
-          const liveLow = Number(tickData?.low);
-          const liveClose = Number(
-            tickData?.close ??
-              tickData?.price ??
-              tickData?.ltp ??
-              tickData?.last_traded_price,
-          );
-          const liveVolume = Number(tickData?.volume || 0);
-          if (!Number.isFinite(liveClose)) return;
+        if (!Number.isFinite(normalizedTime) || normalizedTime <= 0) return;
 
-          const existingIndex = candlesRef.current.findIndex(
-            (c) => c.time === normalizedTime,
-          );
-          const existingCandle =
-            existingIndex >= 0 ? candlesRef.current[existingIndex] : null;
-          const latestCandle =
-            candlesRef.current.length > 0
-              ? candlesRef.current[candlesRef.current.length - 1]
-              : null;
-          const baseCandle =
-            existingCandle || latestCandle || currentCandleRef.current;
+        const liveOpen = Number(liveData.open);
+        const liveHigh = Number(liveData.high);
+        const liveLow = Number(liveData.low);
+        const liveClose = Number(
+          liveData.close ??
+            liveData.price ??
+            liveData.ltp ??
+            liveData.last_traded_price,
+        );
+        const liveVolume = Number(liveData.volume || 0);
 
-          let updatedBar;
-          if (existingCandle) {
-            updatedBar = {
-              ...existingCandle,
-              open: Number.isFinite(liveOpen) ? liveOpen : existingCandle.open,
-              high: Math.max(
-                Number(existingCandle.high),
-                Number.isFinite(liveHigh) ? liveHigh : liveClose,
-              ),
-              low: Math.min(
-                Number(existingCandle.low),
-                Number.isFinite(liveLow) ? liveLow : liveClose,
-              ),
-              close: liveClose,
-              volume: liveVolume || Number(existingCandle.volume || 0),
-            };
-          } else if (!baseCandle || normalizedTime > baseCandle.time) {
-            updatedBar = {
-              time: normalizedTime,
-              open: Number.isFinite(liveOpen) ? liveOpen : liveClose,
-              high: Number.isFinite(liveHigh) ? liveHigh : liveClose,
-              low: Number.isFinite(liveLow) ? liveLow : liveClose,
-              close: liveClose,
-              volume: liveVolume,
-            };
-          } else if (normalizedTime < baseCandle.time) {
-            return;
-          } else {
-            updatedBar = {
-              ...baseCandle,
-              open: Number.isFinite(liveOpen) ? liveOpen : baseCandle.open,
-              high: Math.max(
-                Number(baseCandle.high),
-                Number.isFinite(liveHigh) ? liveHigh : liveClose,
-              ),
-              low: Math.min(
-                Number(baseCandle.low),
-                Number.isFinite(liveLow) ? liveLow : liveClose,
-              ),
-              close: liveClose,
-              volume: liveVolume || Number(baseCandle.volume || 0),
-            };
-          }
+        if (!Number.isFinite(liveClose)) return;
 
-          const nextBarSignature = buildLiveBarSignature(updatedBar);
-          if (
-            nextBarSignature &&
-            nextBarSignature === lastQueuedLiveBarSignatureRef.current
-          )
-            return;
+        const existingIndex = candlesRef.current.findIndex(
+          (c) => c.time === normalizedTime,
+        );
+        const existingCandle =
+          existingIndex >= 0 ? candlesRef.current[existingIndex] : null;
+        const latestCandle =
+          candlesRef.current.length > 0
+            ? candlesRef.current[candlesRef.current.length - 1]
+            : null;
+        const baseCandle =
+          existingCandle || latestCandle || currentCandleRef.current;
 
-          currentCandleRef.current = updatedBar;
-          if (existingIndex >= 0)
-            candlesRef.current[existingIndex] = updatedBar;
-          else candlesRef.current.push(updatedBar);
-          candlesRef.current.sort((a, b) => a.time - b.time);
-          currentCandleRef.current =
-            candlesRef.current[candlesRef.current.length - 1] || updatedBar;
-          lastCandleTimeRef.current = normalizedTime;
-          lastQueuedLiveBarSignatureRef.current = nextBarSignature;
-          pendingLiveBarMetaRef.current = {
-            shouldAutoScale:
-              !existingCandle &&
-              (!baseCandle || normalizedTime > baseCandle.time),
+        let updatedBar;
+        if (existingCandle) {
+          updatedBar = {
+            ...existingCandle,
+            high: Math.max(
+              Number(existingCandle.high),
+              Number.isFinite(liveHigh) ? liveHigh : liveClose,
+            ),
+            low: Math.min(
+              Number(existingCandle.low),
+              Number.isFinite(liveLow) ? liveLow : liveClose,
+            ),
+            close: liveClose,
+            volume: liveVolume || Number(existingCandle.volume || 0),
           };
+        } else if (!baseCandle || normalizedTime > baseCandle.time) {
+          updatedBar = {
+            time: normalizedTime,
+            open: Number.isFinite(liveOpen) ? liveOpen : liveClose,
+            high: Number.isFinite(liveHigh) ? liveHigh : liveClose,
+            low: Number.isFinite(liveLow) ? liveLow : liveClose,
+            close: liveClose,
+            volume: liveVolume,
+          };
+        } else if (normalizedTime < baseCandle.time) {
+          return;
+        } else {
+          updatedBar = {
+            ...baseCandle,
+            high: Math.max(
+              Number(baseCandle.high),
+              Number.isFinite(liveHigh) ? liveHigh : liveClose,
+            ),
+            low: Math.min(
+              Number(baseCandle.low),
+              Number.isFinite(liveLow) ? liveLow : liveClose,
+            ),
+            close: liveClose,
+            volume: liveVolume || Number(baseCandle.volume || 0),
+          };
+        }
 
-          pendingLiveBarRef.current = updatedBar;
-          const now = Date.now();
-          const elapsed = now - (lastLiveBarPaintAtRef.current || 0);
-          if (elapsed >= LIVE_BAR_RENDER_INTERVAL_MS) {
-            flushPendingLiveBar();
-          } else if (!liveBarFlushTimerRef.current) {
-            liveBarFlushTimerRef.current = setTimeout(
-              flushPendingLiveBar,
-              LIVE_BAR_RENDER_INTERVAL_MS - elapsed,
-            );
-          }
+        const nextBarSignature = buildLiveBarSignature(updatedBar);
+        if (
+          nextBarSignature &&
+          (nextBarSignature === lastQueuedLiveBarSignatureRef.current ||
+            nextBarSignature === lastRenderedLiveBarSignatureRef.current)
+        ) {
+          return;
+        }
 
-          const activeIndicators = selectedIndicatorRef.current;
-          if (activeIndicators?.length > 0) {
-            const now = Date.now();
-            // Throttle to max 1 emit per second to avoid flooding backend and freezing chart
-            if (now - (lastIndicatorRequestRef.current || 0) > 1000) {
-              lastIndicatorRequestRef.current = now;
-              const sentTypes = new Set();
-              activeIndicators.forEach((ind) => {
-                const indType = typeof ind === "object" ? ind.type : ind;
-                if (sentTypes.has(indType)) return;
-                sentTypes.add(indType);
-                emit(EVENTS.INDICATOR.LIVE, {
-                  symbol: selectedCurrency?.name,
-                  interval: timeframeValue,
-                  type: indType,
-                  exchange: selectedCurrency?.segment,
-                });
-              });
-            }
-          }
-        } catch (e) {
-          console.warn(
-            "[LiveTick] Series update or processing failed:",
-            e.message,
-            e,
+        currentCandleRef.current = updatedBar;
+        if (existingIndex >= 0) candlesRef.current[existingIndex] = updatedBar;
+        else candlesRef.current.push(updatedBar);
+        candlesRef.current.sort((a, b) => a.time - b.time);
+        currentCandleRef.current =
+          candlesRef.current[candlesRef.current.length - 1] || updatedBar;
+        lastCandleTimeRef.current = normalizedTime;
+        lastQueuedLiveBarSignatureRef.current = nextBarSignature;
+        pendingLiveBarMetaRef.current = {
+          shouldAutoScale:
+            !existingCandle &&
+            (!baseCandle || normalizedTime > baseCandle.time),
+        };
+
+        pendingLiveBarRef.current = updatedBar;
+        const now = Date.now();
+        const elapsed = now - (lastLiveBarPaintAtRef.current || 0);
+        if (elapsed >= LIVE_BAR_RENDER_INTERVAL_MS) {
+          flushPendingLiveBar();
+        } else if (!liveBarFlushTimerRef.current) {
+          liveBarFlushTimerRef.current = setTimeout(
+            flushPendingLiveBar,
+            LIVE_BAR_RENDER_INTERVAL_MS - elapsed,
           );
+        }
+
+        const activeIndicators = selectedIndicatorRef.current;
+        if (activeIndicators?.length > 0) {
+          const now = Date.now();
+          // Throttle to max 1 emit per second to avoid flooding backend and freezing chart
+          if (now - (lastIndicatorRequestRef.current || 0) > 1000) {
+            lastIndicatorRequestRef.current = now;
+            const sentTypes = new Set();
+            activeIndicators.forEach((ind) => {
+              const indType = typeof ind === "object" ? ind.type : ind;
+              if (sentTypes.has(indType)) return;
+              sentTypes.add(indType);
+              emit(EVENTS.INDICATOR.LIVE, {
+                symbol: selectedCurrency?.name,
+                interval: timeframeValue,
+                type: indType,
+                exchange: selectedCurrency?.segment,
+              });
+            });
+          }
         }
       });
     },
@@ -3236,10 +3408,19 @@ json.dumps(result)
 
     const handleVisibleRangeChange = (range) => {
       historicalVisibleRangeRef.current = range || null;
-      if (suppressNextGoToMarkerClearRef.current) {
-        suppressNextGoToMarkerClearRef.current = false;
-      } else {
-        setGoToMarker(null);
+      if (
+        !range ||
+        mainChartLoading ||
+        !connected ||
+        !candlesRef.current?.length
+      ) {
+        return;
+      }
+
+      if (range.from <= 25) {
+        requestOlderHistoricalChunk();
+      } else if (range.to >= candlesRef.current.length - 25) {
+        requestNewerHistoricalChunk();
       }
     };
 
@@ -3248,7 +3429,12 @@ json.dumps(result)
     return () => {
       timeScale.unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
     };
-  }, []);
+  }, [
+    connected,
+    mainChartLoading,
+    requestOlderHistoricalChunk,
+    requestNewerHistoricalChunk,
+  ]);
 
   // Main useEffect for chart type/data changes
   useEffect(() => {
@@ -3258,6 +3444,8 @@ json.dumps(result)
       return;
     }
 
+    clearIndicatorSeries();
+
     seriesReadyRef.current = false; // Prevent live ticks from squishing the old chart data
 
     // Show transition overlay whenever symbol/timeframe/chartType changes
@@ -3265,14 +3453,8 @@ json.dumps(result)
     setSymbolTransitioning(true);
 
     if (connected && selectedCurrency && timeframeValue) {
-      const historicalPayload = {
-        symbol: selectedCurrency?.name,
-        interval: timeframeValue,
-        fromDate: fromDate,
-        toDate: toDate,
-      };
-      console.log("getManualHistoricalData Payload:", historicalPayload);
-      emit(EVENTS.CHART.GET, historicalPayload);
+      requestHistoricalData();
+      requestLiveTick();
     }
 
     setMainChartLoading(true);
@@ -3333,106 +3515,81 @@ json.dumps(result)
 
   const handleGoToDate = (targetDate) => {
     if (!chartRef.current) return;
-    console.log("Go To Date clicked, target date:", targetDate);
 
-    const IST_OFFSET = 19800;
+    const adjustedDate = new Date(targetDate);
+    const isIntraday = [
+      "1m",
+      "3m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "4h",
+      "60m",
+      "120m",
+      "240m",
+    ].includes(timeframeValue);
+    if (isIntraday) {
+      adjustedDate.setHours(9, 15, 0, 0);
+    }
+    const targetTimeMs = adjustedDate.getTime();
+    const currentFromTimeMs = new Date(fromDate).getTime();
+    const currentToTimeMs = new Date(toDate).getTime();
 
-    // targetDate is a JS Date object from the dialog
-    // Candle times are stored as: Math.floor(utcSec) + IST_OFFSET
-    // So we convert targetDate to UTC seconds then add IST_OFFSET to match
-    const targetUtcSec = Math.floor(targetDate.getTime() / 1000);
-    const targetTimeSec = targetUtcSec + IST_OFFSET;
+    // Check if target date is outside currently fetched range [fromDate, toDate]
+    const isOutsideRange =
+      targetTimeMs < currentFromTimeMs || targetTimeMs > currentToTimeMs;
+
+    if (isOutsideRange) {
+      pendingGoToDateRef.current = targetDate;
+      setMainChartLoading(true);
+
+      const chunkDays = getBackfillChunkDays(timeframeValue);
+      // Fetch a window centered around targetDate
+      const windowStart = new Date(targetTimeMs);
+      windowStart.setDate(windowStart.getDate() - Math.max(15, chunkDays));
+      const windowStartStr = windowStart.toISOString().split("T")[0];
+
+      const windowEnd = new Date(targetTimeMs);
+      windowEnd.setDate(windowEnd.getDate() + Math.max(15, chunkDays));
+      const today = new Date();
+      const windowEndStr =
+        windowEnd > today
+          ? today.toISOString().split("T")[0]
+          : windowEnd.toISOString().split("T")[0];
+
+      handleSetFromDate(windowStartStr);
+      setToDate(windowEndStr);
+      return; // The useEffect above will call handleGoToDate again once loaded
+    }
 
     if (!candlesRef.current?.length) return;
 
-    // Find first candle at or AFTER the target timestamp.
-    // Using >= instead of min-abs-diff prevents e.g. "2 Jul 00:00" from
-    // snapping to "1 Jul 15:25" (which would be closer in absolute time).
-    let closestIndex = candlesRef.current.length - 1; // default to last candle
+    const IST_OFFSET = 19800;
+    const targetTimeSec = Math.floor(targetTimeMs / 1000) + IST_OFFSET;
+
+    // Find the closest candle
+    let closestIndex = 0;
+    let minDiff = Infinity;
+
     for (let i = 0; i < candlesRef.current.length; i++) {
-      if (candlesRef.current[i].time >= targetTimeSec) {
+      const candle = candlesRef.current[i];
+      const diff = Math.abs(candle.time - targetTimeSec);
+      if (diff < minDiff) {
+        minDiff = diff;
         closestIndex = i;
-        break;
       }
     }
 
-    console.log(
-      "targetTimeSec:",
-      targetTimeSec,
-      "→ resolved candle time:",
-      candlesRef.current[closestIndex]?.time,
-      "index:",
-      closestIndex,
-    );
+    // Calculate logical range to put the candle in the center
+    const fromIndex = Math.max(0, closestIndex - 25);
+    const toIndex = Math.min(candlesRef.current.length - 1, closestIndex + 25);
 
-    // Use setVisibleRange with actual timestamps (Time objects)
-    const half = 25;
-    const fromCandle = candlesRef.current[Math.max(0, closestIndex - half)];
-    const toCandle =
-      candlesRef.current[
-        Math.min(candlesRef.current.length - 1, closestIndex + half)
-      ];
-
-    try {
-      suppressNextGoToMarkerClearRef.current = true;
-      chartRef.current.timeScale().setVisibleRange({
-        from: fromCandle.time,
-        to: toCandle.time,
-      });
-      setMainChartAutoScale(true);
-      if (liveAutoScaleResetTimerRef.current) {
-        clearTimeout(liveAutoScaleResetTimerRef.current);
-      }
-      liveAutoScaleResetTimerRef.current = setTimeout(() => {
-        setMainChartAutoScale(false);
-        liveAutoScaleResetTimerRef.current = null;
-      }, 1200);
-    } catch (e) {
-      console.warn("Could not set visible range:", e);
-    }
-
-    // --- GO TO BOX MARKER (HTML overlay) ---
-    if (seriesRef.current && candlesRef.current[closestIndex]) {
-      const targetCandle = candlesRef.current[closestIndex];
-
-      // Format label lines — targetCandle.time already has +19800 embedded,
-      // so reading getUTC* gives correct IST time matching the chart x-axis
-      const labelDate = new Date(targetCandle.time * 1000);
-      const pad = (n) => String(n).padStart(2, "0");
-      const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-      const months = [
-        "Jan",
-        "Feb",
-        "Mar",
-        "Apr",
-        "May",
-        "Jun",
-        "Jul",
-        "Aug",
-        "Sep",
-        "Oct",
-        "Nov",
-        "Dec",
-      ];
-      const yy = String(labelDate.getUTCFullYear()).slice(2);
-      const line1 = `${days[labelDate.getUTCDay()]} ${pad(labelDate.getUTCDate())} ${months[labelDate.getUTCMonth()]} '${yy}`;
-      const line2 = `${pad(labelDate.getUTCHours())}:${pad(labelDate.getUTCMinutes())}`;
-
-      // Compute pixel position from chart APIs (runs after setVisibleRange)
-      requestAnimationFrame(() => {
-        try {
-          const xPx = chartRef.current
-            .timeScale()
-            .timeToCoordinate(targetCandle.time);
-          const yPx = seriesRef.current.priceToCoordinate(targetCandle.high);
-          if (xPx != null && yPx != null) {
-            setGoToMarker({ x: xPx, y: yPx, line1, line2 });
-          }
-        } catch (e) {
-          console.warn("Could not place Go To marker:", e);
-        }
-      });
-    }
+    chartRef.current.timeScale().setVisibleLogicalRange({
+      from: fromIndex,
+      to: toIndex,
+    });
   };
 
   return (
@@ -3655,7 +3812,7 @@ json.dumps(result)
                     fromDate={fromDate}
                     toDate={toDate}
                     setFromDate={handleSetFromDate}
-                    setToDate={handleSetToDate}
+                    setToDate={setToDate}
                     alertResult={matchedCoins}
                     addAlert={addAlert}
                     onOpenScanner={() => {
@@ -3705,65 +3862,7 @@ json.dumps(result)
                         minHeight: 450,
                         cursor: activeTool ? "crosshair" : "default",
                       }}
-                      onClick={() => setGoToMarker(null)}
                     >
-                      {/* Go To Date box marker overlay */}
-                      {goToMarker && (
-                        <div
-                          style={{
-                            position: "absolute",
-                            left: goToMarker.x,
-                            top: goToMarker.y - 58,
-                            transform: "translateX(-50%)",
-                            zIndex: 50,
-                            pointerEvents: "none",
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            gap: 0,
-                          }}
-                        >
-                          <div
-                            style={{
-                              background: "#1e222d",
-                              border: "1px solid #434651",
-                              borderRadius: "4px",
-                              padding: "4px 8px",
-                              color: "#d1d4dc",
-                              fontSize: "11px",
-                              fontFamily: "'Inter', sans-serif",
-                              fontWeight: 500,
-                              lineHeight: "1.5",
-                              whiteSpace: "nowrap",
-                              textAlign: "center",
-                              boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
-                            }}
-                          >
-                            <div style={{ color: "#a3a6af", fontSize: "10px" }}>
-                              {goToMarker.line1}
-                            </div>
-                            <div
-                              style={{
-                                color: "#ffffff",
-                                fontWeight: 700,
-                                fontSize: "12px",
-                              }}
-                            >
-                              {goToMarker.line2}
-                            </div>
-                          </div>
-                          {/* Arrow pointing down to candle */}
-                          <div
-                            style={{
-                              width: 0,
-                              height: 0,
-                              borderLeft: "5px solid transparent",
-                              borderRight: "5px solid transparent",
-                              borderTop: "5px solid #434651",
-                            }}
-                          />
-                        </div>
-                      )}
                       <DrawingToolbox
                         selectedLine={selectedLine}
                         position={toolboxPos}
@@ -4184,10 +4283,10 @@ json.dumps(result)
                           >
                             {selectedIndicator
                               .filter((ind) => {
-                                // Show once data has arrived; series refs can lag during pane setup.
+                                // Only show indicator bar if data has arrived (series exists)
                                 if (
-                                  !indicatorDataRef.current?.[ind.id] &&
-                                  !indicatorSeriesRef.current?.[ind.id]
+                                  !indicatorSeriesRef.current ||
+                                  !indicatorSeriesRef.current[ind.id]
                                 )
                                   return false;
                                 return !PANE_INDICATORS.has(ind.type);
@@ -4231,8 +4330,8 @@ json.dumps(result)
                           {selectedIndicator
                             .filter((ind) => {
                               if (
-                                !indicatorDataRef.current?.[ind.id] &&
-                                !indicatorSeriesRef.current?.[ind.id]
+                                !indicatorSeriesRef.current ||
+                                !indicatorSeriesRef.current[ind.id]
                               )
                                 return false;
                               return PANE_INDICATORS.has(ind.type);
@@ -4241,7 +4340,6 @@ json.dumps(result)
                               const { id, type } = ind;
                               const value = liveIndicatorData[id];
                               const paneDiv =
-                                panesRef.current[id]?.div ||
                                 panesRef.current[id]?.pane?.getHTMLElement();
 
                               if (!paneDiv) return null;
@@ -4254,7 +4352,6 @@ json.dumps(result)
 
                               return createPortal(
                                 <div
-                                  key={id}
                                   style={{
                                     position: "absolute",
                                     top: 5,
@@ -4293,7 +4390,6 @@ json.dumps(result)
                                   />
                                 </div>,
                                 portalTarget,
-                                id,
                               );
                             })}
                         </>
