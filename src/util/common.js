@@ -764,20 +764,25 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs) => {
 
         { key: "laggingSpan", label: "Lagging Span", type: "line" },
 
-        { key: "kumoCloudUpper", label: "Kumo Cloud Upper Line", type: "line" },
-        { key: "kumoCloudLower", label: "Kumo Cloud Lower Line", type: "line" },
-
         {
           key: "cloudFillBullish",
-          label: "Cloud Fill Color ",
+          label: "Cloud Fill Color",
           type: "fill",
+          children: [
+            {
+              key: "color0",
+              parent: "cloudFillBullish",
+              label: "Bullish Cloud",
+              type: "fill",
+            },
+            {
+              key: "color1",
+              parent: "cloudFillBullish",
+              label: "Bearish Cloud",
+              type: "fill",
+            },
+          ],
         },
-
-        // {
-        //   key: "cloudFillBearish",
-        //   label: "Cloud Fill Color 2",
-        //   type: "fill",
-        // },
       ];
 
     case "PSAR":

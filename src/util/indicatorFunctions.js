@@ -674,25 +674,11 @@ export let indicatorStyleDefault = {
       lineStyle: 0,
       visible: true,
     },
-    kumoCloudUpper: {
-      color: "rgba(130, 132, 141,1)",
-      width: 1,
-      lineStyle: 0,
-      visible: true,
-    },
-    kumoCloudLower: {
-      color: "rgba(130, 132, 141,1)",
-      width: 1,
-      lineStyle: 0,
-      visible: true,
-    },
     cloudFillBullish: {
-      color: "rgba(67,160,71,0.35)",
-      opacity: 35,
-      visible: true,
-    },
-    cloudFillBearish: {
-      color: "rgba(244,67,54,0.35)",
+      palette: {
+        color0: "rgba(67,160,71,0.35)",
+        color1: "rgba(244,67,54,0.35)",
+      },
       opacity: 35,
       visible: true,
     },
