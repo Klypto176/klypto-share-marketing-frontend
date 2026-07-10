@@ -1,11 +1,25 @@
 export default function STOCHRSIInput(
   response,
   indicatorSeriesRef,
-  latestIndicatorValuesRef
-, instanceId) {
-  const rows = Array.isArray(response?.data?.candles)
-    ? response.data.candles
-    : [];
+  latestIndicatorValuesRef,
+  instanceId
+) {
+  // Handle: flat array OR { candles: [...] } OR { stochRsiK: [...] }
+  let rows = [];
+  if (Array.isArray(response?.data)) {
+    rows = response.data;
+  } else if (Array.isArray(response?.data?.candles)) {
+    rows = response.data.candles;
+  } else if (Array.isArray(response?.data?.stochRsiK)) {
+    // separate arrays per series
+    const kArr = response.data.stochRsiK;
+    const dArr = response.data.stochRsiD || [];
+    rows = kArr.map((k, i) => ({
+      time: k.time,
+      stochRsiK: k.value ?? k.stochRsiK,
+      stochRsiD: dArr[i]?.value ?? dArr[i]?.stochRsiD ?? null,
+    }));
+  }
 
   if (!rows.length) {
     console.warn("STOCHRSI: no data");
@@ -32,7 +46,7 @@ export default function STOCHRSIInput(
     const d = rows[i];
     if (!d?.time) continue;
 
-    const time = Number(d.time);
+    const time = Number(d.time) + 19800;
 
     // ✅ K line
     if (
@@ -78,22 +92,40 @@ export default function STOCHRSIInput(
     indicatorSeriesRef.current[instanceId || "STOCHRSI"] = {};
   }
 
+  const group = indicatorSeriesRef.current[instanceId || "STOCHRSI"];
+
   /* ---------------- SERIES UPDATE ---------------- */
 
-  const kSeries = indicatorSeriesRef.current[instanceId || "STOCHRSI"].kLine;
-  const dSeries = indicatorSeriesRef.current[instanceId || "STOCHRSI"].dLine;
-
   try {
-    if (kSeries?.setData) {
-      kSeries.setData(result.data.kData);
+    if (group.kLine?.setData) {
+      group.kLine.setData(result.data.kData);
     } else {
       console.warn("STOCHRSI: kLine series missing");
     }
 
-    if (dSeries?.setData) {
-      dSeries.setData(result.data.dData);
+    if (group.dLine?.setData) {
+      group.dLine.setData(result.data.dData);
     } else {
       console.warn("STOCHRSI: dLine series missing");
+    }
+
+    // Update level lines so they span the new data range
+    if (kData.length > 0) {
+      const upper = group.upperBand?._internal_options?.value ?? 80;
+      const middle = group.middleBand?._internal_options?.value ?? 50;
+      const lower = group.lowerBand?._internal_options?.value ?? 20;
+
+      const makeLevel = (val) => kData.map((p) => ({ time: p.time, value: val }));
+
+      if (group.upperBand?.setData) group.upperBand.setData(makeLevel(upper));
+      if (group.middleBand?.setData) group.middleBand.setData(makeLevel(middle));
+      if (group.lowerBand?.setData) group.lowerBand.setData(makeLevel(lower));
+
+      const bandData = kData.map((p) => ({ time: p.time, value: upper }));
+      if (group.bandBackground?.setData) group.bandBackground.setData(bandData);
+
+      // Update stored kData reference
+      group.kData = kData;
     }
   } catch (err) {
     console.error("STOCHRSI: chart update failed", err);

@@ -273,7 +273,7 @@ export default function ChartHeader({
         </button>
 
         {/* Date pickers */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 4 }}>
+        {/* <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 4 }}>
           <input
             type="date"
             value={fromDate}
@@ -288,7 +288,7 @@ export default function ChartHeader({
             onChange={(e) => setToDate(e.target.value)}
             style={d.dateInput}
           />
-        </div>
+        </div> */}
 
         {/* Spacer */}
         {/* <div style={{ flex: 1 }} /> */}
