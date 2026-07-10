@@ -66,6 +66,26 @@ const getLocalDateValue = (date = new Date()) =>
     .toISOString()
     .split("T")[0];
 
+const getInitialLookbackDate = () => new Date("2024-10-01T00:00:00");
+
+const getBackfillChunkDays = (timeframe) => {
+  if (timeframe === "1d") return 365;
+  if (timeframe === "1h") return 120;
+  if (timeframe === "15m") return 60;
+  return 30;
+};
+
+const mergeHistoricalSeries = (existing = [], incoming = [], mode = "replace") => {
+  if (mode === "replace") return incoming;
+
+  const mergedByTime = new Map();
+  [...existing, ...incoming].forEach((bar) => {
+    if (bar?.time != null) mergedByTime.set(bar.time, bar);
+  });
+
+  return Array.from(mergedByTime.values()).sort((a, b) => a.time - b.time);
+};
+
 export default function Candlestick() {
   const chartRef = useRef();
   const containerRef = useRef();
@@ -1076,6 +1096,15 @@ json.dumps(result)
   const liveBarFlushTimerRef = useRef(null);
   const liveAutoScaleResetTimerRef = useRef(null);
   const lastLiveBarPaintAtRef = useRef(0);
+  const lastLiveTickRequestRef = useRef({ key: null, at: 0 });
+  const historyBackfillInFlightRef = useRef(false);
+  const lastAutoBackfillFromRef = useRef(null);
+  const historicalMergeModeRef = useRef("replace");
+  const pendingHistoricalFromDateRef = useRef(null);
+  const historicalVisibleRangeRef = useRef(null);
+  const suppressNextHistoricalReloadRef = useRef(false);
+  const historicalRequestOptionsRef = useRef(new Map());
+  const latestReplaceRequestIdRef = useRef(null);
   const seriesReadyRef = useRef(false);
   const selectedIndicatorRef = useRef(selectedIndicator);
   const ohlcvDisplayRef = useRef(null);
@@ -2331,13 +2360,25 @@ json.dumps(result)
   ) => {
     if (!selectedCurrency || !timeframeValue) return;
     setNoDataAvailable(false);
-    const historicalPayloadBase = {
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const historicalPayload = {
       symbol: selectedCurrency?.name,
       interval: timeframeValue,
       fromDate: fromDate,
       toDate: toDate,
       ...overrides,
     };
+    historicalMergeModeRef.current = options?.mergeMode || "replace";
+    if (options?.pendingFromDate) {
+      pendingHistoricalFromDateRef.current = options.pendingFromDate;
+    }
+    historicalRequestOptionsRef.current.set(requestId, {
+      symbol: historicalPayload.symbol,
+      ...options,
+    });
+    if (historicalMergeModeRef.current === "replace") {
+      latestReplaceRequestIdRef.current = requestId;
+    }
     console.log("getManualHistoricalData Payload:", historicalPayload);
     if (emitRef.current) {
       emitRef.current(EVENTS.CHART.GET, historicalPayload);
@@ -2899,25 +2940,19 @@ json.dumps(result)
       const ticks = Array.isArray(tickOrArray) ? tickOrArray : [tickOrArray];
 
       ticks.forEach((tick) => {
-        let updatedBar = null;
         try {
           const activeSymbol = normalize(selectedCurrency?.name);
-          const tickSymbol = normalize(tick.symbol);
+          const tickSymbol = normalize(tick?.symbol || tick?.name);
           const tickData = tick?.tick ?? tick?.data ?? tick;
 
-        if (!isSameSymbolName(tickSymbol, activeSymbol)) return;
+          if (!isSameSymbolName(tickSymbol, activeSymbol)) return;
 
-        // console.log(
-        //   `[LIVE TICK] Symbol: ${tickSymbol}, Active: ${activeSymbol}`,
-        //   tick,
-        // );
-
-        if (
-          !seriesRef.current ||
-          !seriesReadyRef.current ||
-          chartDisposedRef.current
-        )
-          return;
+          if (
+            !seriesRef.current ||
+            !seriesReadyRef.current ||
+            chartDisposedRef.current
+          )
+            return;
 
           let rawTickTime =
             tickData?.time ??
@@ -2926,175 +2961,146 @@ json.dumps(result)
             tickData?.exchange_trade_time;
           let tickTime = Number(rawTickTime);
 
-        if (!Number.isFinite(tickTime)) {
-          tickTime = Math.floor(new Date(rawTickTime).getTime() / 1000);
-        }
-        if (tickTime > 10000000000) tickTime = Math.floor(tickTime / 1000);
-        if (!Number.isFinite(tickTime)) return;
+          if (!Number.isFinite(tickTime)) {
+            tickTime = Math.floor(new Date(rawTickTime).getTime() / 1000);
+          }
+          if (tickTime > 10000000000) tickTime = Math.floor(tickTime / 1000);
+          if (!Number.isFinite(tickTime)) return;
 
-        const adjustedTime = tickTime + IST_OFFSET;
-        const normalizedTime =
-          Math.floor(adjustedTime / intervalSec) * intervalSec;
+          const adjustedTime = tickTime + IST_OFFSET;
+          const normalizedTime =
+            Math.floor(adjustedTime / intervalSec) * intervalSec;
 
-        if (!Number.isFinite(normalizedTime) || normalizedTime <= 0) return;
+          if (!Number.isFinite(normalizedTime) || normalizedTime <= 0) return;
 
-          const open = Number(tickData?.open);
-          const high = Number(tickData?.high);
-          const low = Number(tickData?.low);
-          const close = Number(
+          const liveOpen = Number(tickData?.open);
+          const liveHigh = Number(tickData?.high);
+          const liveLow = Number(tickData?.low);
+          const liveClose = Number(
             tickData?.close ??
               tickData?.price ??
               tickData?.ltp ??
               tickData?.last_traded_price,
           );
-          const price = Number.isFinite(close)
-            ? close
-            : Number(tickData?.last_traded_price);
-          if (!Number.isFinite(price)) return;
+          const liveVolume = Number(tickData?.volume || 0);
+          if (!Number.isFinite(liveClose)) return;
 
-          if (
-            !currentCandleRef.current ||
-            normalizedTime > currentCandleRef.current.time
-          ) {
+          const existingIndex = candlesRef.current.findIndex(
+            (c) => c.time === normalizedTime,
+          );
+          const existingCandle =
+            existingIndex >= 0 ? candlesRef.current[existingIndex] : null;
+          const latestCandle =
+            candlesRef.current.length > 0
+              ? candlesRef.current[candlesRef.current.length - 1]
+              : null;
+          const baseCandle =
+            existingCandle || latestCandle || currentCandleRef.current;
+
+          let updatedBar;
+          if (existingCandle) {
+            updatedBar = {
+              ...existingCandle,
+              open: Number.isFinite(liveOpen)
+                ? liveOpen
+                : existingCandle.open,
+              high: Math.max(
+                Number(existingCandle.high),
+                Number.isFinite(liveHigh) ? liveHigh : liveClose,
+              ),
+              low: Math.min(
+                Number(existingCandle.low),
+                Number.isFinite(liveLow) ? liveLow : liveClose,
+              ),
+              close: liveClose,
+              volume: liveVolume || Number(existingCandle.volume || 0),
+            };
+          } else if (!baseCandle || normalizedTime > baseCandle.time) {
             updatedBar = {
               time: normalizedTime,
-              open: Number.isFinite(open) ? open : price,
-              high: Number.isFinite(high) ? high : price,
-              low: Number.isFinite(low) ? low : price,
-              close: price,
-              volume: Number(tickData?.volume || 0),
+              open: Number.isFinite(liveOpen) ? liveOpen : liveClose,
+              high: Number.isFinite(liveHigh) ? liveHigh : liveClose,
+              low: Number.isFinite(liveLow) ? liveLow : liveClose,
+              close: liveClose,
+              volume: liveVolume,
             };
+          } else if (normalizedTime < baseCandle.time) {
+            return;
           } else {
             updatedBar = {
-              ...currentCandleRef.current,
-              open: Number.isFinite(open)
-                ? open
-                : currentCandleRef.current.open,
-              high: Number.isFinite(high)
-                ? high
-                : Math.max(currentCandleRef.current.high, price),
-              low: Number.isFinite(low)
-                ? low
-                : Math.min(currentCandleRef.current.low, price),
-              close: price,
-              volume:
-                Number(currentCandleRef.current.volume || 0) +
-                Number(tickData?.volume || 0),
+              ...baseCandle,
+              open: Number.isFinite(liveOpen) ? liveOpen : baseCandle.open,
+              high: Math.max(
+                Number(baseCandle.high),
+                Number.isFinite(liveHigh) ? liveHigh : liveClose,
+              ),
+              low: Math.min(
+                Number(baseCandle.low),
+                Number.isFinite(liveLow) ? liveLow : liveClose,
+              ),
+              close: liveClose,
+              volume: liveVolume || Number(baseCandle.volume || 0),
             };
           }
 
-        const existingIndex = candlesRef.current.findIndex(
-          (c) => c.time === normalizedTime,
-        );
-        const existingCandle = existingIndex >= 0 ? candlesRef.current[existingIndex] : null;
-        const latestCandle =
-          candlesRef.current.length > 0
-            ? candlesRef.current[candlesRef.current.length - 1]
-            : null;
-        const baseCandle = existingCandle || latestCandle || currentCandleRef.current;
+          const nextBarSignature = buildLiveBarSignature(updatedBar);
+          if (
+            nextBarSignature &&
+            nextBarSignature === lastQueuedLiveBarSignatureRef.current
+          )
+            return;
 
-        let updatedBar;
-        if (existingCandle) {
-          updatedBar = {
-            ...existingCandle,
-            high: Math.max(
-              Number(existingCandle.high),
-              Number.isFinite(liveHigh) ? liveHigh : liveClose,
-            ),
-            low: Math.min(
-              Number(existingCandle.low),
-              Number.isFinite(liveLow) ? liveLow : liveClose,
-            ),
-            close: liveClose,
-            volume: liveVolume || Number(existingCandle.volume || 0),
+          currentCandleRef.current = updatedBar;
+          if (existingIndex >= 0) candlesRef.current[existingIndex] = updatedBar;
+          else candlesRef.current.push(updatedBar);
+          candlesRef.current.sort((a, b) => a.time - b.time);
+          currentCandleRef.current =
+            candlesRef.current[candlesRef.current.length - 1] || updatedBar;
+          lastCandleTimeRef.current = normalizedTime;
+          lastQueuedLiveBarSignatureRef.current = nextBarSignature;
+          pendingLiveBarMetaRef.current = {
+            shouldAutoScale:
+              !existingCandle && (!baseCandle || normalizedTime > baseCandle.time),
           };
-        } else if (!baseCandle || normalizedTime > baseCandle.time) {
-          updatedBar = {
-            time: normalizedTime,
-            open: Number.isFinite(liveOpen) ? liveOpen : liveClose,
-            high: Number.isFinite(liveHigh) ? liveHigh : liveClose,
-            low: Number.isFinite(liveLow) ? liveLow : liveClose,
-            close: liveClose,
-            volume: liveVolume,
-          };
-        } else if (normalizedTime < baseCandle.time) {
-          return;
-        } else {
-          updatedBar = {
-            ...baseCandle,
-            high: Math.max(
-              Number(baseCandle.high),
-              Number.isFinite(liveHigh) ? liveHigh : liveClose,
-            ),
-            low: Math.min(
-              Number(baseCandle.low),
-              Number.isFinite(liveLow) ? liveLow : liveClose,
-            ),
-            close: liveClose,
-            volume: liveVolume || Number(baseCandle.volume || 0),
-          };
-        }
 
-        if (!updatedBar) return;
-
-        if (ohlcvDisplayRef.current) {
-          const el = ohlcvDisplayRef.current;
-          const isUp = updatedBar.close >= updatedBar.open;
-          const color = isUp ? "#22c55e" : "#ef4444";
-          const o = el.querySelector("[data-o]");
-          const h = el.querySelector("[data-h]");
-          const l = el.querySelector("[data-l]");
-          const c = el.querySelector("[data-c]");
-          if (o) o.textContent = Number(updatedBar.open).toFixed(2);
-          if (h) h.textContent = Number(updatedBar.high).toFixed(2);
-          if (l) l.textContent = Number(updatedBar.low).toFixed(2);
-          if (c) c.textContent = Number(updatedBar.close).toFixed(2);
-          if (c) c.style.color = color;
-        }
-
-        currentCandleRef.current = updatedBar;
-        if (existingIndex >= 0) candlesRef.current[existingIndex] = updatedBar;
-        else candlesRef.current.push(updatedBar);
-        candlesRef.current.sort((a, b) => a.time - b.time);
-        currentCandleRef.current =
-          candlesRef.current[candlesRef.current.length - 1] || updatedBar;
-        lastCandleTimeRef.current = normalizedTime;
-        lastQueuedLiveBarSignatureRef.current = nextBarSignature;
-        pendingLiveBarMetaRef.current = {
-          shouldAutoScale: !existingCandle && (!baseCandle || normalizedTime > baseCandle.time),
-        };
-
-        pendingLiveBarRef.current = updatedBar;
-        const now = Date.now();
-        const elapsed = now - (lastLiveBarPaintAtRef.current || 0);
-        if (elapsed >= LIVE_BAR_RENDER_INTERVAL_MS) {
-          flushPendingLiveBar();
-        } else if (!liveBarFlushTimerRef.current) {
-          liveBarFlushTimerRef.current = setTimeout(
-            flushPendingLiveBar,
-            LIVE_BAR_RENDER_INTERVAL_MS - elapsed,
-          );
-        }
-
-        const activeIndicators = selectedIndicatorRef.current;
-        if (activeIndicators?.length > 0) {
+          pendingLiveBarRef.current = updatedBar;
           const now = Date.now();
-          // Throttle to max 1 emit per second to avoid flooding backend and freezing chart
-          if (now - (lastIndicatorRequestRef.current || 0) > 1000) {
-            lastIndicatorRequestRef.current = now;
-            const sentTypes = new Set();
-            activeIndicators.forEach((ind) => {
-              const indType = typeof ind === "object" ? ind.type : ind;
-              if (sentTypes.has(indType)) return;
-              sentTypes.add(indType);
-              emit(EVENTS.INDICATOR.LIVE, {
-                symbol: selectedCurrency?.name,
-                interval: timeframeValue,
-                type: indType,
-                exchange: selectedCurrency?.segment,
-              });
-            });
+          const elapsed = now - (lastLiveBarPaintAtRef.current || 0);
+          if (elapsed >= LIVE_BAR_RENDER_INTERVAL_MS) {
+            flushPendingLiveBar();
+          } else if (!liveBarFlushTimerRef.current) {
+            liveBarFlushTimerRef.current = setTimeout(
+              flushPendingLiveBar,
+              LIVE_BAR_RENDER_INTERVAL_MS - elapsed,
+            );
           }
+
+          const activeIndicators = selectedIndicatorRef.current;
+          if (activeIndicators?.length > 0) {
+            const now = Date.now();
+            // Throttle to max 1 emit per second to avoid flooding backend and freezing chart
+            if (now - (lastIndicatorRequestRef.current || 0) > 1000) {
+              lastIndicatorRequestRef.current = now;
+              const sentTypes = new Set();
+              activeIndicators.forEach((ind) => {
+                const indType = typeof ind === "object" ? ind.type : ind;
+                if (sentTypes.has(indType)) return;
+                sentTypes.add(indType);
+                emit(EVENTS.INDICATOR.LIVE, {
+                  symbol: selectedCurrency?.name,
+                  interval: timeframeValue,
+                  type: indType,
+                  exchange: selectedCurrency?.segment,
+                });
+              });
+            }
+          }
+        } catch (e) {
+          console.warn(
+            "[LiveTick] Series update or processing failed:",
+            e.message,
+            e,
+          );
         }
       });
     },
