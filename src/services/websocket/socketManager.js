@@ -35,6 +35,11 @@ class SocketManager {
       this._triggerHandlers("connect_error", err);
     });
 
+    // 🔍 DEBUG: Log every single event received from the server
+    this.socket.onAny((eventName, ...args) => {
+      console.log(`[SocketManager] RAW EVENT: "${eventName}"`, ...args);
+    });
+
     this._initializeListeners();
   }
 
