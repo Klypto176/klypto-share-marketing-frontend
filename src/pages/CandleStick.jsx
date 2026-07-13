@@ -2090,6 +2090,7 @@ json.dumps(result)
         "middle",
         "middleBand",
         "lowerBand",
+        "upperBand",
         "lower",
         "bgFill",
         "zeroLine",
