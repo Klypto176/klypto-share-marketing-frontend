@@ -3279,7 +3279,7 @@ json.dumps(result)
         pendingLiveBarMetaRef.current = {
           shouldAutoScale:
             !existingCandle &&
-            (!baseCandle || normalizedTime > baseCandle.time),
+            (!latestCandle || normalizedTime > latestCandle.time),
         };
 
         pendingLiveBarRef.current = updatedBar;
