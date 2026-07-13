@@ -12,6 +12,9 @@ const GoToDateDialog = ({ onClose, onGoTo }) => {
 
   // 0 is Sunday, we want Monday to be 0 for the UI
   const startDayOffset = (firstDayOfMonth + 6) % 7; 
+
+  const today = new Date();
+  const todayStr = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().split('T')[0];
   
   const handleDateClick = (day) => {
     const d = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day, 12);
@@ -26,6 +29,11 @@ const GoToDateDialog = ({ onClose, onGoTo }) => {
     if (!isNaN(dateTime.getTime())) {
       onGoTo(dateTime);
     }
+    onClose();
+  };
+
+  const handleGoToLatest = () => {
+    onGoTo("latest");
     onClose();
   };
 
@@ -108,11 +116,16 @@ const GoToDateDialog = ({ onClose, onGoTo }) => {
               const dateObj = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day, 12);
               const dateStr = new Date(dateObj.getTime() - dateObj.getTimezoneOffset() * 60000).toISOString().split('T')[0];
               const isSelected = selectedDate === dateStr;
+              const isDisabled = dateStr > todayStr;
               return (
                 <div 
                   key={day} 
-                  onClick={() => handleDateClick(day)}
-                  className={`py-[6px] cursor-pointer rounded hover:bg-[#2a2e39] transition-colors ${isSelected ? 'bg-white text-black font-bold' : ''}`}
+                  onClick={() => { if (!isDisabled) handleDateClick(day); }}
+                  className={`py-[6px] rounded transition-colors ${
+                    isDisabled 
+                      ? 'text-[#666] cursor-not-allowed opacity-50' 
+                      : `cursor-pointer hover:bg-[#2a2e39] ${isSelected ? 'bg-white text-black font-bold' : ''}`
+                  }`}
                 >
                   {day}
                 </div>
@@ -123,8 +136,8 @@ const GoToDateDialog = ({ onClose, onGoTo }) => {
 
         {/* Footer */}
         <div className="border-t border-[#2a2e39] p-4 flex justify-end gap-2 bg-[#1e222d]">
-          <button onClick={onClose} className="px-6 py-2 rounded border border-[#434651] text-[#d1d4dc] hover:bg-[#2a2e39] transition-colors text-sm font-semibold cursor-pointer">
-            Cancel
+          <button onClick={handleGoToLatest} className="px-6 py-2 rounded border border-[#434651] text-[#d1d4dc] hover:bg-[#2a2e39] transition-colors text-sm font-semibold cursor-pointer">
+            Go to latest
           </button>
           <button onClick={handleGoTo} className="px-6 py-2 rounded bg-white text-black hover:bg-gray-200 transition-colors text-sm font-semibold cursor-pointer">
             Go to

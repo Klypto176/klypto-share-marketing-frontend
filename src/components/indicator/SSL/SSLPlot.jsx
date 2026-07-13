@@ -49,6 +49,8 @@ export default function SSLPlot({
     indicatorStyle?.SSL_HYBRID?.candles?.palette?.down || "#ff0062";
   const NEUTRAL = indicatorStyle?.SSL_HYBRID?.candles?.palette?.neutral || "#666666";
 
+  
+
   // baseline_color = close > upperk ? bullish : close < lowerk ? bearish : neutral
   const getBaselineColor = (close, upperChannel, lowerChannel) => {
     if (close == null || upperChannel == null || lowerChannel == null)

@@ -82,8 +82,8 @@ export default function IndicatorBar({
           onClick={() => toggleIndicatorVisibility(indicator)}
         >
           {indicatorVisibility[indicator] ?
-            <IoEyeOutline size={16} /> :
-            <IoEyeOffOutline size={16} />
+           <IoEyeOffOutline size={16} />: <IoEyeOutline size={16} />
+            
           }
         </button>
 

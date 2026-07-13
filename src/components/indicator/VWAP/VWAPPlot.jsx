@@ -9,160 +9,9 @@ export default function VWAPPlot({
   chart,
   containerRef,
   indicatorConfigs,
+  id,
 }) {
   const canvasRef = useRef(null);
-
-  /* ================= CREATE SERIES ================= */
-
-  useEffect(() => {
-    if (!result?.data) return;
-
-    console.log(" VWAP CREATE TRIGGERED");
-
-    console.log("VWAP EFFECT", {
-      vwap: result.data.vwap?.length,
-      upper1: result.data.upper1?.length,
-      lower1: result.data.lower1?.length,
-      band1Enabled: indicatorConfigs?.VWAP?.band1?.enabled,
-      hasAddSeries: typeof addSeries,
-    });
-
-    // CLEAR OLD
-    if (indicatorSeriesRef.current?.VWAP) {
-      console.log(" Clearing old VWAP series");
-
-      Object.values(indicatorSeriesRef.current.VWAP).forEach((s) => {
-        if (s?.setData) {
-          try {
-            s.setData([]);
-          } catch {}
-        }
-      });
-
-      indicatorSeriesRef.current.VWAP = null;
-    }
-
-    const groupedSeries = {};
-
-    const {
-      vwap = [],
-      upper1 = [],
-      lower1 = [],
-      upper2 = [],
-      lower2 = [],
-      upper3 = [],
-      lower3 = [],
-    } = result.data;
-
-    const config = indicatorConfigs?.VWAP || {};
-
-    console.log("📊 CONFIG", config);
-
-    /* ================= VWAP ================= */
-
-    if (vwap.length) {
-      console.log("✅ VWAP plotting", vwap.length);
-
-      const s = addSeries("VWAP-vwap", LineSeries, {
-        color: indicatorStyle?.VWAP?.vwap?.color,
-        lineWidth: indicatorStyle?.VWAP?.vwap?.width,
-        lineStyle: indicatorStyle?.VWAP?.vwap?.lineStyle,
-        visible: indicatorStyle?.VWAP?.vwap?.visible,
-        priceLineVisible: false,
-      });
-
-      s.setData(vwap);
-      groupedSeries.vwap = s;
-    } else {
-      console.warn("❌ VWAP data missing");
-    }
-
-    /* ================= BAND CREATOR ================= */
-
-    const createBand = (id, upperData, lowerData) => {
-      const bandCfg = config?.[`band${id}`];
-
-      // Default band1 to enabled if config is missing
-      const isEnabled = bandCfg?.enabled ?? (id === 1 ? true : false);
-
-      if (!isEnabled) {
-        console.log(`🚫 band${id} disabled`);
-        return;
-      }
-
-      const upperKey = `upperBand${id}`;
-      const lowerKey = `lowerBand${id}`;
-
-      const upperStyle = indicatorStyle?.VWAP?.[upperKey] || {};
-      const lowerStyle = indicatorStyle?.VWAP?.[lowerKey] || {};
-
-      console.log(`👉 Creating band${id}`, {
-        upper: upperData.length,
-        lower: lowerData.length,
-      });
-
-      const upperSeries = addSeries(`VWAP-${upperKey}`, LineSeries, {
-        color: upperStyle.color,
-        lineWidth: upperStyle.width,
-        lineStyle: upperStyle.lineStyle,
-        visible: upperStyle.visible ?? true,
-        priceLineVisible: false,
-      });
-
-      const lowerSeries = addSeries(`VWAP-${lowerKey}`, LineSeries, {
-        color: lowerStyle.color,
-        lineWidth: lowerStyle.width,
-        lineStyle: lowerStyle.lineStyle,
-        visible: lowerStyle.visible ?? true,
-        priceLineVisible: false,
-      });
-
-      // ✅ SAFE DATA SET
-      upperSeries.setData(upperData || []);
-      lowerSeries.setData(lowerData || []);
-
-      groupedSeries[upperKey] = upperSeries;
-      groupedSeries[lowerKey] = lowerSeries;
-
-      groupedSeries[`${upperKey}Data`] = upperData || [];
-      groupedSeries[`${lowerKey}Data`] = lowerData || [];
-    };
-
-    createBand(1, upper1, lower1);
-    createBand(2, upper2, lower2);
-    createBand(3, upper3, lower3);
-
-    indicatorSeriesRef.current.VWAP = groupedSeries;
-
-  }, [
-    result,
-    indicatorConfigs?.VWAP?.band1?.enabled,
-    indicatorConfigs?.VWAP?.band2?.enabled,
-    indicatorConfigs?.VWAP?.band3?.enabled,
-  ]);
-
-  /* ================= STYLE UPDATE ================= */
-
-  useEffect(() => {
-    const group = indicatorSeriesRef.current?.VWAP;
-    if (!group) return;
-
-    Object.entries(group).forEach(([key, series]) => {
-      if (!series?.applyOptions) return;
-
-      const style = indicatorStyle?.VWAP?.[key];
-      if (!style) return;
-
-      series.applyOptions({
-        color: style.color,
-        lineWidth: style.width,
-        lineStyle: style.lineStyle,
-        visible: style.visible,
-      });
-    });
-
-    drawBands();
-  }, [indicatorStyle]);
 
   /* ================= CANVAS INIT ================= */
 
@@ -194,30 +43,23 @@ export default function VWAPPlot({
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const drawSingleBand = (id) => {
-      const fillStyle = indicatorStyle?.VWAP?.[`bandFill${id}`];
+    const drawSingleBand = (bandIdx) => {
+      const fillStyle = indicatorStyle?.VWAP?.[`bandFill${bandIdx}`];
 
-      const bandCfg = indicatorConfigs?.VWAP?.[`band${id}`];
-      const isEnabled = bandCfg?.enabled ?? (id === 1 ? true : false);
+      const bandCfg = indicatorConfigs?.[id]?.[`band${bandIdx}`];
+      const isEnabled = bandCfg?.enabled ?? (bandIdx === 1 ? true : false);
       if (!isEnabled) return;
 
-      const upperData = group[`upperBand${id}Data`] || [];
-      const lowerData = group[`lowerBand${id}Data`] || [];
+      if (fillStyle?.visible === false) return;
 
-      const upperSeries = group[`upperBand${id}`];
-      const lowerSeries = group[`lowerBand${id}`];
+      const upperData = group[`upperBand${bandIdx}Data`] || [];
+      const lowerData = group[`lowerBand${bandIdx}Data`] || [];
 
-      if (!upperSeries || !lowerSeries) {
-        console.warn(`❌ Missing series for band${id}`);
-        return;
-      }
+      const upperSeries = group[`upperBand${bandIdx}`];
+      const lowerSeries = group[`lowerBand${bandIdx}`];
 
-      if (!upperData.length || !lowerData.length) {
-        console.warn(`❌ Missing data for fill band${id}`);
-        return;
-      }
-
-      console.log(`🎨 Drawing fill band${id}`);
+      if (!upperSeries || !lowerSeries) return;
+      if (!upperData.length || !lowerData.length) return;
 
       ctx.beginPath();
 
@@ -251,25 +93,145 @@ export default function VWAPPlot({
     drawSingleBand(3);
   };
 
-  /* ================= REDRAW ================= */
+  /* ================= CREATE SERIES ================= */
+
+  useEffect(() => {
+    if (!result?.data) return;
+
+    if (indicatorSeriesRef.current?.VWAP) {
+      Object.values(indicatorSeriesRef.current.VWAP).forEach((s) => {
+        if (s?.setData) {
+          try {
+            chart?.removeSeries(s);
+          } catch {}
+        }
+      });
+
+      indicatorSeriesRef.current.VWAP = null;
+    }
+
+    const groupedSeries = {};
+
+    const {
+      vwap = [],
+      upper1 = [],
+      lower1 = [],
+      upper2 = [],
+      lower2 = [],
+      upper3 = [],
+      lower3 = [],
+    } = result.data;
+
+    const config = indicatorConfigs?.[id] || {};
+
+    if (vwap.length) {
+      const s = addSeries("VWAP-vwap", LineSeries, {
+        color: indicatorStyle?.VWAP?.vwap?.color,
+        lineWidth: indicatorStyle?.VWAP?.vwap?.width,
+        lineStyle: indicatorStyle?.VWAP?.vwap?.lineStyle,
+        visible: indicatorStyle?.VWAP?.vwap?.visible,
+        priceLineVisible: false,
+      });
+
+      s.setData(vwap);
+      groupedSeries.vwap = s;
+    }
+
+    /* ================= BAND CREATOR ================= */
+
+    const createBand = (bandIdx, upperData, lowerData) => {
+      const bandCfg = config?.[`band${bandIdx}`];
+
+      const isEnabled = bandCfg?.enabled ?? (bandIdx === 1 ? true : false);
+
+      if (!isEnabled) {
+        return;
+      }
+
+      const upperKey = `upperBand${bandIdx}`;
+      const lowerKey = `lowerBand${bandIdx}`;
+
+      const upperStyle = indicatorStyle?.VWAP?.[upperKey] || {};
+      const lowerStyle = indicatorStyle?.VWAP?.[lowerKey] || {};
+
+      const upperSeries = addSeries(`VWAP-${upperKey}`, LineSeries, {
+        color: upperStyle.color,
+        lineWidth: upperStyle.width,
+        lineStyle: upperStyle.lineStyle,
+        visible: upperStyle.visible ?? true,
+        priceLineVisible: false,
+      });
+
+      const lowerSeries = addSeries(`VWAP-${lowerKey}`, LineSeries, {
+        color: lowerStyle.color,
+        lineWidth: lowerStyle.width,
+        lineStyle: lowerStyle.lineStyle,
+        visible: lowerStyle.visible ?? true,
+        priceLineVisible: false,
+      });
+
+      upperSeries.setData(upperData || []);
+      lowerSeries.setData(lowerData || []);
+
+      groupedSeries[upperKey] = upperSeries;
+      groupedSeries[lowerKey] = lowerSeries;
+
+      groupedSeries[`${upperKey}Data`] = upperData || [];
+      groupedSeries[`${lowerKey}Data`] = lowerData || [];
+    };
+
+    createBand(1, upper1, lower1);
+    createBand(2, upper2, lower2);
+    createBand(3, upper3, lower3);
+
+    indicatorSeriesRef.current.VWAP = groupedSeries;
+
+    drawBands();
+  }, [
+    result,
+    indicatorConfigs?.[id]?.band1?.enabled,
+    indicatorConfigs?.[id]?.band2?.enabled,
+    indicatorConfigs?.[id]?.band3?.enabled,
+  ]);
+
+  /* ================= REDRAW EVENTS ================= */
 
   useEffect(() => {
     if (!chart) return;
 
     const redraw = () => drawBands();
 
-    const unsub1 = chart
-      .timeScale()
-      .subscribeVisibleLogicalRangeChange?.(redraw);
-    const unsub2 = chart.subscribeCrosshairMove?.(redraw);
+    chart.timeScale().subscribeVisibleTimeRangeChange(redraw);
+    chart.subscribeCrosshairMove(redraw);
+
+    drawBands();
 
     return () => {
-      if (unsub1) unsub1();
-      if (unsub2) unsub2();
+      chart.timeScale().unsubscribeVisibleTimeRangeChange(redraw);
+      chart.unsubscribeCrosshairMove(redraw);
     };
   }, [chart, indicatorConfigs]);
 
+  /* ================= STYLE UPDATE ================= */
+
   useEffect(() => {
+    const group = indicatorSeriesRef.current?.VWAP;
+    if (!group) return;
+
+    Object.entries(group).forEach(([key, series]) => {
+      if (!series?.applyOptions) return;
+
+      const style = indicatorStyle?.VWAP?.[key];
+      if (!style) return;
+
+      series.applyOptions({
+        color: style.color,
+        lineWidth: style.width,
+        lineStyle: style.lineStyle,
+        visible: style.visible,
+      });
+    });
+
     drawBands();
   }, [indicatorStyle, result, indicatorConfigs]);
 
@@ -288,6 +250,13 @@ export default function VWAPPlot({
       canvasRef.current = null;
 
       if (indicatorSeriesRef.current?.VWAP) {
+        Object.values(indicatorSeriesRef.current.VWAP).forEach((s) => {
+          if (s?.setData) {
+            try {
+              chart?.removeSeries(s);
+            } catch {}
+          }
+        });
         indicatorSeriesRef.current.VWAP = null;
       }
     };

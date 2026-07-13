@@ -166,7 +166,7 @@ export let indicatorConfigDefault = {
   RSI: {
     length: 14,
     source: "close",
-    maType: "SMA",
+    maType: "none",
     maLength: 14,
     bbStdDev: 2,
   },

@@ -3537,6 +3537,11 @@ json.dumps(result)
   const handleGoToDate = (targetDate) => {
     if (!chartRef.current) return;
 
+    if (targetDate === "latest") {
+      chartRef.current.timeScale().scrollToRealTime();
+      return;
+    }
+
     const targetTimeMs = targetDate.getTime();
     const currentFromTimeMs = new Date(fromDate).getTime();
     const currentToTimeMs = new Date(toDate).getTime();
@@ -3570,8 +3575,17 @@ json.dumps(result)
 
     if (!candlesRef.current?.length) return;
 
-    const IST_OFFSET = 19800;
-    const targetTimeSec = Math.floor(targetTimeMs / 1000) + IST_OFFSET;
+    // The candles are stored such that their UNIX timestamp directly corresponds
+    // to the IST time (e.g., 9:15 IST corresponds to 9:15 UTC in lightweight charts).
+    // So we just take the user's input time (which was parsed as local) and get the UTC timestamp.
+    const targetTimeSec = Math.floor(Date.UTC(
+      targetDate.getFullYear(),
+      targetDate.getMonth(),
+      targetDate.getDate(),
+      targetDate.getHours(),
+      targetDate.getMinutes(),
+      targetDate.getSeconds()
+    ) / 1000);
     const isMidnight = targetDate.getHours() === 0 && targetDate.getMinutes() === 0;
 
     // Find the closest candle
@@ -3593,6 +3607,16 @@ json.dumps(result)
         }
       }
     }
+
+    const closestCandle = candlesRef.current[closestIndex];
+    console.log("[GoTo] Debug:", {
+      targetDateString: targetDate.toString(),
+      targetTimeSec,
+      isMidnight,
+      closestIndex,
+      closestCandleTime: closestCandle?.time,
+      diff: closestCandle ? Math.abs(closestCandle.time - targetTimeSec) : null
+    });
 
     // Calculate logical range to put the candle in the center
     const fromIndex = Math.max(0, closestIndex - 25);
@@ -3673,38 +3697,58 @@ json.dumps(result)
         goToMarkerCleanupRef.current = null;
       }
 
-      setGoToMarker({ x: xPixel, y: yPixel, label });
+      setGoToMarker({ x: xPixel, y: yPixel, label, time: closestCandle.time });
 
-      // Auto-dismiss after 6 seconds
+      // Auto-dismiss after 10 seconds
       goToMarkerCleanupRef.current = setTimeout(() => {
         setGoToMarker(null);
         goToMarkerCleanupRef.current = null;
-      }, 6000);
+      }, 10000);
     }, 150);
   };
 
   const ignoreNextScrollRef = useRef(false);
 
-  // Dismiss the Go To marker on chart scroll or click
-  const dismissGoToMarker = useCallback(() => {
-    if (ignoreNextScrollRef.current) return;
-    
-    if (goToMarkerCleanupRef.current) {
-      clearTimeout(goToMarkerCleanupRef.current);
-      goToMarkerCleanupRef.current = null;
-    }
-    setGoToMarker(null);
-  }, []);
+  // Continually track marker position to prevent any detachment during layout shifts
+  useEffect(() => {
+    if (!goToMarker || !goToMarker.time || !chartRef.current) return;
+    let animationFrameId;
+    const updatePosition = () => {
+      try {
+        const newX = chartRef.current.timeScale().timeToCoordinate(goToMarker.time);
+        if (newX !== null) {
+          setGoToMarker(prev => {
+            if (prev && prev.x !== newX) return { ...prev, x: newX };
+            return prev;
+          });
+        }
+      } catch (e) {}
+      animationFrameId = requestAnimationFrame(updatePosition);
+    };
+    animationFrameId = requestAnimationFrame(updatePosition);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [goToMarker?.time]);
 
   // Attach scroll/click dismiss listeners to the chart timescale
   useEffect(() => {
     if (!chartRef.current) return;
     const ts = chartRef.current.timeScale();
-    ts.subscribeVisibleLogicalRangeChange(dismissGoToMarker);
-    return () => {
-      ts.unsubscribeVisibleLogicalRangeChange(dismissGoToMarker);
+
+    const handleScroll = () => {
+      if (ignoreNextScrollRef.current) return;
+      
+      if (goToMarkerCleanupRef.current) {
+        clearTimeout(goToMarkerCleanupRef.current);
+        goToMarkerCleanupRef.current = null;
+      }
+      setGoToMarker(null);
     };
-  }, [dismissGoToMarker]);
+
+    ts.subscribeVisibleLogicalRangeChange(handleScroll);
+    return () => {
+      ts.unsubscribeVisibleLogicalRangeChange(handleScroll);
+    };
+  }, []);
 
   return (
     <>
@@ -3976,7 +4020,7 @@ json.dumps(result)
                         minHeight: 450,
                         cursor: activeTool ? "crosshair" : "default",
                       }}
-                      onClick={dismissGoToMarker}
+                      onClick={() => setGoToMarker(null)}
                     >
                       <DrawingToolbox
                         selectedLine={selectedLine}
@@ -3996,9 +4040,6 @@ json.dumps(result)
                             height: goToMarker.y != null ? goToMarker.y : "100%",
                             zIndex: 200,
                             pointerEvents: "none",
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
                           }}
                         >
                           {/* vertical dashed line */}
@@ -4015,6 +4056,7 @@ json.dumps(result)
                           {/* tooltip bubble */}
                           <div style={{
                             position: "absolute",
+                            left: 0,
                             top: goToMarker.y != null ? "auto" : 30,
                             bottom: goToMarker.y != null ? 10 : "auto",
                             transform: "translateX(-50%)",

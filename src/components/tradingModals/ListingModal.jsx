@@ -103,11 +103,14 @@ export const ListingModal = ({
     setError(null);
 
     try {
-      const response = await apiService.post(`equity/getIndicators`);
+      // const response = await apiService.post(`equity/getIndicators`);
+      const response = await axios.get("http://192.168.1.20:8000/api/indicators")
 
       console.log("indicator API response:", response?.data);
 
-      setIndicators(response?.data || []);
+      setIndicators(response?.data?.data || []);
+      // setIndicators(response?.data || []);
+
     } catch (err) {
       console.error(err);
       setError(err?.message || "Failed to fetch indicators");

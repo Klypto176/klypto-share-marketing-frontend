@@ -3,6 +3,10 @@ import { getRowsByIndicator } from "./common";
 import socket from "../services/websocket/socket";
 import { io } from "socket.io-client";
 import Swal from "sweetalert2";
+
+// Temporary socket for indicator details
+const tempIndicatorSocket = io("http://192.168.1.20:8000");
+
 let globalFetchSessionId = 0;
 let globalFetchContextKey = "";
 const INDICATOR_REQUEST_TIMEOUT_MS = 120000;
@@ -101,10 +105,27 @@ export default function useChartFunctions({
         }
         return;
       } catch (error) {
-        console.warn(
-          "Batch indicator request failed, falling back to individual requests:",
-          error,
-        );
+        if (error.message === "Socket disconnected") {
+          return;
+        }
+        
+        console.warn("Batch indicator request failed:", error);
+        try {
+          await Swal.fire({
+            icon: "error",
+            title: "Indicator Error",
+            text: "Indicator not found",
+            confirmButtonText: "OK",
+            background: "var(--bg-secondary)",
+            color: "var(--text-primary)",
+          });
+        } catch (alertError) {
+          console.error("Failed to show indicator error alert:", alertError);
+        }
+        indicatorMeta.forEach(({ id }) => {
+          if (typeof onIndicatorError === "function") onIndicatorError(id);
+        });
+        return;
       } finally {
         if (currentSessionId === globalFetchSessionId && onIndicatorLoadingChange) {
           indicatorMeta.forEach(({ id }) => onIndicatorLoadingChange(id, false));
@@ -254,7 +275,7 @@ export default function useChartFunctions({
       }
       case "VWAP": {
         const vwapData = result?.data?.vwap ?? [];
-        console.log("VWAP raw:", result.data, "| rows length:", rows.length);
+        // console.log("VWAP raw:", result.data, "| rows length:", rows.length);
 
         const upper1Data = result?.data?.upper1 ?? [];
         const lower1Data = result?.data?.lower1 ?? [];
@@ -999,14 +1020,17 @@ async function fetchBatchIndicatorData(
 
   try {
     const response = await new Promise((resolve, reject) => {
-      if (!socketRef.current || !socket.connected) {
+      // if (!socketRef.current || !socket.connected) {
+      if (!tempIndicatorSocket || !tempIndicatorSocket.connected) {
         reject(new Error("Socket disconnected"));
         return;
       }
 
       const cleanup = () => {
-        socket.off("indicatorDetailsBatchResponse", onResponse);
-        socket.off("indicatorDetailsBatchError", onError);
+        // socket.off("indicatorDetailsBatchResponse", onResponse);
+        // socket.off("indicatorDetailsBatchError", onError);
+        tempIndicatorSocket.off("indicatorDetailsBatchResponse", onResponse);
+        tempIndicatorSocket.off("indicatorDetailsBatchError", onError);
       };
 
       const timeoutId = setTimeout(() => {
@@ -1017,6 +1041,7 @@ async function fetchBatchIndicatorData(
       const onResponse = (data) => {
         if (data?.batchRequestId !== batchRequestId) return;
         if (!responseContextMatches(data)) return;
+        console.log("Received indicatorDetailsBatchResponse:", data);
         clearTimeout(timeoutId);
         cleanup();
         resolve(data);
@@ -1029,14 +1054,19 @@ async function fetchBatchIndicatorData(
         reject(err);
       };
 
-      socket.on("indicatorDetailsBatchResponse", onResponse);
-      socket.on("indicatorDetailsBatchError", onError);
+      // socket.on("indicatorDetailsBatchResponse", onResponse);
+      // socket.on("indicatorDetailsBatchError", onError);
+      tempIndicatorSocket.on("indicatorDetailsBatchResponse", onResponse);
+      tempIndicatorSocket.on("indicatorDetailsBatchError", onError);
 
-      socketRef.current.emit("getIndicatorDetailsBatch", {
+      // socketRef.current.emit("getIndicatorDetailsBatch", {
+      const payload = {
         batchRequestId,
         ...expectedContext,
         requests,
-      });
+      };
+      console.log("Emitting getIndicatorDetailsBatch with payload:", payload);
+      tempIndicatorSocket.emit("getIndicatorDetailsBatch", payload);
     });
 
     const rawResults = Array.isArray(response?.results) ? response.results : [];
@@ -1082,7 +1112,9 @@ async function fetchBatchIndicatorData(
       };
     });
   } catch (error) {
-    console.error("fetchBatchIndicatorData error:", error);
+    if (error.message !== "Socket disconnected") {
+      console.error("fetchBatchIndicatorData error:", error);
+    }
     throw error;
   }
 }
@@ -1107,14 +1139,17 @@ async function fetchDataForIndicators(
     const response =
       preloadedResponse ||
       (await new Promise((resolve, reject) => {
-        if (!socketRef.current || !socket.connected) {
-          reject(new Error("Socket disconnected"));
+        // if (!socketRef.current || !socket.connected) {
+        if (!tempIndicatorSocket || !tempIndicatorSocket.connected) {
+          resolve({ data: [] });
           return;
         }
 
         const cleanup = () => {
-          socket.off("indicatorDetailsResponse", onResponse);
-          socket.off("indicatorDetailsError", onError);
+          // socket.off("indicatorDetailsResponse", onResponse);
+          // socket.off("indicatorDetailsError", onError);
+          tempIndicatorSocket.off("indicatorDetailsResponse", onResponse);
+          tempIndicatorSocket.off("indicatorDetailsError", onError);
         };
 
         const timeoutId = setTimeout(() => {
@@ -1137,17 +1172,22 @@ async function fetchDataForIndicators(
           reject(err);
         };
 
-        socket.on("indicatorDetailsResponse", onResponse);
-        socket.on("indicatorDetailsError", onError);
+        // socket.on("indicatorDetailsResponse", onResponse);
+        // socket.on("indicatorDetailsError", onError);
+        tempIndicatorSocket.on("indicatorDetailsResponse", onResponse);
+        tempIndicatorSocket.on("indicatorDetailsError", onError);
 
-        socketRef.current?.emit("getIndicatorDetails", {
+        // socketRef.current?.emit("getIndicatorDetails", {
+        const payload = {
           requestId,
           symbol: selectedCurrency?.name,
           interval: timeframeValue,
           fromDate: fromDate,
           toDate: toDate,
           type,
-        });
+        };
+        console.log("Emitting getIndicatorDetails with payload:", payload);
+        tempIndicatorSocket.emit("getIndicatorDetails", payload);
       }));
 
     if (!response || !response.data) {
@@ -1163,7 +1203,7 @@ async function fetchDataForIndicators(
         }))
         .filter((d) => d.value !== null) ?? [];
 
-    console.log("mapped conversion", response?.data, "conversionLine");
+    console.log(type,"mapped conversion", response?.data, "conversionLine");
 
     switch (type) {
       /* ---------------- SINGLE VALUE ---------------- */
@@ -2073,7 +2113,7 @@ async function fetchDataForIndicators(
       case "PivotPoints(Standard)": {
         const d = response?.data ?? {};
 
-        console.log("Pivot Standard:", d);
+        // console.log("Pivot Standard:", d);
 
         return {
           type: "pivot",
@@ -2092,7 +2132,7 @@ async function fetchDataForIndicators(
       case "PivotPoints(Fibonacci)": {
         const d = response?.data ?? {};
 
-        console.log("PivotFibonacci:", d);
+        // console.log("PivotFibonacci:", d);
 
         return {
           type: "pivot",
@@ -2110,7 +2150,7 @@ async function fetchDataForIndicators(
       case "PivotPoints(Camarilla)": {
         const d = response?.data ?? {};
 
-        console.log("Pivot Camarilla:", d);
+        // console.log("Pivot Camarilla:", d);
 
         return {
           type: "pivot",
@@ -2131,7 +2171,7 @@ async function fetchDataForIndicators(
       case "PivotPoints(Classic)": {
         const d = response?.data ?? {};
 
-        console.log("Pivot Classic:", d);
+        // console.log("Pivot Classic:", d);
 
         return {
           type: "pivot",
