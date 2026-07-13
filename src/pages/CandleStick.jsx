@@ -2088,9 +2088,10 @@ json.dumps(result)
       const hiddenKeys = [
         "upper",
         "middle",
+        "middleBand",
+        "lowerBand",
         "lower",
-        "bbUpper",
-        "bbLower",
+        "bgFill",
         "zeroLine",
         "bandBackground",
         "overboughtFill",
@@ -3279,7 +3280,7 @@ json.dumps(result)
         pendingLiveBarMetaRef.current = {
           shouldAutoScale:
             !existingCandle &&
-            (!baseCandle || normalizedTime > baseCandle.time),
+            (!latestCandle || normalizedTime > latestCandle.time),
         };
 
         pendingLiveBarRef.current = updatedBar;
@@ -3345,9 +3346,13 @@ json.dumps(result)
           "upper",
           "middle",
           "lower",
+          "upperBand",
+          "middleBand",
+          "lowerBand",
           "overboughtFill",
           "oversoldFill",
           "bandBackground",
+          "bgFill",
         ];
 
         Object.entries(seriesGroup).forEach(([lineName, series]) => {
@@ -3361,14 +3366,29 @@ json.dumps(result)
               indicatorStyleRef.current?.[instType];
             if (
               lineName === "upper" ||
+              lineName === "upperBand" ||
               lineName === "overboughtFill" ||
-              lineName === "bandBackground"
+              lineName === "bandBackground" ||
+              lineName === "bgFill"
             ) {
-              value = style?.upper?.value ?? 70;
-            } else if (lineName === "middle") {
-              value = style?.middle?.value ?? 50;
-            } else if (lineName === "lower" || lineName === "oversoldFill") {
-              value = style?.lower?.value ?? 30;
+              value =
+                instType === "CCI"
+                  ? style?.upperBand?.value ?? 100
+                  : style?.upper?.value ?? 70;
+            } else if (lineName === "middle" || lineName === "middleBand") {
+              value =
+                instType === "CCI"
+                  ? style?.middleBand?.value ?? 0
+                  : style?.middle?.value ?? 50;
+            } else if (
+              lineName === "lower" ||
+              lineName === "lowerBand" ||
+              lineName === "oversoldFill"
+            ) {
+              value =
+                instType === "CCI"
+                  ? style?.lowerBand?.value ?? -100
+                  : style?.lower?.value ?? 30;
             }
           } else {
             value =
@@ -3499,6 +3519,8 @@ json.dumps(result)
   };
 
   const pendingGoToDateRef = useRef(null);
+  const [goToMarker, setGoToMarker] = useState(null); // { x, label }
+  const goToMarkerCleanupRef = useRef(null);
 
   useEffect(() => {
     if (!mainChartLoading && pendingGoToDateRef.current) {
@@ -3514,24 +3536,7 @@ json.dumps(result)
   const handleGoToDate = (targetDate) => {
     if (!chartRef.current) return;
 
-    const adjustedDate = new Date(targetDate);
-    const isIntraday = [
-      "1m",
-      "3m",
-      "5m",
-      "15m",
-      "30m",
-      "1h",
-      "2h",
-      "4h",
-      "60m",
-      "120m",
-      "240m",
-    ].includes(timeframeValue);
-    if (isIntraday) {
-      adjustedDate.setHours(9, 15, 0, 0);
-    }
-    const targetTimeMs = adjustedDate.getTime();
+    const targetTimeMs = targetDate.getTime();
     const currentFromTimeMs = new Date(fromDate).getTime();
     const currentToTimeMs = new Date(toDate).getTime();
 
@@ -3566,17 +3571,25 @@ json.dumps(result)
 
     const IST_OFFSET = 19800;
     const targetTimeSec = Math.floor(targetTimeMs / 1000) + IST_OFFSET;
+    const isMidnight = targetDate.getHours() === 0 && targetDate.getMinutes() === 0;
 
     // Find the closest candle
     let closestIndex = 0;
-    let minDiff = Infinity;
 
-    for (let i = 0; i < candlesRef.current.length; i++) {
-      const candle = candlesRef.current[i];
-      const diff = Math.abs(candle.time - targetTimeSec);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closestIndex = i;
+    if (isMidnight) {
+      closestIndex = candlesRef.current.findIndex(c => c.time >= targetTimeSec);
+      if (closestIndex === -1) {
+        closestIndex = candlesRef.current.length - 1;
+      }
+    } else {
+      let minDiff = Infinity;
+      for (let i = 0; i < candlesRef.current.length; i++) {
+        const candle = candlesRef.current[i];
+        const diff = Math.abs(candle.time - targetTimeSec);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestIndex = i;
+        }
       }
     }
 
@@ -3588,7 +3601,109 @@ json.dumps(result)
       from: fromIndex,
       to: toIndex,
     });
+
+    // Ignore the immediate scroll events triggered by our own navigation
+    ignoreNextScrollRef.current = true;
+    setTimeout(() => {
+      ignoreNextScrollRef.current = false;
+    }, 500);
+
+    // ── Show floating Go To Date marker ──────────────────────────────
+    // Give the chart a frame to settle then compute pixel X of the candle
+    setTimeout(() => {
+      if (!chartRef.current || !containerRef.current) {
+        console.log("[GoTo] Error: chartRef or containerRef missing");
+        return;
+      }
+
+      const closestCandle = candlesRef.current[closestIndex];
+      if (!closestCandle) {
+        console.log("[GoTo] Error: closestCandle missing");
+        return;
+      }
+
+      let xPixel = null;
+      let yPixel = null;
+      try {
+        xPixel = chartRef.current
+          .timeScale()
+          .timeToCoordinate(closestCandle.time);
+          
+        if (seriesRef.current && typeof seriesRef.current.priceToCoordinate === "function") {
+          yPixel = seriesRef.current.priceToCoordinate(closestCandle.high);
+        }
+      } catch (e) {
+        console.error("[GoTo] Error getting coordinate", e);
+      }
+
+      console.log("[GoTo] xPixel:", xPixel, "yPixel:", yPixel, "candle.time:", closestCandle.time);
+
+      // Build a human-readable label in IST
+      // closestCandle.time is already UTC + IST_OFFSET seconds
+      const candleLocalMs = (closestCandle.time - IST_OFFSET) * 1000;
+      const candleDateIST = new Date(candleLocalMs + 5.5 * 60 * 60 * 1000); // shift to IST
+      const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const dayName  = weekdays[candleDateIST.getUTCDay()];
+      const dd       = String(candleDateIST.getUTCDate()).padStart(2, "0");
+      const mon      = months[candleDateIST.getUTCMonth()];
+      const yr       = candleDateIST.getUTCFullYear();
+      const hh       = String(candleDateIST.getUTCHours()).padStart(2, "0");
+      const mm       = String(candleDateIST.getUTCMinutes()).padStart(2, "0");
+      const isIntraday = [
+        "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "60m", "120m", "240m",
+      ].includes(timeframeValue);
+      const label = isIntraday
+        ? `${dayName} ${dd} ${mon} '${String(yr).slice(-2)}\n${hh}:${mm}`
+        : `${dayName} ${dd} ${mon} '${String(yr).slice(-2)}`;
+
+      if (xPixel == null || !Number.isFinite(xPixel)) {
+        // Fallback: place in center of container
+        const w = containerRef.current.getBoundingClientRect().width;
+        xPixel = w / 2;
+      }
+
+      console.log("[GoTo] Setting marker:", { x: xPixel, y: yPixel, label });
+
+      // Clear any previous auto-dismiss timer
+      if (goToMarkerCleanupRef.current) {
+        clearTimeout(goToMarkerCleanupRef.current);
+        goToMarkerCleanupRef.current = null;
+      }
+
+      setGoToMarker({ x: xPixel, y: yPixel, label });
+
+      // Auto-dismiss after 6 seconds
+      goToMarkerCleanupRef.current = setTimeout(() => {
+        setGoToMarker(null);
+        goToMarkerCleanupRef.current = null;
+      }, 6000);
+    }, 150);
   };
+
+  const ignoreNextScrollRef = useRef(false);
+
+  // Dismiss the Go To marker on chart scroll or click
+  const dismissGoToMarker = useCallback(() => {
+    if (ignoreNextScrollRef.current) return;
+    
+    if (goToMarkerCleanupRef.current) {
+      clearTimeout(goToMarkerCleanupRef.current);
+      goToMarkerCleanupRef.current = null;
+    }
+    setGoToMarker(null);
+  }, []);
+
+  // Attach scroll/click dismiss listeners to the chart timescale
+  useEffect(() => {
+    if (!chartRef.current) return;
+    const ts = chartRef.current.timeScale();
+    ts.subscribeVisibleLogicalRangeChange(dismissGoToMarker);
+    return () => {
+      ts.unsubscribeVisibleLogicalRangeChange(dismissGoToMarker);
+    };
+  }, [dismissGoToMarker]);
 
   return (
     <>
@@ -3860,6 +3975,7 @@ json.dumps(result)
                         minHeight: 450,
                         cursor: activeTool ? "crosshair" : "default",
                       }}
+                      onClick={dismissGoToMarker}
                     >
                       <DrawingToolbox
                         selectedLine={selectedLine}
@@ -3868,6 +3984,67 @@ json.dumps(result)
                         onDelete={deleteLine}
                         onClose={closeToolbox}
                       />
+                      
+                      {/* ── Go To Date Tooltip Overlay ── */}
+                      {goToMarker && (
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: goToMarker.x,
+                            height: goToMarker.y != null ? goToMarker.y : "100%",
+                            zIndex: 200,
+                            pointerEvents: "none",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                          }}
+                        >
+                          {/* vertical dashed line */}
+                          <div style={{
+                            width: 1,
+                            height: "100%",
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            borderLeft: "1px dashed #999",
+                            opacity: 0.6,
+                            pointerEvents: "none",
+                          }} />
+                          {/* tooltip bubble */}
+                          <div style={{
+                            position: "absolute",
+                            top: goToMarker.y != null ? "auto" : 30,
+                            bottom: goToMarker.y != null ? 10 : "auto",
+                            transform: "translateX(-50%)",
+                            background: "#2a2e39", // dark grey matching TV
+                            borderRadius: 4,
+                            padding: "6px 12px",
+                            color: "#d1d4dc",
+                            fontSize: 13,
+                            fontWeight: 500,
+                            fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+                            whiteSpace: "pre",
+                            textAlign: "center",
+                            boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                            lineHeight: 1.4,
+                          }}>
+                            {goToMarker.label}
+                            {/* tooltip caret/arrow */}
+                            <div style={{
+                              position: "absolute",
+                              bottom: -5,
+                              left: "50%",
+                              transform: "translateX(-50%)",
+                              width: 0,
+                              height: 0,
+                              borderLeft: "5px solid transparent",
+                              borderRight: "5px solid transparent",
+                              borderTop: "5px solid #2a2e39",
+                            }} />
+                          </div>
+                        </div>
+                      )}
                       {/* Unified chart transition overlay — covers during symbol/timeframe change */}
                       {(symbolTransitioning ||
                         mainChartLoading ||

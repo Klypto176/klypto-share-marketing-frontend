@@ -139,14 +139,6 @@ export default function IchimokuCloudPlot({
           const ctx = canvas.getContext("2d");
           ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
 
-          console.log({
-            chartWidth: currentRect.width,
-            chartHeight: currentRect.height,
-            canvasWidth: canvas.width,
-            canvasHeight: canvas.height,
-          });
-
-          // Trigger a custom event so the drawCloud effect can listen to it
           canvas.dispatchEvent(new Event("canvas-resize"));
         }
       }
@@ -186,7 +178,7 @@ export default function IchimokuCloudPlot({
         "rgba(67, 160, 71, 0.35)";
       
       const bearishColor =
-        indicatorStyle?.ICHIMOKU?.cloudFillBullish?.palette?.color1 ||
+        indicatorStyle?.ICHIMOKU?.cloudFillBearish?.palette?.color0 ||
         indicatorStyle?.ICHIMOKU?.cloudFillBearish?.color ||
         "rgba(244, 67, 54, 0.35)";
 
@@ -269,14 +261,6 @@ export default function IchimokuCloudPlot({
           }
         }
       }
-
-      console.log({
-          totalPoints: validPoints.length,
-          visiblePoints: visiblePts.length,
-          canvasWidth: canvas.width,
-          firstVisible: visiblePts[0],
-          lastVisible: visiblePts[visiblePts.length - 1],
-      });
 
       const chartPts = visiblePts;
 
@@ -368,7 +352,7 @@ export default function IchimokuCloudPlot({
         cloudCanvasRef.current.removeEventListener("canvas-resize", drawCloud);
       }
     };
-  }, [result, indicatorStyle]);
+  }, [result, indicatorStyle, chart]);
 
   /* ================= STYLE UPDATE ================= */
 

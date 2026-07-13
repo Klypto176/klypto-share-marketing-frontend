@@ -4,7 +4,7 @@ import { FiX, FiCalendar, FiClock, FiChevronLeft, FiChevronRight } from 'react-i
 
 const GoToDateDialog = ({ onClose, onGoTo }) => {
   const [selectedDate, setSelectedDate] = useState(() => localStorage.getItem('goToDateDialog_date') || new Date().toISOString().split('T')[0]);
-  const [selectedTime, setSelectedTime] = useState(() => localStorage.getItem('goToDateDialog_time') || '00:00');
+  const [selectedTime, setSelectedTime] = useState(() => localStorage.getItem('goToDateDialog_time') || '09:15');
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
