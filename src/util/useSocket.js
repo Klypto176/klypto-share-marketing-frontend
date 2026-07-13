@@ -34,7 +34,7 @@ const useSocket = (props = {}) => {
       },
       
       [EVENTS.WATCHLIST.RESPONSE]: (res) => {
-        console.log("masterWatchlistResponse:", res);
+        // console.log("masterWatchlistResponse:", res);
         globalCache.watchList = res?.data || res;
         if (propsRef.current.handleWatchlistResponse) propsRef.current.handleWatchlistResponse(res);
       },
@@ -63,11 +63,13 @@ const useSocket = (props = {}) => {
       },
       
       [EVENTS.OVERVIEW.RESPONSE]: (tick) => {
+        console.log(`[SOCKET] ${EVENTS.OVERVIEW.RESPONSE} (strategyLiveTick) received:`, tick);
         if (propsRef.current.handleOverviewTick) {
           propsRef.current.handleOverviewTick(tick);
           return;
         }
-        if (!propsRef.current.disableOverviewLiveTickFallback && propsRef.current.handleLiveTick) {
+        // Always route overview ticks to handleLiveTick (ignore disableOverviewLiveTickFallback)
+        if (propsRef.current.handleLiveTick) {
           propsRef.current.handleLiveTick(tick);
         }
       },

@@ -3153,6 +3153,7 @@ json.dumps(result)
       setMainChartLoading(false);
     },
     handleLiveTick: (tickOrArray) => {
+      console.log("Live tick received:", tickOrArray);
       const ticks = Array.isArray(tickOrArray) ? tickOrArray : [tickOrArray];
 
       ticks.forEach((tick) => {
@@ -3161,10 +3162,10 @@ json.dumps(result)
 
         if (!isSameSymbolName(tickSymbol, activeSymbol)) return;
 
-        // console.log(
-        //   `[LIVE TICK] Symbol: ${tickSymbol}, Active: ${activeSymbol}`,
-        //   tick,
-        // );
+        console.log(
+          `[LIVE TICK] Symbol: ${tickSymbol}, Active: ${activeSymbol}`,
+          tick,
+        );
 
         if (
           !seriesRef.current ||
@@ -3173,11 +3174,15 @@ json.dumps(result)
         )
           return;
 
-        const liveData = tick?.data || tick?.tick || {};
+        const liveData = tick?.data || tick?.tick || tick || {};
+        const rawData = tick?.raw || tick?.overview || {};
+
         let rawTickTime =
+          liveData?.datetime ??
           liveData?.time ??
           liveData?.tickTime ??
-          liveData?.datetime ??
+          rawData?.exchange_timestamp ??
+          rawData?.last_update_time ??
           tick?.overview?.exchange_trade_time ??
           tick?.raw?.exchange_timestamp;
         let tickTime = Number(rawTickTime);
@@ -3186,26 +3191,27 @@ json.dumps(result)
           tickTime = Math.floor(new Date(rawTickTime).getTime() / 1000);
         }
         if (tickTime > 10000000000) tickTime = Math.floor(tickTime / 1000);
-        if (!Number.isFinite(tickTime)) return;
 
         const adjustedTime = tickTime + IST_OFFSET;
         const normalizedTime =
           Math.floor(adjustedTime / intervalSec) * intervalSec;
 
-        if (!Number.isFinite(normalizedTime) || normalizedTime <= 0) return;
-
-        const liveOpen = Number(liveData.open);
-        const liveHigh = Number(liveData.high);
-        const liveLow = Number(liveData.low);
-        const liveClose = Number(
-          liveData.close ??
-            liveData.price ??
-            liveData.ltp ??
-            liveData.last_traded_price,
+        // ─── FIX: Use LTP (last_traded_price) as the real current price ───
+        // liveData.close is the PREVIOUS DAY CLOSE (PDC), NOT the current candle close!
+        // The actual current price is last_traded_price / ltp
+        const ltp = Number(
+          liveData?.last_traded_price ??
+          rawData?.ltp ??
+          liveData?.ltp ??
+          liveData?.price
         );
-        const liveVolume = Number(liveData.volume || 0);
 
-        if (!Number.isFinite(liveClose)) return;
+        if (!Number.isFinite(ltp) || ltp <= 0) { console.warn("[LIVE TICK] LTP is invalid, skipping"); return; }
+        if (!Number.isFinite(tickTime)) { console.warn("[LIVE TICK] tickTime is not finite, skipping"); return; }
+        if (!Number.isFinite(normalizedTime) || normalizedTime <= 0) { console.warn("[LIVE TICK] normalizedTime invalid, skipping"); return; }
+
+        // The volume from liveData.volume is per-tick; use raw.volume (total day volume) as fallback
+        const liveVolume = Number(rawData?.volume ?? liveData?.volume ?? 0);
 
         const existingIndex = candlesRef.current.findIndex(
           (c) => c.time === normalizedTime,
@@ -3216,50 +3222,42 @@ json.dumps(result)
           candlesRef.current.length > 0
             ? candlesRef.current[candlesRef.current.length - 1]
             : null;
-        const baseCandle =
-          existingCandle || latestCandle || currentCandleRef.current;
 
         let updatedBar;
         if (existingCandle) {
+          // Update the existing live candle: extend high/low, move close to LTP
           updatedBar = {
             ...existingCandle,
-            high: Math.max(
-              Number(existingCandle.high),
-              Number.isFinite(liveHigh) ? liveHigh : liveClose,
-            ),
-            low: Math.min(
-              Number(existingCandle.low),
-              Number.isFinite(liveLow) ? liveLow : liveClose,
-            ),
-            close: liveClose,
+            high: Math.max(Number(existingCandle.high), ltp),
+            low: Math.min(Number(existingCandle.low), ltp),
+            close: ltp,
             volume: liveVolume || Number(existingCandle.volume || 0),
           };
-        } else if (!baseCandle || normalizedTime > baseCandle.time) {
+        } else if (!latestCandle || normalizedTime > latestCandle.time) {
+          // New candle: open = previous candle's close (LTP), not the day open
+          const newCandleOpen = latestCandle ? Number(latestCandle.close) : ltp;
           updatedBar = {
             time: normalizedTime,
-            open: Number.isFinite(liveOpen) ? liveOpen : liveClose,
-            high: Number.isFinite(liveHigh) ? liveHigh : liveClose,
-            low: Number.isFinite(liveLow) ? liveLow : liveClose,
-            close: liveClose,
+            open: Number.isFinite(newCandleOpen) ? newCandleOpen : ltp,
+            high: ltp,
+            low: ltp,
+            close: ltp,
             volume: liveVolume,
           };
-        } else if (normalizedTime < baseCandle.time) {
+        } else if (normalizedTime < latestCandle.time) {
+          // Stale tick (older than current candle) — ignore
           return;
         } else {
+          // Same time as latest candle, extend it
           updatedBar = {
-            ...baseCandle,
-            high: Math.max(
-              Number(baseCandle.high),
-              Number.isFinite(liveHigh) ? liveHigh : liveClose,
-            ),
-            low: Math.min(
-              Number(baseCandle.low),
-              Number.isFinite(liveLow) ? liveLow : liveClose,
-            ),
-            close: liveClose,
-            volume: liveVolume || Number(baseCandle.volume || 0),
+            ...latestCandle,
+            high: Math.max(Number(latestCandle.high), ltp),
+            low: Math.min(Number(latestCandle.low), ltp),
+            close: ltp,
+            volume: liveVolume || Number(latestCandle.volume || 0),
           };
         }
+
 
         const nextBarSignature = buildLiveBarSignature(updatedBar);
         if (
