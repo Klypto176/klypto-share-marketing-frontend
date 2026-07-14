@@ -194,7 +194,7 @@ export default function VolatilityMomentumProPlot({
     addSignalTooltips("extremeUpSignals", "EXTREME UP", "#4caf50", "belowBar");
     addSignalTooltips("extremeDownSignals", "EXTREME DOWN", "#f44336", "aboveBar");
 
-  }, [result, indicatorStyle]);
+  }, [result]);
 
 
   /* ================= DRAW BACKGROUNDS & CHANNEL FILL & POSITION TOOLTIPS ================= */

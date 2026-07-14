@@ -105,9 +105,13 @@ export default function SSLPlot({
       const close = closeMap.get(t) ?? candle.close;
       const upper = upperByTime.get(t) ?? null;
       const lower = lowerByTime.get(t) ?? null;
-      const barColor = getBaselineColor(close, upper, lower);
       
       const res = { ...candle };
+      if (upper == null || lower == null) {
+        return res;
+      }
+
+      const barColor = getBaselineColor(close, upper, lower);
       if (barColor != null) {
         res.color = barColor;
         res.wickColor = barColor;
@@ -128,18 +132,9 @@ export default function SSLPlot({
   useEffect(() => {
     if (!result) return;
 
-    if (indicatorSeriesRef.current?.SSL_HYBRID) {
-      Object.values(indicatorSeriesRef.current.SSL_HYBRID).forEach((s) => {
-        if (s?.setData) {
-          try {
-            chart?.removeSeries(s);
-          } catch {}
-        }
-      });
-      indicatorSeriesRef.current.SSL_HYBRID = null;
-    }
-
-    const groupedSeries = {};
+    const instanceId = result?.id || "SSL_HYBRID";
+    const existingSeries = indicatorSeriesRef.current?.[instanceId] || {};
+    const groupedSeries = { ...existingSeries };
     let upperChannelData = [];
     let lowerChannelData = [];
 
@@ -151,8 +146,12 @@ export default function SSLPlot({
     const lowerArr = nestedData.lowerChannel || [];
     const ssl1Arr = nestedData.ssl1 || [];
     const ssl2Arr = nestedData.ssl2 || [];
-    const atrUpperArr = nestedData.atrUpper || [];
-    const atrLowerArr = nestedData.atrLower || [];
+    // const atrUpperArr = nestedData.atrUpper || [];
+    // const atrLowerArr = nestedData.atrLower || [];
+
+    const upperByTime = new Map(upperArr.map((p) => [p.time, p.value]));
+    const lowerByTime = new Map(lowerArr.map((p) => [p.time, p.value]));
+    const baselineByTime = new Map(baselineArr.map((p) => [p.time, p.value]));
 
     // Build time → close lookup from all available data
     const closeMap = new Map();
@@ -199,7 +198,8 @@ export default function SSLPlot({
       const styleConfig = indicatorStyle?.SSL_HYBRID?.[lineName];
       const shouldShow = getDisplayVisibility(lineName);
 
-      const series = addSeries("SSL_HYBRID", LineSeries, {
+      let series = groupedSeries[lineName];
+      const options = {
         color: styleConfig?.color || rowConfig?.color,
         lineWidth: styleConfig?.width || 2,
         lineStyle: styleConfig?.lineStyle || 0,
@@ -212,15 +212,25 @@ export default function SSLPlot({
           "atrUpper",
           "atrLower",
         ].includes(lineName),
-      });
+      };
 
-      if (!series) return;
+      if (!series) {
+        series = addSeries(instanceId, LineSeries, options);
+        if (!series) return;
+        groupedSeries[lineName] = series;
+      } else {
+        try {
+          series.applyOptions(options);
+        } catch (e) {
+          console.warn(`Failed to apply options to SSL ${lineName}:`, e);
+        }
+      }
 
       /* ================= DYNAMIC COLORS PER LINE ================= */
 
       if (lineName === "baseline") {
         const colored = [];
-        lineData.forEach((point, i) => {
+        lineData.forEach((point) => {
           if (point.value == null || Number.isNaN(Number(point.value))) return;
           const actualClose = closeMap.get(point.time) ?? point.close ?? null;
 
@@ -229,16 +239,20 @@ export default function SSLPlot({
             value: point.value,
             color: getBaselineColor(
               actualClose,
-              point.upperChannel ?? upperArr[i]?.value ?? null,
-              point.lowerChannel ?? lowerArr[i]?.value ?? null,
+              point.upperChannel ?? upperByTime.get(point.time) ?? null,
+              point.lowerChannel ?? lowerByTime.get(point.time) ?? null,
             ),
           });
         });
-        series.setData(colored);
+        try {
+          series.setData(colored);
+        } catch (e) {
+          console.warn("SSL baseline setData failed:", e);
+        }
       } else if (lineName === "upperChannel" || lineName === "lowerChannel") {
         // Channel lines use same color logic as baseline
         const colored = [];
-        lineData.forEach((point, i) => {
+        lineData.forEach((point) => {
           if (point.value == null || Number.isNaN(Number(point.value))) return;
           const actualClose = closeMap.get(point.time) ?? point.close ?? null;
 
@@ -247,12 +261,16 @@ export default function SSLPlot({
             value: point.value,
             color: getBaselineColor(
               actualClose,
-              upperArr[i]?.value ?? null,
-              lowerArr[i]?.value ?? null,
+              upperByTime.get(point.time) ?? null,
+              lowerByTime.get(point.time) ?? null,
             ),
           });
         });
-        series.setData(colored);
+        try {
+          series.setData(colored);
+        } catch (e) {
+          console.warn(`SSL ${lineName} setData failed:`, e);
+        }
       } else if (lineName === "ssl1") {
         const colored = [];
         lineData.forEach((point) => {
@@ -265,10 +283,14 @@ export default function SSLPlot({
             color: getSsl1Color(actualClose, point.value),
           });
         });
-        series.setData(colored);
+        try {
+          series.setData(colored);
+        } catch (e) {
+          console.warn("SSL ssl1 setData failed:", e);
+        }
       } else if (lineName === "ssl2") {
         const colored = [];
-        lineData.forEach((point, i) => {
+        lineData.forEach((point) => {
           if (point.value == null || Number.isNaN(Number(point.value))) return;
           const actualClose = closeMap.get(point.time) ?? point.close ?? null;
 
@@ -278,15 +300,23 @@ export default function SSLPlot({
             color: getSsl2Color(
               actualClose,
               point.value,
-              baselineArr[i]?.value ?? null,
+              baselineByTime.get(point.time) ?? null,
               point.atr ?? null,
             ),
           });
         });
-        series.setData(colored);
+        try {
+          series.setData(colored);
+        } catch (e) {
+          console.warn("SSL ssl2 setData failed:", e);
+        }
       } else {
         const validData = lineData.filter(p => p.value != null && !Number.isNaN(Number(p.value)));
-        series.setData(validData);
+        try {
+          series.setData(validData);
+        } catch (e) {
+          console.warn(`SSL ${lineName} setData failed:`, e);
+        }
       }
 
       groupedSeries[lineName] = series;
@@ -296,7 +326,7 @@ export default function SSLPlot({
 
     groupedSeries.upperChannelData = upperChannelData;
     groupedSeries.lowerChannelData = lowerChannelData;
-    indicatorSeriesRef.current.SSL_HYBRID = groupedSeries;
+    indicatorSeriesRef.current[instanceId] = groupedSeries;
 
     // Apply bar colors to the main candlestick series
     applyBarColors(closeMap, upperArr, lowerArr);
@@ -317,7 +347,8 @@ export default function SSLPlot({
   /* ================= DRAW BASELINE CLOUD ================= */
 
   const drawBaselineCloud = () => {
-    const sslGroup = indicatorSeriesRef.current?.SSL_HYBRID;
+    const instanceId = result?.id || "SSL_HYBRID";
+    const sslGroup = indicatorSeriesRef.current?.[instanceId];
     if (!sslGroup) return;
 
     const upper = sslGroup.upperChannelData || [];
@@ -383,7 +414,8 @@ export default function SSLPlot({
   /* ================= STYLE UPDATE ================= */
 
   useEffect(() => {
-    const sslGroup = indicatorSeriesRef.current?.SSL_HYBRID;
+    const instanceId = result?.id || "SSL_HYBRID";
+    const sslGroup = indicatorSeriesRef.current?.[instanceId];
     if (!sslGroup) return;
 
     Object.entries(sslGroup).forEach(([key, series]) => {
@@ -421,9 +453,14 @@ export default function SSLPlot({
       const candles = candlesRef?.current;
       if (mainSeries && candles?.length) {
         try {
-          const restored = candles.map(({ color, wickColor, borderColor, ...rest }) => rest);
+          const restored = candles.map((c) => {
+            const { color: _c, wickColor: _w, borderColor: _b, ...rest } = c;
+            return rest;
+          });
           mainSeries.setData(restored);
-        } catch {}
+        } catch (e) {
+          // ignore
+        }
       }
     } else {
       applyBarColors(closeMapRef.current, upperArr, lowerArr);
@@ -439,9 +476,14 @@ export default function SSLPlot({
       const candles = candlesRef?.current;
       if (mainSeries && candles?.length) {
         try {
-          const restored = candles.map(({ color, wickColor, borderColor, ...rest }) => rest);
+          const restored = candles.map((c) => {
+            const { color: _c, wickColor: _w, borderColor: _b, ...rest } = c;
+            return rest;
+          });
           mainSeries.setData(restored);
-        } catch {}
+        } catch (e) {
+          // ignore
+        }
       }
 
       const canvas = canvasRef.current;
@@ -451,8 +493,19 @@ export default function SSLPlot({
         canvas.remove();
       }
       canvasRef.current = null;
-      if (indicatorSeriesRef.current?.SSL_HYBRID) {
-        indicatorSeriesRef.current.SSL_HYBRID = null;
+      const instanceId = result?.id || "SSL_HYBRID";
+      const sslGroup = indicatorSeriesRef.current?.[instanceId];
+      if (sslGroup) {
+        Object.values(sslGroup).forEach((series) => {
+          if (series && chart?.current) {
+            try {
+              chart.current.removeSeries(series);
+            } catch (e) {
+              console.warn("Failed to remove SSL series:", e);
+            }
+          }
+        });
+        indicatorSeriesRef.current[instanceId] = null;
       }
     };
   }, []);

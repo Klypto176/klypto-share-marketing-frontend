@@ -20,13 +20,18 @@ export default function PVOInput(response, indicatorSeriesRef, latestIndicatorVa
   if (series) {
     series.pvo?.setData(pvoData);
     series.signal?.setData(signalData);
-    series.hist?.setData(histData);
 
     // store raw data for recoloring
     series.rawData = { pvo: pvoData, signal: signalData, hist: histData };
 
     // store result for plot
     series.result = { data: { pvo: pvoData, signal: signalData, hist: histData } };
+
+    if (series._recolor) {
+      series._recolor();
+    } else {
+      series.hist?.setData(histData);
+    }
   } else {
     // If series does not exist yet, store result and rows for PVOPlot
     indicatorSeriesRef.current[instanceId || "PVO"] = {

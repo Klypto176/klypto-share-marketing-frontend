@@ -184,6 +184,7 @@ export default function VWAPPlot({
     createBand(2, upper2, lower2);
     createBand(3, upper3, lower3);
 
+    groupedSeries._drawCloud = drawBands;
     indicatorSeriesRef.current.VWAP = groupedSeries;
 
     drawBands();

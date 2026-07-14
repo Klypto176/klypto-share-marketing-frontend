@@ -1718,12 +1718,12 @@ json.dumps(result)
         if (paneObj) {
           const div = paneObj.getHTMLElement();
           if (div) {
-            console.log(
-              "💎 Populating panesRef for",
-              indicator,
-              "at index",
-              paneIndex,
-            );
+            // console.log(
+            //   "💎 Populating panesRef for",
+            //   indicator,
+            //   "at index",
+            //   paneIndex,
+            // );
             const indType = selectedIndicatorRef.current?.find(
               (ind) => ind.id === indicator,
             )?.type;
@@ -1822,7 +1822,35 @@ json.dumps(result)
         cleanedData.sort((a, b) => a.time - b.time);
       }
 
-      return originalSetData(cleanedData);
+      try {
+        return originalSetData(cleanedData);
+      } catch (e) {
+        if (!e.message.includes("Object is disposed")) {
+          throw e;
+        }
+      }
+    };
+
+    const originalUpdate = series.update.bind(series);
+    series.update = (data) => {
+      try {
+        return originalUpdate(data);
+      } catch (e) {
+        if (!e.message.includes("Object is disposed")) {
+          throw e;
+        }
+      }
+    };
+
+    const originalApplyOptions = series.applyOptions.bind(series);
+    series.applyOptions = (options) => {
+      try {
+        return originalApplyOptions(options);
+      } catch (e) {
+        if (!e.message.includes("Object is disposed")) {
+          throw e;
+        }
+      }
     };
 
     return series;
@@ -2086,12 +2114,12 @@ json.dumps(result)
 
     if (keysToShow) {
       const hiddenKeys = [
-        "upper",
-        "middle",
+        // "upper",
+        // "middle",
         "middleBand",
         "lowerBand",
         "upperBand",
-        "lower",
+        "zero",
         "bgFill",
         "zeroLine",
         "bandBackground",
@@ -3140,6 +3168,27 @@ json.dumps(result)
           chartRef.current?.timeScale().fitContent();
         }
 
+        if (
+          selectedIndicatorRef.current &&
+          selectedIndicatorRef.current.length > 0
+        ) {
+          const fetchFrom =
+            requestMeta?.pendingFromDate ||
+            pendingHistoricalFromDateRef.current ||
+            fromDate;
+          const fetchTo =
+            requestMeta?.pendingToDate ||
+            pendingHistoricalToDateRef.current ||
+            toDate;
+          fetchIndicatorData(
+            selectedIndicatorRef.current,
+            selectedCurrency,
+            timeframeValue,
+            fetchFrom,
+            fetchTo
+          );
+        }
+
         setMainChartLoading(false);
         symbolTransitioningRef.current = false;
         setSymbolTransitioning(false);
@@ -3361,7 +3410,16 @@ json.dumps(result)
           if (!series || typeof series.update !== "function") return;
 
           let value;
-          if (staticKeys.includes(lineName)) {
+          // First, check if the payload provides a dynamic value for this line
+          const dynamicValue =
+            lastPoint[lineName] ??
+            lastPoint[lineName + "Band"] ??
+            (lineName === indicatorType.toLowerCase() ? lastPoint[lineName] : undefined);
+            
+          if (dynamicValue !== undefined && dynamicValue !== null) {
+            value = dynamicValue;
+          } else if (staticKeys.includes(lineName)) {
+            // Fallback to static style lines (e.g., RSI 70/30) if no dynamic data is provided
             const style =
               indicatorStyleRef.current?.[instId] ||
               indicatorStyleRef.current?.[instType];
@@ -3392,9 +3450,8 @@ json.dumps(result)
                   : style?.lower?.value ?? 30;
             }
           } else {
+            // For single-line indicators when lineName doesn't exactly match
             value =
-              lastPoint[lineName] ??
-              lastPoint[lineName + "Band"] ??
               lastPoint.value ??
               lastPoint[indicatorType.toLowerCase()];
           }
@@ -3403,8 +3460,20 @@ json.dumps(result)
 
           try {
             series.update({ time: pointTime, value: Number(value) });
+
+            // Update associated data array used for canvas drawings (clouds/bands)
+            const dataArrayKey = `${lineName}Data`;
+            if (seriesGroup[dataArrayKey] && Array.isArray(seriesGroup[dataArrayKey])) {
+              const arr = seriesGroup[dataArrayKey];
+              const last = arr[arr.length - 1];
+              if (last && last.time === pointTime) {
+                last.value = Number(value);
+              } else {
+                arr.push({ time: pointTime, value: Number(value) });
+              }
+            }
           } catch (e) {
-            if (!e.message.includes("oldest data")) {
+            if (!e.message.includes("oldest data") && !e.message.includes("Object is disposed")) {
               console.warn(
                 `Indicator update failed [${indicatorType}][${instId}]:`,
                 e.message,
@@ -3412,6 +3481,11 @@ json.dumps(result)
             }
           }
         });
+
+        // Trigger the custom cloud/band drawing function if the indicator has one (e.g., KC, DC, VWAP, BB)
+        if (seriesGroup._drawCloud && typeof seriesGroup._drawCloud === "function") {
+          seriesGroup._drawCloud();
+        }
       });
     },
   });
@@ -3538,7 +3612,22 @@ json.dumps(result)
     if (!chartRef.current) return;
 
     if (targetDate === "latest") {
-      chartRef.current.timeScale().scrollToRealTime();
+      const todayStr = getTodayDateString();
+      const d = getInitialLookbackDate(timeframeValue);
+      const minDate = new Date("2024-10-01");
+      const initialFrom = d < minDate ? "2024-10-01" : d.toISOString().split("T")[0];
+
+      if (toDate !== todayStr) {
+        setMainChartLoading(true);
+        handleSetFromDate(initialFrom);
+        setToDate(todayStr);
+        // Scroll to real time after data loads
+        setTimeout(() => {
+          if (chartRef.current) chartRef.current.timeScale().scrollToRealTime();
+        }, 1000);
+      } else {
+        chartRef.current.timeScale().scrollToRealTime();
+      }
       return;
     }
 

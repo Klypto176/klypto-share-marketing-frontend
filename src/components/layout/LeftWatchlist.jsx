@@ -346,13 +346,16 @@ const LeftWatchlist = ({ onClose, setSelectedCurrency }) => {
                     key={`${stock.token || 'notoken'}-${index}`}
                     style={{ ...styles.listItem, borderBottom: "1px solid var(--bg-secondary)" }}
                     onClick={() =>
-                      setSelectedCurrency({
-                        symbol: stock.symbol,
-                        name: stock.name,
-                        token: stock.token,
-                        segment: stock.segment || "NSE",
-                        type: stock.type || "currency",
-                        userCode: stock.userCode,
+                      setSelectedCurrency((prev) => {
+                        if (prev?.token === stock.token) return prev;
+                        return {
+                          symbol: stock.symbol,
+                          name: stock.name,
+                          token: stock.token,
+                          segment: stock.segment || "NSE",
+                          type: stock.type || "currency",
+                          userCode: stock.userCode,
+                        };
                       })
                     }
                     onMouseEnter={(e) =>

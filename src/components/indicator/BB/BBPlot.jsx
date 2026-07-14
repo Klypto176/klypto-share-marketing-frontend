@@ -62,6 +62,7 @@ export default function BBPlot({
 
     groupedSeries.upperData = upperData;
     groupedSeries.lowerData = lowerData;
+    groupedSeries._drawCloud = drawBBCloud;
 
     indicatorSeriesRef.current.BB = groupedSeries;
 

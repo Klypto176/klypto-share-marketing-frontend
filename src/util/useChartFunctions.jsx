@@ -4,9 +4,6 @@ import socket from "../services/websocket/socket";
 import { io } from "socket.io-client";
 import Swal from "sweetalert2";
 
-// Temporary socket for indicator details
-const tempIndicatorSocket = io("http://192.168.1.20:8000");
-
 let globalFetchSessionId = 0;
 let globalFetchContextKey = "";
 const INDICATOR_REQUEST_TIMEOUT_MS = 120000;
@@ -40,14 +37,19 @@ export default function useChartFunctions({
     selectedIndicator,
     selectedCurrency,
     timeframeValue,
+    customFromDate,
+    customToDate
   ) {
     if (!selectedIndicator?.length) return;
+
+    const actualFromDate = customFromDate || fromDate;
+    const actualToDate = customToDate || toDate;
 
     const fetchContextKey = getIndicatorFetchContextKey(
       selectedCurrency,
       timeframeValue,
-      fromDate,
-      toDate,
+      actualFromDate,
+      actualToDate,
     );
 
     if (fetchContextKey !== globalFetchContextKey) {
@@ -72,8 +74,8 @@ export default function useChartFunctions({
           indicatorMeta,
           selectedCurrency,
           timeframeValue,
-          fromDate,
-          toDate,
+          actualFromDate,
+          actualToDate,
           socketRef,
           indicatorConfigs,
         );
@@ -153,8 +155,8 @@ export default function useChartFunctions({
               selectedCurrency,
               type,
               timeframeValue,
-              fromDate,
-              toDate,
+              actualFromDate,
+              actualToDate,
               socketRef,
               indicatorConfigs?.[id] || {},
               requestId,
@@ -1020,17 +1022,14 @@ async function fetchBatchIndicatorData(
 
   try {
     const response = await new Promise((resolve, reject) => {
-      // if (!socketRef.current || !socket.connected) {
-      if (!tempIndicatorSocket || !tempIndicatorSocket.connected) {
+      if (!socketRef.current || !socket.connected) {
         reject(new Error("Socket disconnected"));
         return;
       }
 
       const cleanup = () => {
-        // socket.off("indicatorDetailsBatchResponse", onResponse);
-        // socket.off("indicatorDetailsBatchError", onError);
-        tempIndicatorSocket.off("indicatorDetailsBatchResponse", onResponse);
-        tempIndicatorSocket.off("indicatorDetailsBatchError", onError);
+        socket.off("indicatorDetailsBatchResponse", onResponse);
+        socket.off("indicatorDetailsBatchError", onError);
       };
 
       const timeoutId = setTimeout(() => {
@@ -1054,10 +1053,8 @@ async function fetchBatchIndicatorData(
         reject(err);
       };
 
-      // socket.on("indicatorDetailsBatchResponse", onResponse);
-      // socket.on("indicatorDetailsBatchError", onError);
-      tempIndicatorSocket.on("indicatorDetailsBatchResponse", onResponse);
-      tempIndicatorSocket.on("indicatorDetailsBatchError", onError);
+      socket.on("indicatorDetailsBatchResponse", onResponse);
+      socket.on("indicatorDetailsBatchError", onError);
 
       // socketRef.current.emit("getIndicatorDetailsBatch", {
       const payload = {
@@ -1066,7 +1063,7 @@ async function fetchBatchIndicatorData(
         requests,
       };
       console.log("Emitting getIndicatorDetailsBatch with payload:", payload);
-      tempIndicatorSocket.emit("getIndicatorDetailsBatch", payload);
+      socketRef.current.emit("getIndicatorDetailsBatch", payload);
     });
 
     const rawResults = Array.isArray(response?.results) ? response.results : [];
@@ -1139,17 +1136,14 @@ async function fetchDataForIndicators(
     const response =
       preloadedResponse ||
       (await new Promise((resolve, reject) => {
-        // if (!socketRef.current || !socket.connected) {
-        if (!tempIndicatorSocket || !tempIndicatorSocket.connected) {
+        if (!socketRef.current || !socket.connected) {
           resolve({ data: [] });
           return;
         }
 
         const cleanup = () => {
-          // socket.off("indicatorDetailsResponse", onResponse);
-          // socket.off("indicatorDetailsError", onError);
-          tempIndicatorSocket.off("indicatorDetailsResponse", onResponse);
-          tempIndicatorSocket.off("indicatorDetailsError", onError);
+          socket.off("indicatorDetailsResponse", onResponse);
+          socket.off("indicatorDetailsError", onError);
         };
 
         const timeoutId = setTimeout(() => {
@@ -1172,10 +1166,8 @@ async function fetchDataForIndicators(
           reject(err);
         };
 
-        // socket.on("indicatorDetailsResponse", onResponse);
-        // socket.on("indicatorDetailsError", onError);
-        tempIndicatorSocket.on("indicatorDetailsResponse", onResponse);
-        tempIndicatorSocket.on("indicatorDetailsError", onError);
+        socket.on("indicatorDetailsResponse", onResponse);
+        socket.on("indicatorDetailsError", onError);
 
         // socketRef.current?.emit("getIndicatorDetails", {
         const payload = {
@@ -1187,7 +1179,7 @@ async function fetchDataForIndicators(
           type,
         };
         console.log("Emitting getIndicatorDetails with payload:", payload);
-        tempIndicatorSocket.emit("getIndicatorDetails", payload);
+        socketRef.current?.emit("getIndicatorDetails", payload);
       }));
 
     if (!response || !response.data) {

@@ -61,6 +61,7 @@ export default function DCPlot({
 
     groupedSeries.upperData = upperData;
     groupedSeries.lowerData = lowerData;
+    groupedSeries._drawCloud = drawDCCloud;
 
     indicatorSeriesRef.current.DC = groupedSeries;
 

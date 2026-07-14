@@ -42,7 +42,18 @@ export default function SUPERSMOOTHERInput(
 
   series.oscillator?.setData(oscillator);
   series.signalLine?.setData(signalLine);
-  series.histogram?.setData(histogram);
+
+  series.rawData = {
+    oscillator,
+    signalLine,
+    histogram,
+  };
+
+  if (series._recolor) {
+    series._recolor();
+  } else {
+    series.histogram?.setData(histogram);
+  }
 
   latestIndicatorValuesRef.current[indicatorId] = {
     oscillator: oscillator.at(-1)?.value ?? null,

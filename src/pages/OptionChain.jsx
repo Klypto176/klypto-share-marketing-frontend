@@ -374,6 +374,8 @@ const styles = `
     font-size: 38px;
     margin-bottom: 14px;
     opacity: .45;
+    display: flex;
+    justify-content: center;
   }
   .oc-empty h6 {
     font-weight: 700;
