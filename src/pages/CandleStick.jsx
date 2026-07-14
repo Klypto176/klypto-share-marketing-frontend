@@ -1161,6 +1161,7 @@ json.dumps(result)
   const seriesReadyRef = useRef(false);
   const selectedIndicatorRef = useRef(selectedIndicator);
   const ohlcvDisplayRef = useRef(null);
+  const isCrosshairActiveRef = useRef(false);
   const actionButtonsRef = useRef(null);
   const strategyMarkersRef = useRef(null); //ref for markers
   const markersLoadedRef = useRef(false);
@@ -2315,7 +2316,28 @@ json.dumps(result)
 
       // clear crosshair if invalid
       if (!param?.point || param.time === undefined) {
+        isCrosshairActiveRef.current = false;
         charts.forEach((c) => c.clearCrosshairPosition?.());
+
+        // Restore latest live bar to the legend when cursor leaves
+        if (currentCandleRef.current && ohlcvDisplayRef.current) {
+          const el = ohlcvDisplayRef.current;
+          const last = currentCandleRef.current;
+          const isUp = last.close >= last.open;
+          const color = isUp ? "#22c55e" : "#ef4444";
+          const o = el.querySelector("[data-o]");
+          const h = el.querySelector("[data-h]");
+          const l = el.querySelector("[data-l]");
+          const c = el.querySelector("[data-c]");
+          if (o) o.textContent = Number(last.open).toFixed(2);
+          if (h) h.textContent = Number(last.high).toFixed(2);
+          if (l) l.textContent = Number(last.low).toFixed(2);
+          if (c) c.textContent = Number(last.close).toFixed(2);
+          el.querySelectorAll("[data-val]").forEach(
+            (s) => (s.style.color = color),
+          );
+        }
+
         // Since we bypassed React state for live indicators, we need to show the last available data if crosshair leaves
         Object.keys(indicatorSeriesRef.current).forEach((indicator) => {
           const mainEl = document.getElementById(
@@ -2399,6 +2421,7 @@ json.dumps(result)
       // update candles
       const candle = param.seriesData?.get(seriesRef.current);
       if (candle && ohlcvDisplayRef.current) {
+        isCrosshairActiveRef.current = true;
         const el = ohlcvDisplayRef.current;
         const isUp = candle.close >= candle.open;
         const color = isUp ? "#22c55e" : "#ef4444";
@@ -2663,7 +2686,7 @@ json.dumps(result)
       console.warn("[LiveTick] Series update failed:", e.message);
     }
 
-    if (ohlcvDisplayRef.current) {
+    if (ohlcvDisplayRef.current && !isCrosshairActiveRef.current) {
       const el = ohlcvDisplayRef.current;
       const isUp = updatedBar.close >= updatedBar.open;
       const color = isUp ? "#22c55e" : "#ef4444";
@@ -3201,14 +3224,23 @@ json.dumps(result)
         // The actual current price is last_traded_price / ltp
         const ltp = Number(
           liveData?.last_traded_price ??
-          rawData?.ltp ??
-          liveData?.ltp ??
-          liveData?.price
+            rawData?.ltp ??
+            liveData?.ltp ??
+            liveData?.price,
         );
 
-        if (!Number.isFinite(ltp) || ltp <= 0) { console.warn("[LIVE TICK] LTP is invalid, skipping"); return; }
-        if (!Number.isFinite(tickTime)) { console.warn("[LIVE TICK] tickTime is not finite, skipping"); return; }
-        if (!Number.isFinite(normalizedTime) || normalizedTime <= 0) { console.warn("[LIVE TICK] normalizedTime invalid, skipping"); return; }
+        if (!Number.isFinite(ltp) || ltp <= 0) {
+          console.warn("[LIVE TICK] LTP is invalid, skipping");
+          return;
+        }
+        if (!Number.isFinite(tickTime)) {
+          console.warn("[LIVE TICK] tickTime is not finite, skipping");
+          return;
+        }
+        if (!Number.isFinite(normalizedTime) || normalizedTime <= 0) {
+          console.warn("[LIVE TICK] normalizedTime invalid, skipping");
+          return;
+        }
 
         // The volume from liveData.volume is per-tick; use raw.volume (total day volume) as fallback
         const liveVolume = Number(rawData?.volume ?? liveData?.volume ?? 0);
@@ -3257,7 +3289,6 @@ json.dumps(result)
             volume: liveVolume || Number(latestCandle.volume || 0),
           };
         }
-
 
         const nextBarSignature = buildLiveBarSignature(updatedBar);
         if (
