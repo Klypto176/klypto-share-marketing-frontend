@@ -70,6 +70,9 @@ export default function CMFPlot({
       cmfLine: cmfSeries,
       zeroLine: zeroSeries,
       cmfData,
+      _levels: {
+        zero: zeroValue
+      }
     };
   }, [result, indicatorConfigs]);
 

@@ -2004,8 +2004,20 @@ async function fetchDataForIndicators(
         return {
           type: "multi",
           data: {
-            aroonUp: response?.data?.aroonUpSeries ?? [],
-            aroonDown: response?.data?.aroonDownSeries ?? [],
+            aroonUp:
+              response?.data
+                ?.filter((d) => (d.aroonUp != null || d.up != null) && d.time != null)
+                .map((d) => ({
+                  time: Number(d.time) + IST_OFFSET,
+                  value: Number(d.aroonUp ?? d.up),
+                })) ?? [],
+            aroonDown:
+              response?.data
+                ?.filter((d) => (d.aroonDown != null || d.down != null) && d.time != null)
+                .map((d) => ({
+                  time: Number(d.time) + IST_OFFSET,
+                  value: Number(d.aroonDown ?? d.down),
+                })) ?? [],
           },
         };
       case "TR":

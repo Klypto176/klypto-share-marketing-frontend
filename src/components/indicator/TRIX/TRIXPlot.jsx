@@ -65,6 +65,9 @@ export default function TRIXPlot({
       trixLine: trixSeries,
       zeroLine: zeroSeries,
       trixData,
+      _levels: {
+        zero: zeroValue
+      }
     };
 
     console.log(":white_check_mark: TRIX plotted");

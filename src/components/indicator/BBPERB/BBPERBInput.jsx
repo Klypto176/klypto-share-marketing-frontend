@@ -24,12 +24,15 @@ export default function BBPERBInput(
   group?.percentB?.setData(percentBData);
 
   // Also update the level lines so they span the new data range
+  const levels = group?._levels || { overbought: 1, middle: 0.5, oversold: 0 };
   const makeLevel = (val) => percentBData.map((d) => ({ time: d.time, value: val }));
-  group?.overbought?.setData(makeLevel(1));
-  group?.middleBand?.setData(makeLevel(0.5));
-  group?.oversold?.setData(makeLevel(0));
+  
+  group?.overbought?.setData(makeLevel(levels.overbought));
+  group?.middleBand?.setData(makeLevel(levels.middle));
+  group?.oversold?.setData(makeLevel(levels.oversold));
+  
   group?.overboughtBg?.setData(percentBData.map((d) => ({ time: d.time, value: 2 })));
-  group?.middleBg?.setData(makeLevel(1));
+  group?.middleBg?.setData(makeLevel(levels.overbought));
   group?.oversoldBg?.setData(makeLevel(-1));
 
   if (latestIndicatorValuesRef?.current) {
