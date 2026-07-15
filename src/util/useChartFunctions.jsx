@@ -1,7 +1,5 @@
-import apiService from "../services/apiServices";
 import { getRowsByIndicator } from "./common";
 import socket from "../services/websocket/socket";
-import { io } from "socket.io-client";
 import Swal from "sweetalert2";
 
 let globalFetchSessionId = 0;
@@ -10,6 +8,50 @@ const INDICATOR_REQUEST_TIMEOUT_MS = 120000;
 const INDICATOR_CONCURRENCY_LIMIT = 2;
 
 const IST_OFFSET = 19800;
+
+const getIndicatorExchange = (selectedCurrency) =>
+  selectedCurrency?.exchange || selectedCurrency?.segment || "NSE";
+
+const getActiveIndicatorSocket = (socketRef) =>
+  socketRef?.current?.indicatorSocket ||
+  socketRef?.current?.socket ||
+  socket;
+
+const serializeIndicatorCandles = (candles) => {
+  if (!Array.isArray(candles) || candles.length === 0) {
+    return undefined;
+  }
+
+  return candles
+    .map((candle) => {
+      const time = Number(candle?.time);
+      const open = Number(candle?.open);
+      const high = Number(candle?.high);
+      const low = Number(candle?.low);
+      const close = Number(candle?.close);
+      const volume = Number(candle?.volume ?? candle?.vol ?? candle?.v ?? 0);
+
+      if (
+        !Number.isFinite(time) ||
+        !Number.isFinite(open) ||
+        !Number.isFinite(high) ||
+        !Number.isFinite(low) ||
+        !Number.isFinite(close)
+      ) {
+        return null;
+      }
+
+      return {
+        time,
+        open,
+        high,
+        low,
+        close,
+        volume: Number.isFinite(volume) ? volume : 0,
+      };
+    })
+    .filter(Boolean);
+};
 
 const getIndicatorFetchContextKey = (selectedCurrency, timeframeValue, fromDate, toDate) =>
   JSON.stringify({
@@ -20,7 +62,6 @@ const getIndicatorFetchContextKey = (selectedCurrency, timeframeValue, fromDate,
   });
 
 export default function useChartFunctions({
-  indicatorSeriesRef,
   indicatorDataRef,
   latestIndicatorValuesRef,
   indicatorConfigs,
@@ -71,6 +112,7 @@ export default function useChartFunctions({
         });
 
         const results = await fetchBatchIndicatorData(
+          candlesRef.current,
           indicatorMeta,
           selectedCurrency,
           timeframeValue,
@@ -946,6 +988,7 @@ export default function useChartFunctions({
   };
 }
 async function fetchBatchIndicatorData(
+  candles,
   selectedIndicator,
   selectedCurrency,
   timeframeValue,
@@ -969,7 +1012,7 @@ async function fetchBatchIndicatorData(
     requestId: `indicator_${id}_${Date.now()}_${Math.random()
       .toString(36)
       .slice(2, 8)}`,
-    ...(indicatorConfigs?.[id] || indicatorConfigs?.[type] || {}),
+    config: indicatorConfigs?.[id] || indicatorConfigs?.[type] || {},
   }));
   const normalizeSymbol = (value) =>
     value == null ? value : String(value).trim().toUpperCase();
@@ -1022,14 +1065,15 @@ async function fetchBatchIndicatorData(
 
   try {
     const response = await new Promise((resolve, reject) => {
-      if (!socketRef.current || !socket.connected) {
+      const activeSocket = getActiveIndicatorSocket(socketRef);
+      if (!socketRef.current || !activeSocket?.connected) {
         reject(new Error("Socket disconnected"));
         return;
       }
 
       const cleanup = () => {
-        socket.off("indicatorDetailsBatchResponse", onResponse);
-        socket.off("indicatorDetailsBatchError", onError);
+        activeSocket.off("indicatorDetailsBatchResponse", onResponse);
+        activeSocket.off("indicatorDetailsBatchError", onError);
       };
 
       const timeoutId = setTimeout(() => {
@@ -1053,13 +1097,14 @@ async function fetchBatchIndicatorData(
         reject(err);
       };
 
-      socket.on("indicatorDetailsBatchResponse", onResponse);
-      socket.on("indicatorDetailsBatchError", onError);
+      activeSocket.on("indicatorDetailsBatchResponse", onResponse);
+      activeSocket.on("indicatorDetailsBatchError", onError);
 
-      // socketRef.current.emit("getIndicatorDetailsBatch", {
       const payload = {
         batchRequestId,
         ...expectedContext,
+        exchange: getIndicatorExchange(selectedCurrency),
+        candles: serializeIndicatorCandles(candles),
         requests,
       };
       console.log("Emitting getIndicatorDetailsBatch with payload:", payload);
@@ -1136,14 +1181,15 @@ async function fetchDataForIndicators(
     const response =
       preloadedResponse ||
       (await new Promise((resolve, reject) => {
-        if (!socketRef.current || !socket.connected) {
+        const activeSocket = getActiveIndicatorSocket(socketRef);
+        if (!socketRef.current || !activeSocket?.connected) {
           resolve({ data: [] });
           return;
         }
 
         const cleanup = () => {
-          socket.off("indicatorDetailsResponse", onResponse);
-          socket.off("indicatorDetailsError", onError);
+          activeSocket.off("indicatorDetailsResponse", onResponse);
+          activeSocket.off("indicatorDetailsError", onError);
         };
 
         const timeoutId = setTimeout(() => {
@@ -1166,17 +1212,19 @@ async function fetchDataForIndicators(
           reject(err);
         };
 
-        socket.on("indicatorDetailsResponse", onResponse);
-        socket.on("indicatorDetailsError", onError);
+        activeSocket.on("indicatorDetailsResponse", onResponse);
+        activeSocket.on("indicatorDetailsError", onError);
 
-        // socketRef.current?.emit("getIndicatorDetails", {
         const payload = {
           requestId,
           symbol: selectedCurrency?.name,
           interval: timeframeValue,
-          fromDate: fromDate,
-          toDate: toDate,
+          exchange: getIndicatorExchange(selectedCurrency),
+          fromDate,
+          toDate,
           type,
+          config: indicatorConfig || {},
+          candles: serializeIndicatorCandles(candles),
         };
         console.log("Emitting getIndicatorDetails with payload:", payload);
         socketRef.current?.emit("getIndicatorDetails", payload);

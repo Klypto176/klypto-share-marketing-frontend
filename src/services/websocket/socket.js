@@ -43,7 +43,10 @@ let strategySocketInstance = null;
 
 export const getStrategySocket = () => {
   if (!strategySocketInstance) {
-    const strategyUrl = import.meta.env.VITE_API_BASE_URL || API_BASE_URL;
+    const strategyUrl =
+      import.meta.env.VITE_STRATEGY_API_URL ||
+      import.meta.env.VITE_API_BASE_URL ||
+      API_BASE_URL;
     strategySocketInstance = io(strategyUrl, {
       query: { userId: getUserId() },
       transports: ["websocket", "polling"],

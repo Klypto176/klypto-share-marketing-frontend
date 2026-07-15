@@ -84,6 +84,8 @@ const getInitialLookbackDate = (timeframe) => {
 
 const getTodayDateString = () => new Date().toISOString().split("T")[0];
 const SANDBOX_DEPLOYMENT_CODE = "SANDBOX_EXECUTION";
+const CHART_TIME_OFFSET_SECONDS = 19800;
+const SANDBOX_OVERLAY_KEY = "__sandbox_overlay__";
 
 const buildStrategyAgentPrompt = (editorCode, symbol, timeframe) => `
 Convert the current strategy editor content into runnable ChartLab-compatible Python for sandbox execution.
@@ -99,6 +101,15 @@ Requirements:
 Current editor code:
 ${editorCode}
 `.trim();
+
+const isDirectChartLabScript = (code) => {
+  const text = String(code || "");
+  return (
+    /from\s+chartlab\s+import/i.test(text) &&
+    /@indicator\s*\(/i.test(text) &&
+    /def\s+run\s*\(\s*ctx\s*\)\s*:/i.test(text)
+  );
+};
 
 const normalizeChartTime = (rawTime) => {
   if (rawTime === null || rawTime === undefined || rawTime === "") {
@@ -131,11 +142,40 @@ const toSeriesValue = (point) => {
       ? point.value
       : null;
 
-  if (time === null || value === null) {
+  if (time === null) {
     return null;
   }
 
-  return { time, value };
+  const chartTime = time + CHART_TIME_OFFSET_SECONDS;
+  if (value === null) {
+    return { time: chartTime };
+  }
+
+  return { time: chartTime, value };
+};
+
+const toChartTimestamp = (rawTime) => {
+  const time = normalizeChartTime(rawTime);
+  return time === null ? null : time + CHART_TIME_OFFSET_SECONDS;
+};
+
+const getSandboxLegendDomId = (paneKey, itemId) => {
+  const safePane = String(paneKey || SANDBOX_OVERLAY_KEY).replace(
+    /[^a-zA-Z0-9_-]+/g,
+    "_",
+  );
+  const safeItem = String(itemId || "plot").replace(/[^a-zA-Z0-9_-]+/g, "_");
+  return `sandbox-legend-${safePane}-${safeItem}`;
+};
+
+const resolveSandboxBarColor = (colorByTime, candleTime) => {
+  if (!(colorByTime instanceof Map) || candleTime === null) return null;
+  return (
+    colorByTime.get(candleTime) ??
+    colorByTime.get(candleTime - CHART_TIME_OFFSET_SECONDS) ??
+    colorByTime.get(candleTime + CHART_TIME_OFFSET_SECONDS) ??
+    null
+  );
 };
 
 const mergeHistoricalSeries = (existing, incoming, mode = "replace") => {
@@ -176,6 +216,11 @@ export default function Candlestick() {
   const chartIndicatorHandlerRef = useRef(null);
   const customScriptSeriesRef = useRef(null);
   const customScriptMarkersRef = useRef(null);
+  const customScriptPriceLinesRef = useRef([]);
+  const customScriptFillLayersRef = useRef([]);
+  const customScriptPaneKeysRef = useRef([]);
+  const customScriptBarColorsAppliedRef = useRef(false);
+  const customScriptBarColorMapRef = useRef(null);
   const lastDeployedMarkersRef = useRef(null);
   const scannerIntervalRef = useRef(null);
   const pyodideRef = useRef(null);
@@ -195,6 +240,32 @@ export default function Candlestick() {
   const lastAutoBackfillFromRef = useRef(null);
   const lastAutoForwardToRef = useRef(null);
   const [isDeployed, setIsDeployed] = useState(false);
+
+  const applySandboxBarColorsToData = useCallback(
+    (candles, kind = "candlestick") => {
+      if (!Array.isArray(candles) || candles.length === 0) return candles;
+      const colorByTime = customScriptBarColorMapRef.current;
+      if (!(colorByTime instanceof Map) || colorByTime.size === 0) {
+        return kind === "heikinashi" ? convertToHeikinAshi(candles) : candles;
+      }
+
+      const baseCandles =
+        kind === "heikinashi" ? convertToHeikinAshi(candles) : candles;
+
+      return baseCandles.map((candle) => {
+        const candleTime = normalizeChartTime(candle?.time);
+        const overrideColor = resolveSandboxBarColor(colorByTime, candleTime);
+        if (!overrideColor) return candle;
+        return {
+          ...candle,
+          color: overrideColor,
+          borderColor: overrideColor,
+          wickColor: overrideColor,
+        };
+      });
+    },
+    [],
+  );
 
   const normalize = (s) => s?.replace(/\s+/g, " ").trim().toUpperCase();
   const isSameSymbolName = (s1, s2) => {
@@ -327,6 +398,8 @@ export default function Candlestick() {
   const [scannerProgressData, setScannerProgressData] = useState(null);
   const [dashboardSignals, setDashboardSignals] = useState([]);
   const [deployedStrategyCode, setDeployedStrategyCode] = useState(null);
+  const [sandboxLegendGroups, setSandboxLegendGroups] = useState({});
+  const sandboxLegendGroupsRef = useRef({});
 
   const handleStrategyClick = () => {
     setIsPredicting(true);
@@ -455,25 +528,104 @@ export default function Candlestick() {
   }, []);
 
   const handleClearCode = useCallback(() => {
+    const removedSeries = new Set();
     if (customScriptSeriesRef.current && chartRef.current) {
       if (Array.isArray(customScriptSeriesRef.current)) {
-        customScriptSeriesRef.current.forEach((series) => {
+        customScriptSeriesRef.current.forEach((entry) => {
+          const series = entry?.series || entry;
+          if (series) {
+            removedSeries.add(series);
+          }
           try {
             chartRef.current.removeSeries(series);
           } catch (e) {}
         });
       } else {
+        removedSeries.add(customScriptSeriesRef.current);
         try {
           chartRef.current.removeSeries(customScriptSeriesRef.current);
         } catch (e) {}
       }
       customScriptSeriesRef.current = null;
     }
+    if (customScriptPriceLinesRef.current?.length) {
+      customScriptPriceLinesRef.current.forEach(({ series, priceLine }) => {
+        try {
+          series?.removePriceLine?.(priceLine);
+        } catch (e) {}
+      });
+      customScriptPriceLinesRef.current = [];
+    }
+    if (customScriptFillLayersRef.current?.length) {
+      customScriptFillLayersRef.current.forEach((layer) => {
+        try {
+          layer?.unsubscribe?.();
+        } catch (e) {}
+        try {
+          layer?.canvas?.remove?.();
+        } catch (e) {}
+      });
+      customScriptFillLayersRef.current = [];
+    }
     if (customScriptMarkersRef.current) {
       try {
         customScriptMarkersRef.current.setMarkers([]);
       } catch (e) {}
     }
+    if (customScriptPaneKeysRef.current?.length && chartRef.current) {
+      const paneIndices = customScriptPaneKeysRef.current
+        .map((paneKey) => paneIndexRef.current[paneKey])
+        .filter((paneIndex) => Number.isFinite(paneIndex) && paneIndex > 0)
+        .sort((a, b) => b - a);
+
+      paneIndices.forEach((paneIndex) => {
+        const dummy = dummySeriesRef.current[paneIndex];
+        if (dummy) {
+          try {
+            chartRef.current.removeSeries(dummy);
+          } catch (e) {}
+          delete dummySeriesRef.current[paneIndex];
+        }
+
+        try {
+          if (typeof chartRef.current.removePane === "function") {
+            chartRef.current.removePane(paneIndex);
+          }
+        } catch (e) {}
+      });
+
+      customScriptPaneKeysRef.current.forEach((paneKey) => {
+        delete paneIndexRef.current[paneKey];
+        delete panesRef.current[paneKey];
+      });
+      customScriptPaneKeysRef.current = [];
+    }
+    if (removedSeries.size > 0 && allCreatedSeriesRef.current) {
+      allCreatedSeriesRef.current = allCreatedSeriesRef.current.filter(
+        (entry) => !removedSeries.has(entry?.series),
+      );
+    }
+
+    if (
+      customScriptBarColorsAppliedRef.current &&
+      seriesRef.current &&
+      Array.isArray(candlesRef.current) &&
+      candlesRef.current.length > 0
+    ) {
+      try {
+        const chartKind = seriesRef.current.customChartType || chartType;
+        if (chartKind === "heikinashi") {
+          seriesRef.current.setData(convertToHeikinAshi(candlesRef.current));
+        } else if (
+          chartKind === "candlestick" ||
+          chartKind === "hollowcandles"
+        ) {
+          seriesRef.current.setData(candlesRef.current);
+        }
+      } catch (e) {}
+    }
+    customScriptBarColorsAppliedRef.current = false;
+    customScriptBarColorMapRef.current = null;
     lastDeployedMarkersRef.current = null;
 
     if (scannerIntervalRef.current) {
@@ -486,7 +638,9 @@ export default function Candlestick() {
     setDeployedStrategyCode(null);
     setIsDeployed(false);
     setAreStrategyVisualsVisible(true);
-  }, []);
+    sandboxLegendGroupsRef.current = {};
+    setSandboxLegendGroups({});
+  }, [chartType]);
 
   const handleSaveStrategy = useCallback(
     async (code) => {
@@ -696,63 +850,935 @@ export default function Candlestick() {
     if (!chartRef.current) return;
 
     const createdSeries = [];
-    const chartPane = String(chartContract?.pane || "overlay").toLowerCase();
-    const useMainPane =
-      chartPane === "overlay" ||
-      chartPane === "main" ||
-      chartPane === "price";
-    const paneIndex = useMainPane
-      ? 0
-      : Math.max(
-          0,
-          ...Object.values(paneIndexRef.current)
-            .map((value) => Number(value))
-            .filter((value) => Number.isFinite(value) && value > 0),
-        ) + 1;
+    const createdPriceLines = [];
+    const createdFillLayers = [];
+    const paneSeriesMap = new Map();
+    const sandboxPaneKeys = new Set();
+    const legendGroups = {};
+    const legendGroupsMeta = {};
 
-    const seriesTypeMap = {
-      line: LineSeries,
-      histogram: HistogramSeries,
-      bar: BarSeries,
-      area: AreaSeries,
-      step: LineSeries,
-      scatter: LineSeries,
+    const normalizeSandboxPane = (value) =>
+      String(value || chartContract?.pane || "overlay")
+        .trim()
+        .toLowerCase();
+
+    const getSandboxPaneKey = (value) => {
+      const paneName = normalizeSandboxPane(value);
+      if (["overlay", "main", "price", ""].includes(paneName)) {
+        return null;
+      }
+      return `__sandbox_pane__${paneName}`;
     };
 
-    const plots = Array.isArray(chartContract?.plots) ? chartContract.plots : [];
+    const toLineStyleValue = (value) => {
+      const normalized = String(value || "solid").toLowerCase();
+      if (normalized === "dotted") return 1;
+      if (normalized === "dashed") return 2;
+      return 0;
+    };
 
-    plots.forEach((plot) => {
+    const getSeriesType = (plotType) => {
+      const seriesTypeMap = {
+        line: LineSeries,
+        histogram: HistogramSeries,
+        bar: HistogramSeries,
+        area: AreaSeries,
+        step: LineSeries,
+        scatter: LineSeries,
+        candle: CandlestickSeries,
+      };
+      return seriesTypeMap[String(plotType || "line").toLowerCase()] || LineSeries;
+    };
+
+    const getIndexedStyleString = (value, index, fallback = null) => {
+      if (Array.isArray(value)) {
+        const direct = value[index];
+        if (typeof direct === "string" && direct.trim()) return direct;
+        const first = value.find((item) => typeof item === "string" && item.trim());
+        return first || fallback;
+      }
+
+      if (typeof value === "string" && value.trim()) {
+        return value;
+      }
+
+      return fallback;
+    };
+
+    const getIndexedPlotColor = (plot, index, fallbackColor = null) => {
+      const lineColor = getIndexedStyleString(
+        plot?.style?.lineColor,
+        index,
+        null,
+      );
+      if (lineColor) return lineColor;
+
+      return getIndexedStyleString(plot?.style?.color, index, fallbackColor);
+    };
+
+    const getSeriesOptionColor = (value, fallback) =>
+      getIndexedStyleString(value, 0, fallback);
+
+    const getSeriesOptions = (plot) => {
       const plotType = String(plot?.type || "line").toLowerCase();
-      const seriesType = seriesTypeMap[plotType] || LineSeries;
-      const seriesOptions = {
-        color: plot?.style?.color || "#2962ff",
-        lineWidth: Number(plot?.style?.width) || 2,
-        visible:
-          plot?.style?.visible !== false && areStrategyVisualsVisible,
-        lineVisible: plotType !== "scatter",
-        pointMarkersVisible: plotType === "scatter",
+      const lineStyle = toLineStyleValue(plot?.style?.lineStyle);
+      const visible =
+        plot?.style?.visible !== false && areStrategyVisualsVisible;
+      const baseOptions = {
+        visible,
         priceLineVisible: false,
         lastValueVisible: false,
       };
 
-      const series = chartRef.current.addSeries(
-        seriesType,
-        seriesOptions,
-        paneIndex,
-      );
-      const seriesData = Array.isArray(plot?.data)
-        ? plot.data.map(toSeriesValue).filter(Boolean)
-        : [];
+      if (plotType === "histogram") {
+        return {
+          ...baseOptions,
+          color: getIndexedPlotColor(plot, 0, "#2962ff"),
+          lineWidth: Number(plot?.style?.width) || 2,
+          base: Number.isFinite(Number(plot?.style?.base))
+            ? Number(plot.style.base)
+            : 0,
+        };
+      }
 
-      if (seriesData.length > 0) {
+      if (plotType === "area") {
+        const color = getSeriesOptionColor(plot?.style?.color, "#2962ff");
+        const lineColor = getSeriesOptionColor(plot?.style?.lineColor, color);
+        return {
+          ...baseOptions,
+          lineColor,
+          topColor:
+            getSeriesOptionColor(plot?.style?.topColor, null) ||
+            `${color}${color.length === 7 ? "33" : ""}`,
+          bottomColor:
+            getSeriesOptionColor(plot?.style?.bottomColor, null) ||
+            `${color}${color.length === 7 ? "05" : ""}`,
+          lineWidth: Number(plot?.style?.width) || 2,
+          lineStyle,
+          crosshairMarkerVisible: plot?.style?.crosshairMarkerVisible !== false,
+        };
+      }
+
+      if (plotType === "bar") {
+        return {
+          ...baseOptions,
+          color: getIndexedPlotColor(plot, 0, "#2962ff"),
+          lineWidth: Number(plot?.style?.width) || 2,
+          base: Number.isFinite(Number(plot?.style?.base))
+            ? Number(plot.style.base)
+            : 0,
+        };
+      }
+
+      if (plotType === "candle") {
+        const upColor = getSeriesOptionColor(plot?.style?.upColor, "#22c55e");
+        const downColor = getSeriesOptionColor(plot?.style?.downColor, "#ef4444");
+        return {
+          ...baseOptions,
+          upColor,
+          downColor,
+          wickUpColor: getSeriesOptionColor(plot?.style?.wickUpColor, upColor),
+          wickDownColor: getSeriesOptionColor(
+            plot?.style?.wickDownColor,
+            downColor,
+          ),
+          borderUpColor: getSeriesOptionColor(plot?.style?.borderUpColor, upColor),
+          borderDownColor: getSeriesOptionColor(
+            plot?.style?.borderDownColor,
+            downColor,
+          ),
+          borderVisible: plot?.style?.borderVisible ?? true,
+        };
+      }
+
+      return {
+        ...baseOptions,
+        color: getIndexedPlotColor(plot, 0, "#2962ff"),
+        lineWidth: Number(plot?.style?.width) || 2,
+        lineStyle,
+        lineVisible: plotType !== "scatter",
+        pointMarkersVisible: plotType === "scatter",
+        crosshairMarkerVisible: plotType === "scatter",
+        lineType: plotType === "step" ? 1 : 0,
+      };
+    };
+
+    const getSeriesData = (plot) => {
+      if (!Array.isArray(plot?.data)) return [];
+
+      const plotType = String(plot?.type || "line").toLowerCase();
+      if (plotType === "candle") {
+        return plot.data
+          .map((point) => {
+            const time = toChartTimestamp(point?.time);
+            const open = Number(point?.open);
+            const high = Number(point?.high);
+            const low = Number(point?.low);
+            const close = Number(point?.close);
+
+            if (
+              time === null ||
+              !Number.isFinite(open) ||
+              !Number.isFinite(high) ||
+              !Number.isFinite(low) ||
+              !Number.isFinite(close)
+            ) {
+              return null;
+            }
+
+            return {
+              time,
+              open,
+              high,
+              low,
+              close,
+              ...(point?.color ? { color: point.color } : {}),
+              ...(point?.borderColor ? { borderColor: point.borderColor } : {}),
+              ...(point?.wickColor ? { wickColor: point.wickColor } : {}),
+            };
+          })
+          .filter(Boolean);
+      }
+
+      return plot.data
+        .map((point, index) => {
+          const normalized = toSeriesValue(point);
+          if (!normalized) return null;
+          if (!("value" in normalized)) return normalized;
+          const dynamicColor = getIndexedPlotColor(plot, index);
+          if (plotType === "area") {
+            const lineColor =
+              point?.lineColor ||
+              getIndexedStyleString(
+                plot?.style?.lineColor,
+                index,
+                dynamicColor,
+              );
+            const topColor =
+              point?.topColor ||
+              getIndexedStyleString(plot?.style?.topColor, index, null);
+            const bottomColor =
+              point?.bottomColor ||
+              getIndexedStyleString(plot?.style?.bottomColor, index, null);
+
+            return {
+              ...normalized,
+              ...(lineColor ? { lineColor } : {}),
+              ...(topColor ? { topColor } : {}),
+              ...(bottomColor ? { bottomColor } : {}),
+            };
+          }
+
+          return {
+            ...normalized,
+            ...(point?.color || point?.lineColor
+              ? { color: point.color || point.lineColor }
+              : dynamicColor
+                ? { color: dynamicColor }
+                : {}),
+          };
+        })
+        .filter(Boolean);
+    };
+
+    const plots = Array.isArray(chartContract?.plots) ? chartContract.plots : [];
+    const plotEntriesById = new Map();
+
+    const getLastNumericValue = (seriesData, plotType) => {
+      if (!Array.isArray(seriesData) || seriesData.length === 0) return null;
+
+      for (let i = seriesData.length - 1; i >= 0; i -= 1) {
+        const point = seriesData[i];
+        if (!point || typeof point !== "object") continue;
+
+        if (plotType === "candle") {
+          if (Number.isFinite(Number(point.close))) {
+            return Number(point.close);
+          }
+          continue;
+        }
+
+        if (Number.isFinite(Number(point.value))) {
+          return Number(point.value);
+        }
+      }
+
+      return null;
+    };
+
+    plots.forEach((plot) => {
+      const paneKey = getSandboxPaneKey(plot?.pane);
+      if (paneKey) {
+        sandboxPaneKeys.add(paneKey);
+      }
+
+      const series = addSeries(
+        paneKey || "__sandbox_overlay__",
+        getSeriesType(plot?.type),
+        getSeriesOptions(plot),
+        paneKey,
+      );
+      const seriesData = getSeriesData(plot);
+
+      if (series && seriesData.length > 0) {
         series.setData(seriesData);
       }
 
-      createdSeries.push(series);
+      if (!series) return;
+
+      createdSeries.push({
+        id: plot?.id || plot?.title || `sandbox_plot_${createdSeries.length + 1}`,
+        paneKey,
+        series,
+        data: seriesData,
+      });
+
+      const plotEntry = {
+        id: plot?.id || plot?.title || `sandbox_plot_${createdSeries.length}`,
+        paneKey,
+        plotType: String(plot?.type || "line").toLowerCase(),
+        series,
+        data: seriesData,
+      };
+      if (plot?.id) {
+        plotEntriesById.set(plot.id, plotEntry);
+      }
+      if (plot?.title && !plotEntriesById.has(plot.title)) {
+        plotEntriesById.set(plot.title, plotEntry);
+      }
+
+      const paneSeriesKey = paneKey || SANDBOX_OVERLAY_KEY;
+      if (!paneSeriesMap.has(paneSeriesKey)) {
+        paneSeriesMap.set(paneSeriesKey, []);
+      }
+      paneSeriesMap.get(paneSeriesKey).push(series);
+
+      const legendKey = paneKey || SANDBOX_OVERLAY_KEY;
+      if (!legendGroups[legendKey]) {
+        legendGroups[legendKey] = {
+          paneKey,
+          title: chartContract?.name || "Sandbox Indicator",
+          items: [],
+        };
+        legendGroupsMeta[legendKey] = {
+          paneKey,
+          title: chartContract?.name || "Sandbox Indicator",
+          items: [],
+        };
+      }
+
+      const legendItem = {
+        id: plot?.id || plot?.title || `sandbox_plot_${createdSeries.length}`,
+        label: plot?.title || plot?.id || "Plot",
+        color:
+          seriesData[seriesData.length - 1]?.color ||
+          seriesData[seriesData.length - 1]?.lineColor ||
+          getIndexedPlotColor(
+            plot,
+            Math.max(seriesData.length - 1, 0),
+            getSeriesOptionColor(plot?.style?.topColor, null) ||
+              getSeriesOptionColor(plot?.style?.upColor, "#3b82f6"),
+          ),
+        value: getLastNumericValue(
+          seriesData,
+          String(plot?.type || "line").toLowerCase(),
+        ),
+      };
+
+      legendGroups[legendKey].items.push(legendItem);
+      legendGroupsMeta[legendKey].items.push({
+        ...legendItem,
+        series,
+        plotType: String(plot?.type || "line").toLowerCase(),
+      });
     });
 
+    const getPaneElement = (paneKey) =>
+      paneKey
+        ? panesRef.current?.[paneKey]?.div ||
+          panesRef.current?.[paneKey]?.pane?.getHTMLElement?.()
+        : containerRef.current;
+
+    const getPrimarySeriesForPane = (paneKey) =>
+      paneSeriesMap.get(paneKey || SANDBOX_OVERLAY_KEY)?.[0] ||
+      (paneKey ? null : seriesRef.current);
+
+    const addCanvasLayer = (paneKey, drawLayer, zIndex = 2) => {
+      const paneElement = getPaneElement(paneKey);
+      const hostElement = containerRef.current;
+      if (!paneElement || !hostElement || typeof drawLayer !== "function") {
+        return;
+      }
+
+      if (getComputedStyle(hostElement).position === "static") {
+        hostElement.style.position = "relative";
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.style.position = "absolute";
+      canvas.style.left = "0";
+      canvas.style.top = "0";
+      canvas.style.pointerEvents = "none";
+      canvas.style.zIndex = String(zIndex);
+      hostElement.appendChild(canvas);
+
+      const draw = () => {
+        const hostRect = hostElement.getBoundingClientRect();
+        const paneRect = paneElement.getBoundingClientRect();
+        const left = paneRect.left - hostRect.left;
+        const top = paneRect.top - hostRect.top;
+        const width = paneRect.width;
+        const height = paneRect.height;
+        if (!width || !height) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        canvas.style.left = `${left}px`;
+        canvas.style.top = `${top}px`;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.scale(dpr, dpr);
+
+        drawLayer({ ctx, width, height, paneKey });
+      };
+
+      const redraw = () => draw();
+      chartRef.current.timeScale().subscribeVisibleTimeRangeChange(redraw);
+      chartRef.current.subscribeCrosshairMove(redraw);
+
+      let resizeObserver = null;
+      if (typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(() => draw());
+        resizeObserver.observe(hostElement);
+        if (paneElement !== hostElement) {
+          resizeObserver.observe(paneElement);
+        }
+      }
+
+      requestAnimationFrame(draw);
+      setTimeout(draw, 0);
+
+      createdFillLayers.push({
+        canvas,
+        unsubscribe: () => {
+          chartRef.current?.timeScale()?.unsubscribeVisibleTimeRangeChange?.(
+            redraw,
+          );
+          chartRef.current?.unsubscribeCrosshairMove?.(redraw);
+          resizeObserver?.disconnect?.();
+        },
+      });
+    };
+
+    const groupByPane = (items) => {
+      const grouped = new Map();
+      items.forEach((item) => {
+        const paneKey = getSandboxPaneKey(item?.pane);
+        const key = paneKey || SANDBOX_OVERLAY_KEY;
+        if (!grouped.has(key)) {
+          grouped.set(key, { paneKey, items: [] });
+        }
+        grouped.get(key).items.push(item);
+      });
+      return grouped;
+    };
+
+    const getNumberValue = (...values) => {
+      for (const value of values) {
+        const numeric = Number(value);
+        if (Number.isFinite(numeric)) return numeric;
+      }
+      return null;
+    };
+
+    const bgColors = Array.isArray(chartContract?.bgColors)
+      ? chartContract.bgColors
+      : [];
+    groupByPane(bgColors).forEach(({ paneKey, items }) => {
+      addCanvasLayer(
+        paneKey,
+        ({ ctx, width, height }) => {
+          const halfInterval = Math.max(
+            1,
+            Math.floor((TIMEFRAME_TO_SECONDS[timeframeValue] || 300) / 2),
+          );
+          items.forEach((item) => {
+            const time = toChartTimestamp(item?.time);
+            const color = getIndexedStyleString(item?.color, 0, null);
+            if (time === null || !color) return;
+
+            const x = chartRef.current.timeScale().timeToCoordinate(time);
+            let left = chartRef.current
+              .timeScale()
+              .timeToCoordinate(time - halfInterval);
+            let right = chartRef.current
+              .timeScale()
+              .timeToCoordinate(time + halfInterval);
+
+            if (x == null) return;
+            if (left == null || right == null || left === right) {
+              left = x - 3;
+              right = x + 3;
+            }
+
+            const bandLeft = Math.max(0, Math.min(left, right));
+            const bandWidth = Math.min(width - bandLeft, Math.abs(right - left));
+            if (bandWidth <= 0) return;
+            ctx.fillStyle = color;
+            ctx.fillRect(bandLeft, 0, bandWidth, height);
+          });
+        },
+        1,
+      );
+    });
+
+    const fills = Array.isArray(chartContract?.fills) ? chartContract.fills : [];
+    fills.forEach((fillConfig) => {
+      const fromEntry = plotEntriesById.get(fillConfig?.from);
+      if (!fromEntry?.series || !Array.isArray(fromEntry?.data) || fromEntry.data.length === 0) {
+        return;
+      }
+
+      const toEntry =
+        typeof fillConfig?.to === "string" ? plotEntriesById.get(fillConfig.to) : null;
+      const paneKey = fromEntry.paneKey || toEntry?.paneKey || null;
+
+      if (toEntry?.paneKey !== undefined && fromEntry.paneKey !== toEntry?.paneKey) {
+        return;
+      }
+
+      const paneElement =
+        paneKey
+          ? panesRef.current?.[paneKey]?.div ||
+            panesRef.current?.[paneKey]?.pane?.getHTMLElement?.()
+          : containerRef.current;
+      const hostElement = containerRef.current;
+
+      if (!paneElement || !hostElement) {
+        return;
+      }
+
+      if (getComputedStyle(hostElement).position === "static") {
+        hostElement.style.position = "relative";
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.style.position = "absolute";
+      canvas.style.left = "0";
+      canvas.style.top = "0";
+      canvas.style.pointerEvents = "none";
+      canvas.style.zIndex = "2";
+      hostElement.appendChild(canvas);
+
+      const drawFill = () => {
+        const hostRect = hostElement.getBoundingClientRect();
+        const paneRect = paneElement.getBoundingClientRect();
+        const left = paneRect.left - hostRect.left;
+        const top = paneRect.top - hostRect.top;
+        const width = paneRect.width;
+        const height = paneRect.height;
+        if (!width || !height) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        canvas.style.left = `${left}px`;
+        canvas.style.top = `${top}px`;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.scale(dpr, dpr);
+
+        const topData = fromEntry.data || [];
+        const bottomData = Array.isArray(toEntry?.data) ? toEntry.data : [];
+        if (!topData.length) return;
+
+        const topPoints = topData
+          .map((point) => {
+            if (!Number.isFinite(Number(point?.value))) return null;
+            const x = chartRef.current.timeScale().timeToCoordinate(point.time);
+            const y = fromEntry.series.priceToCoordinate(point.value);
+            if (x == null || y == null) return null;
+            return { x, y };
+          })
+          .filter(Boolean);
+
+        if (topPoints.length < 2) {
+          return;
+        }
+
+        const bottomPoints = toEntry?.series
+          ? bottomData
+              .map((point) => {
+                if (!Number.isFinite(Number(point?.value))) return null;
+                const x = chartRef.current.timeScale().timeToCoordinate(point.time);
+                const y = toEntry.series.priceToCoordinate(point.value);
+                if (x == null || y == null) return null;
+                return { x, y };
+              })
+              .filter(Boolean)
+          : [];
+
+        ctx.save();
+        ctx.rect(0, 0, width, height);
+        ctx.clip();
+        ctx.beginPath();
+
+        ctx.moveTo(topPoints[0].x, topPoints[0].y);
+        topPoints.slice(1).forEach((point) => {
+          ctx.lineTo(point.x, point.y);
+        });
+
+        if (toEntry?.series && bottomPoints.length > 0) {
+          for (let i = bottomPoints.length - 1; i >= 0; i -= 1) {
+            const point = bottomPoints[i];
+            ctx.lineTo(point.x, point.y);
+          }
+        } else if (Number.isFinite(Number(fillConfig?.toValue))) {
+          const toValue = Number(fillConfig.toValue);
+          for (let i = topPoints.length - 1; i >= 0; i -= 1) {
+            const point = topPoints[i];
+            const y = fromEntry.series.priceToCoordinate(toValue);
+            if (y == null) continue;
+            ctx.lineTo(point.x, y);
+          }
+        } else {
+          ctx.restore();
+          return;
+        }
+
+        ctx.closePath();
+
+        if (fillConfig?.colorTop || fillConfig?.colorBottom) {
+          const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+          gradient.addColorStop(0, fillConfig.colorTop || fillConfig.color || "rgba(34,197,94,0.18)");
+          gradient.addColorStop(1, fillConfig.colorBottom || fillConfig.colorTop || fillConfig.color || "rgba(245,158,11,0.10)");
+          ctx.fillStyle = gradient;
+        } else {
+          ctx.fillStyle = fillConfig?.color || "rgba(34,197,94,0.18)";
+        }
+
+        ctx.fill();
+        ctx.restore();
+      };
+
+      const redraw = () => drawFill();
+      chartRef.current.timeScale().subscribeVisibleTimeRangeChange(redraw);
+      chartRef.current.subscribeCrosshairMove(redraw);
+
+      let resizeObserver = null;
+      if (typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(() => drawFill());
+        resizeObserver.observe(hostElement);
+        if (paneElement !== hostElement) {
+          resizeObserver.observe(paneElement);
+        }
+      }
+
+      requestAnimationFrame(drawFill);
+      setTimeout(drawFill, 0);
+
+      createdFillLayers.push({
+        canvas,
+        unsubscribe: () => {
+          chartRef.current?.timeScale()?.unsubscribeVisibleTimeRangeChange?.(redraw);
+          chartRef.current?.unsubscribeCrosshairMove?.(redraw);
+          resizeObserver?.disconnect?.();
+        },
+      });
+    });
+
+    const zones = Array.isArray(chartContract?.zones) ? chartContract.zones : [];
+    groupByPane(zones).forEach(({ paneKey, items }) => {
+      const series = getPrimarySeriesForPane(paneKey);
+      if (!series) return;
+
+      addCanvasLayer(
+        paneKey,
+        ({ ctx, width }) => {
+          items.forEach((zoneItem) => {
+            const color =
+              getIndexedStyleString(
+                zoneItem?.color || zoneItem?.fillColor,
+                0,
+                "rgba(59,130,246,0.12)",
+              ) || "rgba(59,130,246,0.12)";
+
+            if (
+              Array.isArray(zoneItem?.upper) &&
+              Array.isArray(zoneItem?.lower)
+            ) {
+              const upperPoints = zoneItem.upper
+                .map((point) => {
+                  const time = toChartTimestamp(point?.time);
+                  const value = getNumberValue(point?.value);
+                  if (time === null || value === null) return null;
+                  const x = chartRef.current.timeScale().timeToCoordinate(time);
+                  const y = series.priceToCoordinate(value);
+                  if (x == null || y == null) return null;
+                  return { x, y };
+                })
+                .filter(Boolean);
+              const lowerPoints = zoneItem.lower
+                .map((point) => {
+                  const time = toChartTimestamp(point?.time);
+                  const value = getNumberValue(point?.value);
+                  if (time === null || value === null) return null;
+                  const x = chartRef.current.timeScale().timeToCoordinate(time);
+                  const y = series.priceToCoordinate(value);
+                  if (x == null || y == null) return null;
+                  return { x, y };
+                })
+                .filter(Boolean);
+
+              if (upperPoints.length < 2 || lowerPoints.length < 2) return;
+
+              ctx.beginPath();
+              ctx.moveTo(upperPoints[0].x, upperPoints[0].y);
+              upperPoints.slice(1).forEach((point) => ctx.lineTo(point.x, point.y));
+              for (let i = lowerPoints.length - 1; i >= 0; i -= 1) {
+                ctx.lineTo(lowerPoints[i].x, lowerPoints[i].y);
+              }
+              ctx.closePath();
+              ctx.fillStyle = color;
+              ctx.fill();
+              return;
+            }
+
+            const fromValue = getNumberValue(
+              zoneItem?.from,
+              zoneItem?.fromValue,
+              zoneItem?.bottom,
+            );
+            const toValue = getNumberValue(
+              zoneItem?.to,
+              zoneItem?.toValue,
+              zoneItem?.top,
+            );
+            if (fromValue === null || toValue === null) return;
+
+            const y1 = series.priceToCoordinate(fromValue);
+            const y2 = series.priceToCoordinate(toValue);
+            if (y1 == null || y2 == null) return;
+
+            const top = Math.min(y1, y2);
+            const height = Math.abs(y2 - y1);
+            ctx.fillStyle = color;
+            ctx.fillRect(0, top, width, Math.max(1, height));
+          });
+        },
+        2,
+      );
+    });
+
+    const boxes = Array.isArray(chartContract?.boxes) ? chartContract.boxes : [];
+    groupByPane(boxes).forEach(({ paneKey, items }) => {
+      const series = getPrimarySeriesForPane(paneKey);
+      if (!series) return;
+
+      addCanvasLayer(
+        paneKey,
+        ({ ctx }) => {
+          items.forEach((boxItem) => {
+            const start = toChartTimestamp(boxItem?.start ?? boxItem?.from);
+            const end = toChartTimestamp(boxItem?.end ?? boxItem?.to);
+            const topValue = getNumberValue(boxItem?.top, boxItem?.high);
+            const bottomValue = getNumberValue(boxItem?.bottom, boxItem?.low);
+            if (
+              start === null ||
+              end === null ||
+              topValue === null ||
+              bottomValue === null
+            ) {
+              return;
+            }
+
+            const x1 = chartRef.current.timeScale().timeToCoordinate(start);
+            const x2 = chartRef.current.timeScale().timeToCoordinate(end);
+            const y1 = series.priceToCoordinate(topValue);
+            const y2 = series.priceToCoordinate(bottomValue);
+            if (x1 == null || x2 == null || y1 == null || y2 == null) return;
+
+            const left = Math.min(x1, x2);
+            const top = Math.min(y1, y2);
+            const width = Math.abs(x2 - x1);
+            const height = Math.abs(y2 - y1);
+            const fillColor = getIndexedStyleString(
+              boxItem?.fillColor || boxItem?.color,
+              0,
+              "rgba(59,130,246,0.10)",
+            );
+            const borderColor = getIndexedStyleString(
+              boxItem?.borderColor || boxItem?.color,
+              0,
+              "rgba(59,130,246,0.65)",
+            );
+
+            ctx.fillStyle = fillColor;
+            ctx.fillRect(left, top, Math.max(1, width), Math.max(1, height));
+            ctx.strokeStyle = borderColor;
+            ctx.lineWidth = Number(boxItem?.lineWidth) || 1;
+            ctx.strokeRect(left, top, Math.max(1, width), Math.max(1, height));
+          });
+        },
+        3,
+      );
+    });
+
+    const labels = Array.isArray(chartContract?.labels)
+      ? chartContract.labels
+      : [];
+    groupByPane(labels).forEach(({ paneKey, items }) => {
+      const series = getPrimarySeriesForPane(paneKey);
+      if (!series) return;
+
+      addCanvasLayer(
+        paneKey,
+        ({ ctx, width, height }) => {
+          ctx.font = "12px sans-serif";
+          ctx.textBaseline = "middle";
+          items.forEach((labelItem) => {
+            const time = toChartTimestamp(labelItem?.time);
+            const value = getNumberValue(
+              labelItem?.value,
+              labelItem?.price,
+              labelItem?.y,
+            );
+            const text = String(labelItem?.text || labelItem?.label || "").trim();
+            if (time === null || value === null || !text) return;
+
+            const x = chartRef.current.timeScale().timeToCoordinate(time);
+            const y = series.priceToCoordinate(value);
+            if (x == null || y == null) return;
+
+            const color = getIndexedStyleString(
+              labelItem?.color || labelItem?.textColor,
+              0,
+              "#e5e7eb",
+            );
+            const backgroundColor = getIndexedStyleString(
+              labelItem?.backgroundColor || labelItem?.bgColor,
+              0,
+              "rgba(15,23,42,0.78)",
+            );
+            const offset =
+              String(labelItem?.position || "").toLowerCase() === "abovebar"
+                ? -14
+                : String(labelItem?.position || "").toLowerCase() ===
+                    "belowbar"
+                  ? 14
+                  : 0;
+            const textWidth = ctx.measureText(text).width;
+            const boxWidth = textWidth + 8;
+            const boxHeight = 18;
+            const left = Math.max(0, Math.min(width - boxWidth, x - boxWidth / 2));
+            const top = Math.max(
+              0,
+              Math.min(height - boxHeight, y + offset - boxHeight / 2),
+            );
+
+            ctx.fillStyle = backgroundColor;
+            ctx.fillRect(left, top, boxWidth, boxHeight);
+            ctx.fillStyle = color;
+            ctx.fillText(text, left + 4, top + boxHeight / 2);
+          });
+        },
+        4,
+      );
+    });
+
+    const barColors = Array.isArray(chartContract?.barColors)
+      ? chartContract.barColors
+      : [];
+    if (
+      barColors.length > 0 &&
+      seriesRef.current &&
+      Array.isArray(candlesRef.current) &&
+      candlesRef.current.length > 0
+    ) {
+      const colorByTime = new Map();
+      barColors.forEach((item) => {
+        const time = normalizeChartTime(item?.time);
+        if (time === null || !item?.color) return;
+        colorByTime.set(time, item.color);
+        colorByTime.set(time + CHART_TIME_OFFSET_SECONDS, item.color);
+      });
+      customScriptBarColorMapRef.current = colorByTime;
+
+      try {
+        const chartKind = seriesRef.current.customChartType || chartType;
+        if (chartKind === "candlestick" || chartKind === "hollowcandles") {
+          seriesRef.current.setData(
+            applySandboxBarColorsToData(candlesRef.current, chartKind),
+          );
+          customScriptBarColorsAppliedRef.current = true;
+        } else if (chartKind === "heikinashi") {
+          seriesRef.current.setData(
+            applySandboxBarColorsToData(candlesRef.current, chartKind),
+          );
+          customScriptBarColorsAppliedRef.current = true;
+        }
+      } catch (error) {
+        console.warn("Unable to apply sandbox bar colors:", error);
+      }
+    } else {
+      customScriptBarColorsAppliedRef.current = false;
+      customScriptBarColorMapRef.current = null;
+    }
+
+    const levelPaneKey =
+      getSandboxPaneKey(chartContract?.pane) || "__sandbox_overlay__";
+    const levelSeries =
+      paneSeriesMap.get(levelPaneKey)?.[0] ||
+      paneSeriesMap.values().next().value?.[0];
+
+    if (levelSeries?.createPriceLine) {
+      const levels = Array.isArray(chartContract?.levels)
+        ? chartContract.levels
+        : [];
+      levels.forEach((level) => {
+        const price = Number(level?.value);
+        if (!Number.isFinite(price)) return;
+
+        try {
+          const priceLine = levelSeries.createPriceLine({
+            price,
+            color: level?.color || "#94a3b8",
+            lineWidth: Number(level?.lineWidth) || 1,
+            lineStyle: toLineStyleValue(level?.lineStyle || "dashed"),
+            title: level?.label || "",
+            axisLabelVisible: level?.axisLabelVisible ?? true,
+            lineVisible: level?.visible !== false,
+          });
+          createdPriceLines.push({ series: levelSeries, priceLine });
+        } catch (error) {
+          console.warn("Unable to create sandbox price line:", error);
+        }
+      });
+    }
+
     customScriptSeriesRef.current = createdSeries;
-  }, [areStrategyVisualsVisible]);
+    customScriptPriceLinesRef.current = createdPriceLines;
+    customScriptFillLayersRef.current = createdFillLayers;
+    customScriptPaneKeysRef.current = Array.from(sandboxPaneKeys);
+    sandboxLegendGroupsRef.current = legendGroupsMeta;
+    setSandboxLegendGroups(legendGroups);
+  }, [
+    applySandboxBarColorsToData,
+    areStrategyVisualsVisible,
+    chartType,
+    timeframeValue,
+  ]);
 
   const applyStrategyVisualVisibility = useCallback(
     (visible) => {
@@ -760,13 +1786,35 @@ export default function Candlestick() {
         ? customScriptSeriesRef.current
         : [];
 
-      seriesList.forEach((series) => {
+      seriesList.forEach((entry) => {
+        const series = entry?.series || entry;
         try {
           series.applyOptions({ visible });
         } catch (error) {
           console.warn("Unable to toggle strategy series visibility:", error);
         }
       });
+
+      if (customScriptPriceLinesRef.current?.length) {
+        customScriptPriceLinesRef.current.forEach(({ priceLine }) => {
+          try {
+            priceLine?.applyOptions?.({
+              lineVisible: visible,
+              axisLabelVisible: visible,
+            });
+          } catch (error) {
+            console.warn("Unable to toggle strategy price line visibility:", error);
+          }
+        });
+      }
+
+      if (customScriptFillLayersRef.current?.length) {
+        customScriptFillLayersRef.current.forEach(({ canvas }) => {
+          if (canvas) {
+            canvas.style.display = visible ? "block" : "none";
+          }
+        });
+      }
 
       if (customScriptMarkersRef.current) {
         try {
@@ -1425,55 +2473,63 @@ json.dumps(result)
           return;
         }
 
-        const generated = await generateStrategyAgent({
-          prompt: buildStrategyAgentPrompt(
-            code,
-            effectiveLookupSymbol || effectiveSymbol,
-            effectiveTimeframe,
-          ),
-          session_id: strategyAgentSessionIdRef.current,
-          user_id: userId,
-          current_file_path: "strategy.py",
-          current_editor_code: code,
-          project_summary:
-            "ChartLab Python strategy editor. Convert editor strategies into runnable sandbox code and preserve signal behavior.",
-          timeframe: effectiveTimeframe,
-          market: effectiveLookupSymbol || effectiveSymbol,
-          constraints: [
-            "Return only executable Python code.",
-            "Use ChartLab-compatible Python.",
-            "Emit BUY/SELL markers with signal(...) when possible.",
-          ],
-        });
+        const shouldBypassStrategyAgent = isDirectChartLabScript(code);
+        let generationReply = "";
+        let runnableCode = code.trim();
 
-        if (generated?.session_id) {
-          strategyAgentSessionIdRef.current = generated.session_id;
-        }
-
-        const canReplaceEditor =
-          generated?.replace_editor_code === true &&
-          typeof generated?.code === "string" &&
-          generated.code.trim().length > 0 &&
-          generated?.meta?.code_validation_passed === true &&
-          generated?.meta?.security_validation_passed === true;
-
-        if (!canReplaceEditor) {
-          Swal.fire({
-            icon: "warning",
-            title: generated?.title || "Strategy Generation Failed",
-            text:
-              generated?.reply ||
-              "The strategy agent could not produce runnable code from the editor content.",
-            background: "var(--bg-secondary)",
-            color: "var(--text-primary)",
+        if (!shouldBypassStrategyAgent) {
+          const generated = await generateStrategyAgent({
+            prompt: buildStrategyAgentPrompt(
+              code,
+              effectiveLookupSymbol || effectiveSymbol,
+              effectiveTimeframe,
+            ),
+            session_id: strategyAgentSessionIdRef.current,
+            user_id: userId,
+            current_file_path: "strategy.py",
+            current_editor_code: code,
+            project_summary:
+              "ChartLab Python strategy editor. Convert editor strategies into runnable sandbox code and preserve signal behavior.",
+            timeframe: effectiveTimeframe,
+            market: effectiveLookupSymbol || effectiveSymbol,
+            constraints: [
+              "Return only executable Python code.",
+              "Use ChartLab-compatible Python.",
+              "Emit BUY/SELL markers with signal(...) when possible.",
+            ],
           });
-          setIsDeploying(false);
-          toast.dismiss("compiling");
-          return;
-        }
 
-        const runnableCode = generated.code.trim();
-        setEditorCode(runnableCode);
+          if (generated?.session_id) {
+            strategyAgentSessionIdRef.current = generated.session_id;
+          }
+
+          generationReply = generated?.reply || "";
+
+          const canReplaceEditor =
+            generated?.replace_editor_code === true &&
+            typeof generated?.code === "string" &&
+            generated.code.trim().length > 0 &&
+            generated?.meta?.code_validation_passed === true &&
+            generated?.meta?.security_validation_passed === true;
+
+          if (!canReplaceEditor) {
+            Swal.fire({
+              icon: "warning",
+              title: generated?.title || "Strategy Generation Failed",
+              text:
+                generated?.reply ||
+                "The strategy agent could not produce runnable code from the editor content.",
+              background: "var(--bg-secondary)",
+              color: "var(--text-primary)",
+            });
+            setIsDeploying(false);
+            toast.dismiss("compiling");
+            return;
+          }
+
+          runnableCode = generated.code.trim();
+          setEditorCode(runnableCode);
+        }
 
         const sandboxResponse = await executeIndicatorSandbox({
           sessionId: sandboxSessionIdRef.current,
@@ -1511,7 +2567,7 @@ json.dumps(result)
             text:
               fetchError ||
               firstError?.message ||
-              generated?.reply ||
+              generationReply ||
               "The strategy code could not be executed in the sandbox.",
             background: "var(--bg-secondary)",
             color: "var(--text-primary)",
@@ -2128,6 +3184,20 @@ json.dumps(result)
   const getPaneIndex = (indicator) => {
     const rootId = indicator;
 
+    if (String(rootId || "").startsWith("__sandbox_pane__")) {
+      if (paneIndexRef.current[rootId] !== undefined) {
+        return paneIndexRef.current[rootId];
+      }
+
+      const currentIndices = Object.values(paneIndexRef.current);
+      const maxIndex =
+        currentIndices.length > 0 ? Math.max(...currentIndices) : 0;
+
+      const nextPane = maxIndex + 1;
+      paneIndexRef.current[rootId] = nextPane;
+      return nextPane;
+    }
+
     const baseType = getBaseTypeFromId(rootId);
     // overlay indicators → always main pane
     if (!PANE_INDICATORS.has(baseType)) return 0;
@@ -2733,6 +3803,47 @@ json.dumps(result)
     return emptySymbol;
   };
 
+  const renderSandboxLegend = (group) => {
+    if (!group || !Array.isArray(group.items) || group.items.length === 0) {
+      return null;
+    }
+
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+          fontSize: 13,
+          fontWeight: 500,
+          color: "var(--text-primary)",
+          padding: "2px 6px",
+          borderRadius: 4,
+          background: "rgba(0, 0, 0, 0.14)",
+          backdropFilter: "blur(2px)",
+        }}
+      >
+        <span style={{ color: "var(--text-secondary)" }}>{group.title}</span>
+        {group.items.map((item) => (
+          <span
+            key={item.id}
+            id={getSandboxLegendDomId(group.paneKey, item.id)}
+            style={{
+              color: item.color || "#3b82f6",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {item.label}:{" "}
+            {item.value != null && Number.isFinite(Number(item.value))
+              ? Number(item.value).toFixed(2)
+              : "--"}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
   const renderIndicators = () => {
     return selectedIndicator?.map((ind) => {
       const { id, type } = ind;
@@ -2835,6 +3946,52 @@ json.dumps(result)
 
   // SYNC CROSSHAIR
   const lastIndicatorUpdateRef = useRef(0);
+
+  const updateSandboxLegendValues = useCallback((param) => {
+    const legendGroups = sandboxLegendGroupsRef.current || {};
+
+    Object.values(legendGroups).forEach((group) => {
+      if (!group?.items?.length) return;
+
+      group.items.forEach((item) => {
+        const el = document.getElementById(
+          getSandboxLegendDomId(group.paneKey, item.id),
+        );
+        if (!el) return;
+
+        let nextValue = item.value;
+        let nextColor = item.color;
+        const hovered = param?.seriesData?.get?.(item.series);
+
+        if (hovered !== undefined) {
+          if (typeof hovered === "number") {
+            nextValue = hovered;
+          } else if (hovered && typeof hovered === "object") {
+            if (Number.isFinite(Number(hovered.value))) {
+              nextValue = Number(hovered.value);
+            } else if (Number.isFinite(Number(hovered.close))) {
+              nextValue = Number(hovered.close);
+            }
+            nextColor =
+              hovered.color ||
+              hovered.lineColor ||
+              hovered.topColor ||
+              hovered.borderColor ||
+              nextColor;
+          }
+        }
+
+        el.textContent = `${item.label}: ${
+          nextValue != null && Number.isFinite(Number(nextValue))
+            ? Number(nextValue).toFixed(2)
+            : "--"
+        }`;
+        if (nextColor) {
+          el.style.color = nextColor;
+        }
+      });
+    });
+  }, []);
 
   const updateIndicatorValues = (param) => {
     const now = Date.now();
@@ -2967,6 +4124,7 @@ json.dumps(result)
             });
           }
         });
+        updateSandboxLegendValues(null);
         return;
       }
 
@@ -2999,11 +4157,12 @@ json.dumps(result)
       }
       // update indicators
       updateIndicatorValues(param);
+      updateSandboxLegendValues(param);
     };
 
     chart.subscribeCrosshairMove(handler);
     return () => chart.unsubscribeCrosshairMove(handler);
-  }, []);
+  }, [updateSandboxLegendValues]);
 
   const { fetchIndicatorData } = useChartFunctions({
     indicatorSeriesRef,
@@ -3286,7 +4445,7 @@ json.dumps(result)
   }, []);
 
   // ── Central Socket Hook ──
-  const { emit, once, connect, connected, id, off } = useSocket({
+  const { emit, once, connected, off, socket: dataSocket } = useSocket({
     disableOverviewLiveTickFallback: true,
     handleConnect: () => {
       console.log("✅ SOCKET CONNECTED", true);
@@ -3617,7 +4776,11 @@ json.dumps(result)
             seriesRef.current.customChartType = "heikinashi";
           }
           try {
-            seriesRef.current.setData(convertToHeikinAshi(mergedData));
+            seriesRef.current.setData(
+              customScriptBarColorsAppliedRef.current
+                ? applySandboxBarColorsToData(mergedData, "heikinashi")
+                : convertToHeikinAshi(mergedData),
+            );
           } catch (e) {
             console.error("HA setData error:", e);
           }
@@ -3631,7 +4794,11 @@ json.dumps(result)
             seriesRef.current.customChartType = "hollowcandles";
           }
           try {
-            seriesRef.current.setData(mergedData);
+            seriesRef.current.setData(
+              customScriptBarColorsAppliedRef.current
+                ? applySandboxBarColorsToData(mergedData, "hollowcandles")
+                : mergedData,
+            );
           } catch (e) {
             console.error("Hollow setData error:", e);
           }
@@ -3645,7 +4812,11 @@ json.dumps(result)
             seriesRef.current.customChartType = chartType;
           }
           try {
-            seriesRef.current.setData(mergedData);
+            seriesRef.current.setData(
+              customScriptBarColorsAppliedRef.current
+                ? applySandboxBarColorsToData(mergedData, "candlestick")
+                : mergedData,
+            );
           } catch (e) {
             console.error("Default setData error:", e);
           }
@@ -4046,8 +5217,15 @@ json.dumps(result)
   // Keep emitRef and socketRef up to date
   useEffect(() => {
     emitRef.current = emit;
-    socketRef.current = { emit, once, off, connected };
-  }, [emit, once, off, connected]);
+    socketRef.current = {
+      emit,
+      once,
+      off,
+      connected,
+      socket: dataSocket,
+      indicatorSocket: getStrategySocket(),
+    };
+  }, [connected, dataSocket, emit, off, once]);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -5260,6 +6438,60 @@ json.dumps(result)
                         </>
                       )}
 
+                      {areStrategyVisualsVisible &&
+                        sandboxLegendGroups?.__sandbox_overlay__?.items
+                          ?.length > 0 && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: 62,
+                              left: 8,
+                              zIndex: 55,
+                              pointerEvents: "none",
+                            }}
+                          >
+                            {renderSandboxLegend(
+                              sandboxLegendGroups.__sandbox_overlay__,
+                            )}
+                          </div>
+                        )}
+
+                      {areStrategyVisualsVisible &&
+                        Object.values(sandboxLegendGroups)
+                          .filter(
+                            (group) =>
+                              group?.paneKey &&
+                              group.paneKey !== null &&
+                              group.items?.length > 0,
+                          )
+                          .map((group) => {
+                            const paneDiv =
+                              panesRef.current[group.paneKey]?.pane?.getHTMLElement();
+
+                            if (!paneDiv) return null;
+                            const portalTarget =
+                              paneDiv.tagName?.toLowerCase() === "tr"
+                                ? paneDiv.querySelector("td") || paneDiv
+                                : paneDiv;
+
+                            portalTarget.style.position = "relative";
+
+                            return createPortal(
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  top: 5,
+                                  left: 8,
+                                  zIndex: 55,
+                                  pointerEvents: "none",
+                                }}
+                              >
+                                {renderSandboxLegend(group)}
+                              </div>,
+                              portalTarget,
+                            );
+                          })}
+
                       {/* -----------------OLD INDICATOR BAR (COMMENTED)------------------- */}
 
                       {/* {selectedIndicator?.map((indicator, index) => {
@@ -5401,6 +6633,7 @@ json.dumps(result)
                       isSaving={isSavingStrategy}
                       isUpdating={isUpdatingStrategy}
                       canUpdate={Boolean(activeStrategyRecord?.id) && isStrategyDirty}
+                      canShowUpdate={Boolean(activeStrategyRecord?.id)}
                       loadedStrategyName={activeStrategyRecord?.name || ""}
                     />
                   )}
