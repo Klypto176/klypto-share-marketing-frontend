@@ -5,7 +5,7 @@ import { io } from "socket.io-client";
 import { METADATA_API_URL, SOCKET_URL } from "../../services/websocket/socket";
 import { FiArrowLeft } from "react-icons/fi";
 
-const OptionChain = ({ onSymbolChange, onBack }) => {
+const OptionChain = ({ selectedCurrency, onSymbolChange, onBack }) => {
   const navigate = useNavigate();
 
   // ── Dropdown state ──
@@ -18,6 +18,13 @@ const OptionChain = ({ onSymbolChange, onBack }) => {
   const [symbolSearch, setSymbolSearch] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
+
+  // Sync selectedSymbol with selectedCurrency from the chart/watchlist
+  useEffect(() => {
+    if (selectedCurrency?.name) {
+      setSelectedSymbol(selectedCurrency.name);
+    }
+  }, [selectedCurrency]);
 
   // ── Chart state ──
   const [spotPrice, setSpotPrice] = useState(null);
@@ -49,7 +56,7 @@ const OptionChain = ({ onSymbolChange, onBack }) => {
   // Fetch metadata from REST API
   useEffect(() => {
     const metadataUrl =
-      import.meta.env.VITE_METADATA_API_URL || "http://192.168.1.6:3000";
+      import.meta.env.VITE_METADATA_API_URL;
     axios
       .get(`${metadataUrl}/api/historical-metadata`)
       .then((res) => {
@@ -413,8 +420,15 @@ const OptionChain = ({ onSymbolChange, onBack }) => {
   };
 
   const filteredContracts = liveContractsList.filter((c) => {
-    const search = (symbolSearch || "").toLowerCase();
     const sym = (c.symbol || "").toLowerCase();
+    
+    // If there is no active search, only show the currently selected symbol's contracts
+    if (!symbolSearch) {
+      return sym === (selectedSymbol || "").toLowerCase();
+    }
+
+    // Otherwise, allow searching through all symbols
+    const search = symbolSearch.toLowerCase();
     const str = (c.strike ?? c.strike_price ?? "").toString();
     const exp = (c.expiry ?? c.expiry_date ?? "").toLowerCase();
 
