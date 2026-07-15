@@ -24,7 +24,7 @@ export default function CMFInput(
     }));
 
   const zeroValue =
-    indicatorSeriesRef.current?.[instanceId || "CMF"]?.zeroValue ?? 0;
+    indicatorSeriesRef.current?.[instanceId || "CMF"]?._levels?.zero ?? 0;
 
   const zeroData = cmfData.map((p) => ({
     time: p.time,

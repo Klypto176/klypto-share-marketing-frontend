@@ -18,7 +18,7 @@ export default function IndicatorStyle({
   const selectedStyle = indicatorStyle?.[instanceId] ?? indicatorStyle?.[normalizedType];
   const config = indicatorConfigs?.[instanceId] || indicatorConfigs?.[normalizedType] || {};
   const { maType, maLength } = config;
-  const rows = getRowsByIndicator(normalizedType, maType, indicatorConfigs);
+  const rows = getRowsByIndicator(normalizedType, maType, indicatorConfigs, instanceId);
 
   const [activePalette, setActivePalette] = useState(null);
   const [palettePos, setPalettePos] = useState({ top: 0, left: 0 });

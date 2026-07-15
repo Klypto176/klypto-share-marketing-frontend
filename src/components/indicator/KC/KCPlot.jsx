@@ -61,6 +61,7 @@ export default function KCPlot({
 
     groupedSeries.upperData = upperData;
     groupedSeries.lowerData = lowerData;
+    groupedSeries._drawCloud = drawKCCloud;
 
     indicatorSeriesRef.current.KC = groupedSeries;
   }, [result]);

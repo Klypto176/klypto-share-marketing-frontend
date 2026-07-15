@@ -95,7 +95,7 @@ export default function PVOPlot({ result, indicatorStyle, indicatorSeriesRef, ad
 
     indicatorSeriesRef.current.PVO = groupedSeries;
 
-  }, [result, indicatorStyle]); // NOTE: added indicatorStyle to dependency
+  }, [result]);
 
   /* ================= STYLE / PALETTE UPDATE ================= */
   useEffect(() => {
@@ -133,25 +133,32 @@ export default function PVOPlot({ result, indicatorStyle, indicatorSeriesRef, ad
 
     /* ---------- HISTOGRAM ---------- */
     const histSeries = group.hist;
-    if (!histSeries || !histRaw.length) return;
+    if (!histSeries) return;
 
     histSeries.applyOptions({ visible: style?.histogram?.visible ?? true });
 
-    const palette = style?.histogram?.palette;
-    if (!palette) return; // do nothing if palette missing
+    group._recolor = () => {
+      const palette = indicatorStyle?.PVO?.histogram?.palette;
+      if (!palette) return;
 
-    const recolored = histRaw.map((d, i, arr) => {
-      const v = d.value;
-      const prev = arr[i - 1]?.value;
-      let color;
+      const histDataToColor = group.rawData?.hist ?? group.histRaw ?? [];
+      if (!histDataToColor.length) return;
 
-      if (v > 0) color = i === 0 || v >= prev ? palette.color0 : palette.color1;
-      else color = i === 0 || v <= prev ? palette.color3 : palette.color2;
+      const recolored = histDataToColor.map((d, i, arr) => {
+        const v = d.value;
+        const prev = arr[i - 1]?.value;
+        let color;
 
-      return { ...d, color };
-    });
+        if (v > 0) color = i === 0 || v >= prev ? palette.color0 : palette.color1;
+        else color = i === 0 || v <= prev ? palette.color3 : palette.color2;
 
-    histSeries.setData(recolored);
+        return { ...d, color };
+      });
+
+      histSeries.setData(recolored);
+    };
+
+    group._recolor();
 
   }, [indicatorStyle]);
 

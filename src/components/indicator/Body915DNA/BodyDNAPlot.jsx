@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { LineSeries, HistogramSeries } from "lightweight-charts";
+import { LineSeries, HistogramSeries, createSeriesMarkers } from "lightweight-charts";
 
 export default function BodyDNAPlot({
   id,
@@ -148,11 +148,9 @@ export default function BodyDNAPlot({
     ].sort((a, b) => a.time - b.time);
 
     if (markersToSet?.length > 0) {
-      import("lightweight-charts").then(({ createSeriesMarkers }) => {
-        const markersPrimitive = createSeriesMarkers(bodySeries, markersToSet);
-        bodySeries.attachPrimitive(markersPrimitive);
-        groupedSeries.markersPrimitive = markersPrimitive;
-      }).catch(err => console.error("Failed to create markers", err));
+      const markersPrimitive = createSeriesMarkers(bodySeries, markersToSet);
+      bodySeries.attachPrimitive(markersPrimitive);
+      groupedSeries.markersPrimitive = markersPrimitive;
     }
 
     indicatorSeriesRef.current[id] = groupedSeries;

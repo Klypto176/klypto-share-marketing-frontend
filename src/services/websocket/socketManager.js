@@ -37,7 +37,7 @@ class SocketManager {
 
     // 🔍 DEBUG: Log every single event received from the server
     this.socket.onAny((eventName, ...args) => {
-      console.log(`[SocketManager] RAW EVENT: "${eventName}"`, ...args);
+      // console.log(`[SocketManager] RAW EVENT: "${eventName}"`, ...args);
     });
 
     this._initializeListeners();

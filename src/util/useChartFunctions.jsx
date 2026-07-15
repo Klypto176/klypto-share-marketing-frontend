@@ -3,6 +3,7 @@ import { getRowsByIndicator } from "./common";
 import socket from "../services/websocket/socket";
 import { io } from "socket.io-client";
 import Swal from "sweetalert2";
+
 let globalFetchSessionId = 0;
 let globalFetchContextKey = "";
 const INDICATOR_REQUEST_TIMEOUT_MS = 120000;
@@ -36,14 +37,19 @@ export default function useChartFunctions({
     selectedIndicator,
     selectedCurrency,
     timeframeValue,
+    customFromDate,
+    customToDate
   ) {
     if (!selectedIndicator?.length) return;
+
+    const actualFromDate = customFromDate || fromDate;
+    const actualToDate = customToDate || toDate;
 
     const fetchContextKey = getIndicatorFetchContextKey(
       selectedCurrency,
       timeframeValue,
-      fromDate,
-      toDate,
+      actualFromDate,
+      actualToDate,
     );
 
     if (fetchContextKey !== globalFetchContextKey) {
@@ -68,8 +74,8 @@ export default function useChartFunctions({
           indicatorMeta,
           selectedCurrency,
           timeframeValue,
-          fromDate,
-          toDate,
+          actualFromDate,
+          actualToDate,
           socketRef,
           indicatorConfigs,
         );
@@ -101,10 +107,27 @@ export default function useChartFunctions({
         }
         return;
       } catch (error) {
-        console.warn(
-          "Batch indicator request failed, falling back to individual requests:",
-          error,
-        );
+        if (error.message === "Socket disconnected") {
+          return;
+        }
+        
+        console.warn("Batch indicator request failed:", error);
+        try {
+          // await Swal.fire({
+          //   icon: "error",
+          //   title: "Indicator Error",
+          //   text: "Indicator not found",
+          //   confirmButtonText: "OK",
+          //   background: "var(--bg-secondary)",
+          //   color: "var(--text-primary)",
+          // });
+        } catch (alertError) {
+          console.error("Failed to show indicator error alert:", alertError);
+        }
+        indicatorMeta.forEach(({ id }) => {
+          if (typeof onIndicatorError === "function") onIndicatorError(id);
+        });
+        return;
       } finally {
         if (currentSessionId === globalFetchSessionId && onIndicatorLoadingChange) {
           indicatorMeta.forEach(({ id }) => onIndicatorLoadingChange(id, false));
@@ -132,8 +155,8 @@ export default function useChartFunctions({
               selectedCurrency,
               type,
               timeframeValue,
-              fromDate,
-              toDate,
+              actualFromDate,
+              actualToDate,
               socketRef,
               indicatorConfigs?.[id] || {},
               requestId,
@@ -254,7 +277,7 @@ export default function useChartFunctions({
       }
       case "VWAP": {
         const vwapData = result?.data?.vwap ?? [];
-        console.log("VWAP raw:", result.data, "| rows length:", rows.length);
+        // console.log("VWAP raw:", result.data, "| rows length:", rows.length);
 
         const upper1Data = result?.data?.upper1 ?? [];
         const lower1Data = result?.data?.lower1 ?? [];
@@ -1017,6 +1040,7 @@ async function fetchBatchIndicatorData(
       const onResponse = (data) => {
         if (data?.batchRequestId !== batchRequestId) return;
         if (!responseContextMatches(data)) return;
+        console.log("Received indicatorDetailsBatchResponse:", data);
         clearTimeout(timeoutId);
         cleanup();
         resolve(data);
@@ -1032,11 +1056,14 @@ async function fetchBatchIndicatorData(
       socket.on("indicatorDetailsBatchResponse", onResponse);
       socket.on("indicatorDetailsBatchError", onError);
 
-      socketRef.current.emit("getIndicatorDetailsBatch", {
+      // socketRef.current.emit("getIndicatorDetailsBatch", {
+      const payload = {
         batchRequestId,
         ...expectedContext,
         requests,
-      });
+      };
+      console.log("Emitting getIndicatorDetailsBatch with payload:", payload);
+      socketRef.current.emit("getIndicatorDetailsBatch", payload);
     });
 
     const rawResults = Array.isArray(response?.results) ? response.results : [];
@@ -1082,7 +1109,9 @@ async function fetchBatchIndicatorData(
       };
     });
   } catch (error) {
-    console.error("fetchBatchIndicatorData error:", error);
+    if (error.message !== "Socket disconnected") {
+      console.error("fetchBatchIndicatorData error:", error);
+    }
     throw error;
   }
 }
@@ -1108,7 +1137,7 @@ async function fetchDataForIndicators(
       preloadedResponse ||
       (await new Promise((resolve, reject) => {
         if (!socketRef.current || !socket.connected) {
-          reject(new Error("Socket disconnected"));
+          resolve({ data: [] });
           return;
         }
 
@@ -1140,14 +1169,17 @@ async function fetchDataForIndicators(
         socket.on("indicatorDetailsResponse", onResponse);
         socket.on("indicatorDetailsError", onError);
 
-        socketRef.current?.emit("getIndicatorDetails", {
+        // socketRef.current?.emit("getIndicatorDetails", {
+        const payload = {
           requestId,
           symbol: selectedCurrency?.name,
           interval: timeframeValue,
           fromDate: fromDate,
           toDate: toDate,
           type,
-        });
+        };
+        console.log("Emitting getIndicatorDetails with payload:", payload);
+        socketRef.current?.emit("getIndicatorDetails", payload);
       }));
 
     if (!response || !response.data) {
@@ -1163,7 +1195,7 @@ async function fetchDataForIndicators(
         }))
         .filter((d) => d.value !== null) ?? [];
 
-    console.log("mapped conversion", response?.data, "conversionLine");
+    console.log(type,"mapped conversion", response?.data, "conversionLine");
 
     switch (type) {
       /* ---------------- SINGLE VALUE ---------------- */
@@ -1972,8 +2004,20 @@ async function fetchDataForIndicators(
         return {
           type: "multi",
           data: {
-            aroonUp: response?.data?.aroonUpSeries ?? [],
-            aroonDown: response?.data?.aroonDownSeries ?? [],
+            aroonUp:
+              response?.data
+                ?.filter((d) => (d.aroonUp != null || d.up != null) && d.time != null)
+                .map((d) => ({
+                  time: Number(d.time) + IST_OFFSET,
+                  value: Number(d.aroonUp ?? d.up),
+                })) ?? [],
+            aroonDown:
+              response?.data
+                ?.filter((d) => (d.aroonDown != null || d.down != null) && d.time != null)
+                .map((d) => ({
+                  time: Number(d.time) + IST_OFFSET,
+                  value: Number(d.aroonDown ?? d.down),
+                })) ?? [],
           },
         };
       case "TR":
@@ -2073,7 +2117,7 @@ async function fetchDataForIndicators(
       case "PivotPoints(Standard)": {
         const d = response?.data ?? {};
 
-        console.log("Pivot Standard:", d);
+        // console.log("Pivot Standard:", d);
 
         return {
           type: "pivot",
@@ -2092,7 +2136,7 @@ async function fetchDataForIndicators(
       case "PivotPoints(Fibonacci)": {
         const d = response?.data ?? {};
 
-        console.log("PivotFibonacci:", d);
+        // console.log("PivotFibonacci:", d);
 
         return {
           type: "pivot",
@@ -2110,7 +2154,7 @@ async function fetchDataForIndicators(
       case "PivotPoints(Camarilla)": {
         const d = response?.data ?? {};
 
-        console.log("Pivot Camarilla:", d);
+        // console.log("Pivot Camarilla:", d);
 
         return {
           type: "pivot",
@@ -2131,7 +2175,7 @@ async function fetchDataForIndicators(
       case "PivotPoints(Classic)": {
         const d = response?.data ?? {};
 
-        console.log("Pivot Classic:", d);
+        // console.log("Pivot Classic:", d);
 
         return {
           type: "pivot",

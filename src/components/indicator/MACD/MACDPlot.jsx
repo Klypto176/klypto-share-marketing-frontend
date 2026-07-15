@@ -197,30 +197,35 @@ export default function MACDPlot({
       });
     }
 
-    if (histogramSeries && histogramRaw.length) {
+    if (histogramSeries) {
+      macdGroup._recolor = () => {
+        const palette = indicatorStyle?.MACD?.histogram?.palette;
+        if (!palette) return;
 
-      const recolored = histogramRaw.map((d, i, arr) => {
+        const histDataToColor = macdGroup.rawData?.histogram ?? macdGroup.histogramRaw ?? [];
+        if (!histDataToColor.length) return;
 
-        const v = d.value;
-        const prev = arr[i - 1]?.value;
+        const recolored = histDataToColor.map((d, i, arr) => {
+          const v = d.value;
+          const prev = arr[i - 1]?.value;
+          let color;
 
-        let color;
+          if (v >= 0) {
+            color = i === 0 || v >= prev ? palette?.["pf"] : palette?.["pr"];
+          } else {
+            color = i === 0 || v >= prev ? palette?.["nf"] : palette?.["nr"];
+          }
 
-        if (v >= 0) {
-          color = i === 0 || v >= prev ? palette?.["pf"] : palette?.["pr"];
-        } else {
-          color = i === 0 || v >= prev ? palette?.["nf"] : palette?.["nr"];
-        }
+          return {
+            ...d,
+            color,
+          };
+        });
 
-        return {
-          ...d,
-          color,
-        };
+        histogramSeries.setData(recolored);
+      };
 
-      });
-
-      histogramSeries.setData(recolored);
-
+      macdGroup._recolor();
     }
 
   }, [indicatorStyle]);

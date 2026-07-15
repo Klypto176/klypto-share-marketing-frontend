@@ -20,7 +20,7 @@ export default function BBPERBPlot({
     const percentB = rawArr
       .filter((d) => (d.percentB != null || d.bbperb != null || d.value != null) && d.time != null)
       .map((d) => ({
-        time: Number(d.time) + 19800,
+        time: Number(d.time),
         value: Number(d.percentB ?? d.bbperb ?? d.value),
       }))
       .sort((a, b) => a.time - b.time);
@@ -140,6 +140,11 @@ export default function BBPERBPlot({
       overboughtBg: overboughtBgSeries,
       middleBg: middleBgSeries,
       oversoldBg: oversoldBgSeries,
+      _levels: {
+        overbought: overboughtVal,
+        middle: middleVal,
+        oversold: oversoldVal,
+      }
     };
 
     console.log(":white_check_mark: BBPERB plotted SUCCESS");

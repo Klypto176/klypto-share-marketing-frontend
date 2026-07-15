@@ -59,9 +59,9 @@ export default function SuperSmootherPlot({
         
         const styledData = lineData.map((d) => {
           const isRising = d.value >= 0;
-          const color = isRising 
+          const color = d.histogramColor || d.color || (isRising 
             ? (styleConfig?.palette?.pr || "rgba(0,255,127,0.6)")
-            : (styleConfig?.palette?.pf || "rgba(255,0,0,0.6)");
+            : (styleConfig?.palette?.pf || "rgba(255,0,0,0.6)"));
           return { ...d, color };
         });
 
@@ -187,20 +187,26 @@ export default function SuperSmootherPlot({
       visible: style?.zeroLine?.visible,
     });
 
-    if (group.histogram && result.data.histogram) {
-      group.histogram.applyOptions({
-        visible: style?.histogram?.visible,
-      });
+    if (group.histogram) {
+      group._recolor = () => {
+        const histDataToColor = group.rawData?.histogram || result?.data?.histogram || [];
+        if (!histDataToColor.length) return;
 
-      const histData = result.data.histogram;
-      const styledData = histData.map((d) => {
-        const isRising = d.value >= 0;
-        const color = isRising 
-          ? (style?.histogram?.palette?.pr || "rgba(0,255,127,0.6)")
-          : (style?.histogram?.palette?.pf || "rgba(255,0,0,0.6)");
-        return { ...d, color };
-      });
-      group.histogram.setData(styledData);
+        group.histogram.applyOptions({
+          visible: style?.histogram?.visible,
+        });
+
+        const styledData = histDataToColor.map((d) => {
+          const isRising = d.value >= 0;
+          const color = d.histogramColor || d.color || (isRising 
+            ? (style?.histogram?.palette?.pr || "rgba(0,255,127,0.6)")
+            : (style?.histogram?.palette?.pf || "rgba(255,0,0,0.6)"));
+          return { ...d, color };
+        });
+        group.histogram.setData(styledData);
+      };
+
+      group._recolor();
     }
 
     // if (pane) {

@@ -578,18 +578,22 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0 }) => {
                           ? "FUTURES"
                           : "EQUITY";
 
-                      setSelectedCurrency({
-                        symbol: stock.actualSymbol || stock.name,
-                        name: stock.name,
-                        token: stock.token,
-                        exchange: stock.segment,
-                        type,
-                        strike: stock.strike || null,
-                        optionType: stock.optionType || null,
-                        expiry: stock.expiry || null,
+                      setSelectedCurrency((prev) => {
+                        if (prev?.token === stock.token) return prev;
+                        
+                        return {
+                          symbol: stock.actualSymbol || stock.name,
+                          name: stock.name,
+                          token: stock.token,
+                          exchange: stock.segment,
+                          type,
+                          strike: stock.strike || null,
+                          optionType: stock.optionType || null,
+                          expiry: stock.expiry || null,
+                        };
                       });
 
-                      setSearchTerm(stock.name);
+                      setSearchTerm("");
                       setShowRecent(false);
                     }}
                   >

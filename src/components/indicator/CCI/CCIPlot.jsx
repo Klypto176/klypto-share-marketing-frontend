@@ -270,6 +270,21 @@ export default function CCIPlot({
         });
     }
 
+    const cciData = cciGroup.cciData || [];
+    const upperValue = style?.upperBand?.value ?? 100;
+    const middleValue = style?.middleBand?.value ?? 0;
+    const lowerValue = style?.lowerBand?.value ?? -100;
+
+    const makeLevel = (v) => cciData.map((p) => ({ time: p.time, value: v }));
+
+    cciGroup.upperBand?.setData(makeLevel(upperValue));
+    cciGroup.middleBand?.setData(makeLevel(middleValue));
+    cciGroup.lowerBand?.setData(makeLevel(lowerValue));
+    
+    if (cciGroup.bgFill) {
+      cciGroup.bgFill.setData(makeLevel(upperValue));
+    }
+
     if (canvasRef?.current) drawBBCloud();
   }, [indicatorStyle, result, id]);
 

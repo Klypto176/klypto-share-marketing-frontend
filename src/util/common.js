@@ -601,7 +601,7 @@ export const normalizeData = (data) => {
 //   }
 // };
 
-export const getRowsByIndicator = (indicator, maType, indicatorConfigs) => {
+export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instanceId) => {
   const baseIndicator = indicator.startsWith("CUSTOM_")
     ? indicator.replace("CUSTOM_", "")
     : indicator;
@@ -1741,7 +1741,8 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs) => {
       ];
 
     case "VWAP": {
-      const config = indicatorConfigs?.[indicator] || {};
+      const defaults = { band1: { enabled: true }, band2: { enabled: false }, band3: { enabled: false } };
+      const config = { ...defaults, ...(indicatorConfigs?.[instanceId] || indicatorConfigs?.[indicator] || {}) };
 
       const rows = [
         {
@@ -1835,6 +1836,7 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs) => {
 
       return rows;
     }
+    
     case "ZIGZAG":
       return [
         {

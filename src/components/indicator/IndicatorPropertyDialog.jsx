@@ -257,9 +257,28 @@ export default function IndicatorPropertyDialog({
     const config = currentConfig;
 
     if (initialConfigRef.current === JSON.stringify(config)) {
-      console.log("[IndicatorProperty] Config unchanged, closing modal.");
       setIndicatorProperty(false);
       return;
+    }
+
+    // VWAP: if only band enabled/disabled changed, skip backend call
+    // (all band data is already in the response)
+    if (activeType === "VWAP") {
+      const initialParsed = JSON.parse(initialConfigRef.current);
+      const stripBandEnabled = (obj) => {
+        const copy = JSON.parse(JSON.stringify(obj));
+        ["band1", "band2", "band3"].forEach((b) => {
+          if (copy[b]) delete copy[b].enabled;
+        });
+        return copy;
+      };
+      const nonBandChanges =
+        JSON.stringify(stripBandEnabled(config)) !==
+        JSON.stringify(stripBandEnabled(initialParsed));
+      if (!nonBandChanges) {
+        setIndicatorProperty(false);
+        return;
+      }
     }
 
     const { maType } = config;
@@ -269,10 +288,8 @@ export default function IndicatorPropertyDialog({
       ...config,
     };
 
-    console.log("[IndicatorProperty] Emitting updateIndicator:", payload);
-
     setIndicatorProperty(false);
-    setIndicatorLoading(true); // START LOADER
+    setIndicatorLoading(true);
     if (setPaneLoadingState) setPaneLoadingState(instanceId, true);
 
     // Build the socket request
@@ -2618,7 +2635,7 @@ export default function IndicatorPropertyDialog({
         return (
           <>
             {/* Hide VWAP */}
-            <Form.Group as={Row} className="mb-3 align-items-center">
+            {/*<Form.Group as={Row} className="mb-3 align-items-center">
               <Form.Label style={labelStyle} className="mb-0">
                 Hide on 1D or Above
               </Form.Label>
@@ -2631,7 +2648,7 @@ export default function IndicatorPropertyDialog({
                   }
                 />
               </Col>
-            </Form.Group>
+            </Form.Group>*/}
 
             {/* Anchor Period */}
             <Form.Group as={Row} className="mb-3 align-items-center">

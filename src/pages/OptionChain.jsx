@@ -23,19 +23,20 @@ import {
   FaLayerGroup,
 } from "react-icons/fa";
 import apiService from "../services/apiServices";
-import { getStrategySocket } from "../services/websocket/socket";
 import Select from "react-select";
-/* ─── Design tokens ──────────────────────────────────────────────────────── */
+import { getStrategySocket } from "../services/websocket/socket";
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import Swal from "sweetalert2";
+
+/* ─── Design tokens ─────────────────────────────────────────────────────────────
+───────────────────────────────────────────────────────────────────────────── */
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
   :root {
     --oc-bg:           var(--bg-primary);
     --oc-surface:      var(--bg-secondary);
-    --oc-navy:         var(--text-primary);
-    --oc-accent:       var(--accent-color);
-    --oc-accent-hover: var(--accent-hover);
-    --oc-accent-light: rgba(127,119,221,0.15);
     --oc-border:       var(--border-color);
     --oc-muted:        var(--text-secondary);
     --oc-green:        var(--success-color);
@@ -163,9 +164,9 @@ const styles = `
     height: 42px !important;
     font-size: 13.5px !important;
     font-family: 'Inter', sans-serif !important;
-    border: 1.5px solid var(--oc-border) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
     border-radius: var(--oc-radius-sm) !important;
-    background: var(--oc-bg) !important;
+    background-color: var(--oc-surface) !important;
     color: var(--oc-text) !important;
     transition: border-color .18s, box-shadow .18s, background .18s !important;
     box-shadow: none !important;
@@ -179,7 +180,8 @@ const styles = `
   }
   .oc-input-icon {
     background: linear-gradient(135deg, var(--oc-accent), #3B82F6) !important;
-    border: none !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    border-right: none !important;
     border-radius: var(--oc-radius-sm) 0 0 var(--oc-radius-sm) !important;
     color: #fff !important;
     height: 42px !important;
@@ -374,6 +376,8 @@ const styles = `
     font-size: 38px;
     margin-bottom: 14px;
     opacity: .45;
+    display: flex;
+    justify-content: center;
   }
   .oc-empty h6 {
     font-weight: 700;
@@ -473,20 +477,20 @@ const styles = `
   .sort-icon-muted  { color: var(--oc-border); }
   .sort-icon-active { color: var(--oc-accent); }
 
-  /* Loading overlay */
   .oc-loading-overlay {
     position: absolute;
     inset: 0;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    background: color-mix(in srgb, var(--oc-surface) 75%, transparent);
-    backdrop-filter: blur(2px);
-    z-index: 10;
-    font-size: 13px;
+    gap: 15px;
+    background: rgba(10, 11, 13, 0.8) !important;
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    font-size: 14.5px;
     font-weight: 600;
-    color: var(--oc-muted);
+    color: var(--oc-text);
   }
 
   /* Scrollbar Styling */
@@ -507,23 +511,36 @@ const styles = `
 `;
 
 const OptionChain = () => {
+  const formatValue = (val, isNumber = false) => {
+    if (val === null || val === undefined || val === "") return "-";
+    return isNumber ? Number(val).toLocaleString() : val;
+  };
+
+  const parseDDMMYYYY = (str) => {
+    if (!str) return 0;
+    const [d, m, y] = str.split("-");
+    return new Date(`${y}-${m}-${d}`).getTime();
+  };
+
+  const parseYYYYMMDD = (str) => {
+    if (!str) return 0;
+    return new Date(str).getTime();
+  };
+
   const [data, setData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const [stockFilter, setStockFilter] = useState("");
+  const [stockFilter, setStockFilter] = useState("TCS");
   const [expiryFilter, setExpiryFilter] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
-  const [appliedFromDate, setAppliedFromDate] = useState("");
-  const [appliedToDate, setAppliedToDate] = useState("");
+  const [filterDate, setFilterDate] = useState("2025-01-01");
+  const [appliedFilterDate, setAppliedFilterDate] = useState("2025-01-01");
 
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
   const [currentPage, setCurrentPage] = useState(1);
   const [recordsPerPage, setRecordsPerPage] = useState(10);
   const [totalRecords, setTotalRecords] = useState(0);
 
-  const fromDateRef = useRef(null);
-  const toDateRef = useRef(null);
+  const filterDateRef = useRef(null);
 
   const [uniqueStocks, setUniqueStocks] = useState([]);
   const [uniqueExpiries, setUniqueExpiries] = useState([]);
@@ -589,9 +606,16 @@ const OptionChain = () => {
           const res = await apiService.get("/options/expiries", {
             stockName: stockFilter,
           });
-          if (Array.isArray(res)) setUniqueExpiries(res);
-          else if (res?.data && Array.isArray(res.data))
-            setUniqueExpiries(res.data);
+          let expiries = [];
+          if (Array.isArray(res)) expiries = res;
+          else if (res?.data && Array.isArray(res.data)) expiries = res.data;
+          
+          setUniqueExpiries(expiries);
+          
+          if (expiries.length > 0) {
+            const latest = expiries[0];
+            setExpiryFilter(latest?.expiryDate || latest?.date || latest);
+          }
         } catch (err) {
           console.error("Error fetching expiries:", err);
         }
@@ -606,13 +630,19 @@ const OptionChain = () => {
   const sortDirection = sortConfig.direction;
 
   const fetchTableData = useCallback(async () => {
+    if (!stockFilter || !expiryFilter) return;
+
+    let formattedDate = "";
+    if (appliedFilterDate) {
+      const [year, month, day] = appliedFilterDate.split('-');
+      formattedDate = `${day}-${month}-${year}`;
+    }
+
     const params = {
-      page: currentPage,
-      limit: recordsPerPage,
+      limit: "all",
       ...(stockFilter && { stockName: stockFilter }),
       ...(expiryFilter && { expiryDate: expiryFilter }),
-      ...(appliedFromDate && { fromDate: appliedFromDate }),
-      ...(appliedToDate && { toDate: appliedToDate }),
+      ...(formattedDate && { date: formattedDate }),
       ...(sortKey && { sortBy: sortKey }),
       ...(sortKey && { sortOrder: sortDirection === "asc" ? "DESC" : "ASC" }),
     };
@@ -648,12 +678,9 @@ const OptionChain = () => {
       setIsLoading(false);
     }
   }, [
-    currentPage,
-    recordsPerPage,
     stockFilter,
     expiryFilter,
-    appliedFromDate,
-    appliedToDate,
+    appliedFilterDate,
     sortKey,
     sortDirection,
   ]);
@@ -663,18 +690,26 @@ const OptionChain = () => {
   }, [fetchTableData]);
 
   const handleApplyDateRange = () => {
-    setAppliedFromDate(fromDate);
-    setAppliedToDate(toDate);
+    const expiryTime = parseDDMMYYYY(expiryFilter);
+    const selectedDateTime = parseYYYYMMDD(filterDate);
+    if (expiryTime > 0 && selectedDateTime > 0 && expiryTime < selectedDateTime) {
+      toast.error('Expiry cannot be less than the selected date', { theme: 'dark' });
+      return;
+    }
+    setAppliedFilterDate(filterDate);
     setCurrentPage(1);
   };
 
   const handleResetFilters = () => {
-    setStockFilter("");
-    setExpiryFilter("");
-    setFromDate("");
-    setToDate("");
-    setAppliedFromDate("");
-    setAppliedToDate("");
+    setStockFilter("TCS");
+    if (uniqueExpiries.length > 0) {
+      const latest = uniqueExpiries[0];
+      setExpiryFilter(latest?.expiryDate || latest?.date || latest);
+    } else {
+      setExpiryFilter("");
+    }
+    setFilterDate("2025-01-01");
+    setAppliedFilterDate("2025-01-01");
     setSortConfig({ key: null, direction: "asc" });
     setCurrentPage(1);
   };
@@ -699,6 +734,32 @@ const OptionChain = () => {
   const handlePageChange = (page) => {
     if (page >= 1 && page <= totalPages) setCurrentPage(page);
   };
+
+  const groupedOptionChain = React.useMemo(() => {
+    if (!data || !data.length) return [];
+    const strikesMap = {};
+    data.forEach((item) => {
+      const strike = parseFloat(item.strike);
+      const timeKey = item.timestamp_epoch || item.timestamp_ist || item.date_ist || "unknown";
+      const key = `${timeKey}_${strike}`;
+      
+      if (!strikesMap[key]) {
+        strikesMap[key] = { key, strike, time: timeKey, date_ist: item.date_ist, CE: null, PE: null };
+      }
+      if (item.optionType === "CE" || item.request_option_type === "CE") {
+        strikesMap[key].CE = item;
+      } else if (item.optionType === "PE" || item.request_option_type === "PE") {
+        strikesMap[key].PE = item;
+      }
+    });
+    return Object.values(strikesMap).sort((a, b) => {
+      if (a.time !== b.time) {
+         if (a.time > b.time) return -1;
+         if (a.time < b.time) return 1;
+      }
+      return a.strike - b.strike;
+    });
+  }, [data]);
 
   const columns = [
     { key: "date_ist", label: "Date" },
@@ -735,10 +796,10 @@ const OptionChain = () => {
               </p>
             </div>
           </div>
-          <span className="oc-live-pill">
+          {/* <span className="oc-live-pill">
             <span className="oc-live-dot" />
             Live
-          </span>
+          </span> */}
         </div>
 
         {/* Filters */}
@@ -821,71 +882,63 @@ const OptionChain = () => {
             </Col>
 
             <Col md={2}>
-              <label className="oc-filter-label">Expiry Date</label>
-              <Form.Select
-                value={expiryFilter}
-                onChange={(e) => {
-                  setExpiryFilter(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="oc-select"
-                disabled={!stockFilter && uniqueExpiries.length === 0}
-              >
-                <option value="">All Expiries</option>
-                {uniqueExpiries.map((expiry, idx) => {
-                  const v = expiry?.expiryDate || expiry?.date || expiry;
-                  return (
-                    <option key={idx} value={v}>
-                      {v}
-                    </option>
-                  );
-                })}
-              </Form.Select>
+              <Form.Group className="mb-0">
+                <div className="oc-rows-label mb-1">Expiry Date</div>
+                <Form.Select
+                  value={expiryFilter}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const expiryTime = parseDDMMYYYY(val);
+                    const selectedDateTime = parseYYYYMMDD(filterDate);
+                    if (expiryTime > 0 && selectedDateTime > 0 && expiryTime < selectedDateTime) {
+                      toast.error('Expiry cannot be less than the selected date', { theme: 'dark' });
+                      return;
+                    }
+                    setExpiryFilter(val);
+                    setCurrentPage(1);
+                  }}
+                  className="oc-select"
+                  disabled={!stockFilter && uniqueExpiries.length === 0}
+                >
+                  {uniqueExpiries.map((expiry, idx) => {
+                    const v = expiry?.expiryDate || expiry?.date || expiry;
+                    return (
+                      <option key={idx} value={v}>
+                        {v}
+                      </option>
+                    );
+                  })}
+                </Form.Select>
+              </Form.Group>
             </Col>
 
-            <Col md={2}>
-              <label className="oc-filter-label">From Date</label>
+            <Col md={4}>
+              <label className="oc-filter-label">Date</label>
               <InputGroup>
-                <InputGroup.Text
-                  className="oc-input-icon"
-                  onClick={() => fromDateRef.current?.showPicker()}
-                >
-                  <FaCalendarAlt size={13} />
+                <InputGroup.Text className="oc-input-icon">
+                  <FaCalendarAlt size={14} />
                 </InputGroup.Text>
                 <Form.Control
                   type="date"
-                  ref={fromDateRef}
-                  value={fromDate}
-                  min="2025-01-01"
-                  max={todayDateStr}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  className="oc-select oc-date-input"
-                />
-              </InputGroup>
-            </Col>
-
-            <Col md={2}>
-              <label className="oc-filter-label">To Date</label>
-              <InputGroup>
-                <InputGroup.Text
-                  className="oc-input-icon"
-                  onClick={() => toDateRef.current?.showPicker()}
-                >
-                  <FaCalendarAlt size={13} />
-                </InputGroup.Text>
-                <Form.Control
-                  type="date"
-                  ref={toDateRef}
-                  value={toDate}
-                  min="2025-01-01"
-                  max={todayDateStr}
-                  onChange={(e) => setToDate(e.target.value)}
+                  ref={filterDateRef}
+                  value={filterDate}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const selectedDateTime = parseYYYYMMDD(val);
+                    const expiryTime = parseDDMMYYYY(expiryFilter);
+                    if (expiryTime > 0 && selectedDateTime > 0 && expiryTime < selectedDateTime) {
+                       toast.error('Expiry cannot be less than the selected date', { theme: 'dark' });
+                       return;
+                    }
+                    setFilterDate(val);
+                  }}
                   className="oc-select oc-date-input"
                 />
               </InputGroup>
             </Col>
 
             <Col md={3}>
+              <label className="oc-filter-label">&nbsp;</label>
               <div className="d-flex gap-2">
                 <Button
                   className="oc-btn-apply w-50 d-flex align-items-center justify-content-center gap-2"
@@ -898,7 +951,7 @@ const OptionChain = () => {
                   onClick={handleResetFilters}
                   title="Reset all filters"
                 >
-                  <FaUndo size={13} /> Reset
+                  <FaUndo size={12} /> Reset
                 </Button>
               </div>
             </Col>
@@ -911,10 +964,9 @@ const OptionChain = () => {
             <div className="oc-loading-overlay">
               <Spinner
                 animation="border"
-                size="sm"
-                style={{ color: "var(--oc-accent)" }}
+                style={{ color: "#3B82F6", width: "3rem", height: "3rem" }}
               />
-              Loading data…
+              <span style={{ letterSpacing: "0.5px" }}>Loading options chain...</span>
             </div>
           )}
           <div
@@ -927,141 +979,70 @@ const OptionChain = () => {
             <Table className="oc-table">
               <thead>
                 <tr>
-                  {columns.map(({ key, label }) => (
-                    <th key={key} onClick={() => handleSort(key)}>
-                      <div className="sort-wrap">
-                        {label} {getSortIcon(key)}
-                      </div>
-                    </th>
-                  ))}
+                  <th colSpan="7" style={{ textAlign: "center", borderRight: "2px solid var(--oc-border)" }}>CALLS</th>
+                  <th style={{ textAlign: "center", borderRight: "2px solid var(--oc-border)" }}>STRIKE</th>
+                  <th colSpan="7" style={{ textAlign: "center" }}>PUTS</th>
+                </tr>
+                <tr>
+                  {/* CE Columns */}
+                  <th style={{ textAlign: "center" }}>OI</th>
+                  <th style={{ textAlign: "center" }}>Vol</th>
+                  <th style={{ textAlign: "center" }}>IV</th>
+                  <th style={{ textAlign: "center" }}>Close</th>
+                  <th style={{ textAlign: "center" }}>High</th>
+                  <th style={{ textAlign: "center" }}>Low</th>
+                  <th style={{ textAlign: "center", borderRight: "2px solid var(--oc-border)" }}>Open</th>
+                  
+                  {/* Strike */}
+                  <th style={{ textAlign: "center", borderRight: "2px solid var(--oc-border)" }}>Price</th>
+                  
+                  {/* PE Columns */}
+                  <th style={{ textAlign: "center" }}>Open</th>
+                  <th style={{ textAlign: "center" }}>Low</th>
+                  <th style={{ textAlign: "center" }}>High</th>
+                  <th style={{ textAlign: "center" }}>Close</th>
+                  <th style={{ textAlign: "center" }}>IV</th>
+                  <th style={{ textAlign: "center" }}>Vol</th>
+                  <th style={{ textAlign: "center" }}>OI</th>
                 </tr>
               </thead>
               <tbody>
-                {data?.length > 0 ? (
-                  data &&
-                  data?.map((item, idx) => (
-                    <tr key={item._id?.$oid || item.id || idx}>
-                      <td className="oc-cell-date oc-mono">
-                        {item.date_ist || item.date}
-                      </td>
-                      <td className="oc-cell-symbol">
-                        {item._symbol || item.symbol}
-                      </td>
-                      <td className="oc-cell-expiry oc-mono">
-                        {item.expiry_date || item.expiryDate}
-                      </td>
-                      <td className="oc-cell-strike oc-mono">{item.strike}</td>
-                      <td>
-                        <span
-                          className={
-                            item.optionType === "CE"
-                              ? "oc-badge-ce"
-                              : "oc-badge-pe"
-                          }
-                        >
-                          {item.optionType}
-                        </span>
-                      </td>
-                      <td className="oc-cell-muted oc-mono">{item.open}</td>
-                      <td className="oc-cell-high oc-mono">{item.high}</td>
-                      <td className="oc-cell-low oc-mono">{item.low}</td>
-                      <td className="oc-cell-close oc-mono">{item.close}</td>
-                      <td className="oc-cell-muted oc-mono">
-                        {Number(item.volume).toLocaleString()}
-                      </td>
-                      <td className="oc-cell-muted oc-mono">
-                        {Number(item.oi).toLocaleString()}
-                      </td>
-                      <td className="oc-cell-muted oc-mono">{item.iv}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="12">
-                      <div className="oc-empty">
-                        <div className="oc-empty-icon">
-                          <FaChartLine />
-                        </div>
-                        <h6>No records found</h6>
-                        <p>Try adjusting your filters to see results.</p>
-                      </div>
+                {groupedOptionChain.map((row, idx) => (
+                  <tr key={row.key || row.strike || idx}>
+                    {/* CE Cells */}
+                    <td className="oc-cell-muted oc-mono">{row.CE ? formatValue(row.CE.oi, true) : "-"}</td>
+                    <td className="oc-cell-muted oc-mono">{row.CE ? formatValue(row.CE.volume, true) : "-"}</td>
+                    <td className="oc-cell-muted oc-mono">{row.CE ? formatValue(row.CE.iv) : "-"}</td>
+                    <td className="oc-cell-close oc-mono">{row.CE ? formatValue(row.CE.close) : "-"}</td>
+                    <td className="oc-cell-high oc-mono">{row.CE ? formatValue(row.CE.high) : "-"}</td>
+                    <td className="oc-cell-low oc-mono">{row.CE ? formatValue(row.CE.low) : "-"}</td>
+                    <td className="oc-cell-muted oc-mono" style={{ borderRight: "2px solid var(--oc-border)" }}>{row.CE ? formatValue(row.CE.open) : "-"}</td>
+                    
+                    {/* Strike Cell */}
+                    <td className="oc-cell-strike oc-mono" style={{ borderRight: "2px solid var(--oc-border)", fontWeight: "900", backgroundColor: "var(--oc-border)", color: "var(--oc-text)", fontSize: "15px" }}>
+                      {formatValue(row.strike)}
                     </td>
+                    
+                    {/* PE Cells */}
+                    <td className="oc-cell-muted oc-mono">{row.PE ? formatValue(row.PE.open) : "-"}</td>
+                    <td className="oc-cell-low oc-mono">{row.PE ? formatValue(row.PE.low) : "-"}</td>
+                    <td className="oc-cell-high oc-mono">{row.PE ? formatValue(row.PE.high) : "-"}</td>
+                    <td className="oc-cell-close oc-mono">{row.PE ? formatValue(row.PE.close) : "-"}</td>
+                    <td className="oc-cell-muted oc-mono">{row.PE ? formatValue(row.PE.iv) : "-"}</td>
+                    <td className="oc-cell-muted oc-mono">{row.PE ? formatValue(row.PE.volume, true) : "-"}</td>
+                    <td className="oc-cell-muted oc-mono">{row.PE ? formatValue(row.PE.oi, true) : "-"}</td>
                   </tr>
-                )}
+                ))}
               </tbody>
             </Table>
           </div>
-
-          {/* Footer */}
-          <div className="oc-footer">
-            <div className="oc-footer-left">
-              <span className="oc-rows-label">Rows per page</span>
-              <Form.Select
-                value={recordsPerPage}
-                onChange={(e) => {
-                  setRecordsPerPage(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
-                className="oc-select-rows"
-              >
-                <option value="10">10</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
-              </Form.Select>
-              <span className="oc-total-badge">
-                {totalRecords?.toLocaleString()} records
-              </span>
-            </div>
-
-            <Pagination className="oc-pagination mb-0">
-              <Pagination.First
-                onClick={() => handlePageChange(1)}
-                disabled={currentPage === 1}
-              />
-              <Pagination.Prev
-                onClick={() => handlePageChange(currentPage - 1)}
-                disabled={currentPage === 1}
-              />
-
-              {[...Array(totalPages)]?.map((_, i) => {
-                const pageNum = i + 1;
-                if (
-                  pageNum === 1 ||
-                  pageNum === totalPages ||
-                  (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
-                ) {
-                  return (
-                    <Pagination.Item
-                      key={pageNum}
-                      active={pageNum === currentPage}
-                      onClick={() => handlePageChange(pageNum)}
-                    >
-                      {pageNum}
-                    </Pagination.Item>
-                  );
-                }
-                if (
-                  pageNum === currentPage - 2 ||
-                  pageNum === currentPage + 2
-                ) {
-                  return <Pagination.Ellipsis key={pageNum} disabled />;
-                }
-                return null;
-              })}
-
-              <Pagination.Next
-                onClick={() => handlePageChange(currentPage + 1)}
-                disabled={currentPage === totalPages}
-              />
-              <Pagination.Last
-                onClick={() => handlePageChange(totalPages)}
-                disabled={currentPage === totalPages}
-              />
-            </Pagination>
+          
+          <div style={{ padding: "15px", textAlign: "center", fontWeight: "bold", color: "var(--oc-text)" }}>
+            Total Records Displayed: {totalRecords}
           </div>
         </div>
       </div>
+      <ToastContainer />
     </>
   );
 };

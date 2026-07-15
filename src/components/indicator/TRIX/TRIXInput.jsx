@@ -20,7 +20,7 @@ export default function TRIXInput(
 
   group.trixLine?.setData(trixData); /* :fire: UPDATE ZERO LINE ALSO */
 
-  const zeroValue = group?.zeroValue ?? 0;
+  const zeroValue = group?._levels?.zero ?? 0;
 
   const zeroData = trixData.map((p) => ({
     time: p.time,

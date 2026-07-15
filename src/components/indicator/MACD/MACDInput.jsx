@@ -24,13 +24,18 @@ export default function MACDInput(
   if (series) {
     series.macd?.setData(macdData);
     series.signal?.setData(signalData);
-    series.histogram?.setData(histogramData);
 
     // store rawData for style updates (like recoloring histogram)
     series.rawData = { macd: macdData, signal: signalData, histogram: histogramData };
 
     // store result for plot
     series.result = { data: { macd: macdData, signal: signalData, histogram: histogramData } };
+
+    if (series._recolor) {
+      series._recolor();
+    } else {
+      series.histogram?.setData(histogramData);
+    }
   } else {
     // If series does not exist yet, store result and rows for MACDPlot
     indicatorSeriesRef.current[instanceId || "MACD"] = {
