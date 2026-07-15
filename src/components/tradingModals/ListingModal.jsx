@@ -9,7 +9,6 @@ import NSE from "../../assets/NSE.svg";
 import BSE from "../../assets/BSE.svg";
 import axios from "axios";
 
-
 const SymbolAvatar = ({ code, symbol }) => {
   const initial = (symbol || code || "S").charAt(0).toUpperCase();
   return (
@@ -104,13 +103,12 @@ export const ListingModal = ({
 
     try {
       const response = await apiService.post(`equity/getIndicators`);
-      // const response = await axios.get("http://192.168.1.20:8000/api/indicators")
+      // const response = await axios.get("http://192.168.1.17:4000/api/indicators")
 
-      console.log("indicator API response:", response?.data);
+      // console.log("indicator API response:", response?.data);
 
       // setIndicators(response?.data?.data || []);
       setIndicators(response?.data || []);
-
     } catch (err) {
       console.error(err);
       setError(err?.message || "Failed to fetch indicators");
@@ -464,10 +462,12 @@ export const ListingModal = ({
                         }}
                         className="d-flex justify-content-between align-items-center"
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.background = "var(--bg-tertiary)";
+                          e.currentTarget.style.background =
+                            "var(--bg-tertiary)";
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.background = "var(--bg-secondary)";
+                          e.currentTarget.style.background =
+                            "var(--bg-secondary)";
                         }}
                         style={{
                           cursor: "pointer",
@@ -585,19 +585,26 @@ export const ListingModal = ({
                             type: item.slug,
                           };
                           setSelectedIndicator((prev) => {
-                            const isExisting = prev.some((i) => i.type === item.slug);
+                            const isExisting = prev.some(
+                              (i) => i.type === item.slug,
+                            );
                             if (isExisting) {
-                              return [...prev.filter((i) => i.type !== item.slug), newInst];
+                              return [
+                                ...prev.filter((i) => i.type !== item.slug),
+                                newInst,
+                              ];
                             }
                             return [...prev, newInst];
                           });
                           // Modal stays open so user can add more indicators
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.background = "var(--bg-tertiary)";
+                          e.currentTarget.style.background =
+                            "var(--bg-tertiary)";
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.background = "var(--bg-secondary)";
+                          e.currentTarget.style.background =
+                            "var(--bg-secondary)";
                         }}
                         style={{
                           cursor: "pointer",

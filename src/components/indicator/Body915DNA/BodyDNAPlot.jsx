@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { LineSeries, HistogramSeries, createSeriesMarkers } from "lightweight-charts";
 
 export default function BodyDNAPlot({
@@ -10,8 +10,15 @@ export default function BodyDNAPlot({
   chart,
   pane,
 }) {
+  const markerFrameRef = useRef(null);
+
   useEffect(() => {
     if (!result) return;
+
+    if (markerFrameRef.current) {
+      cancelAnimationFrame(markerFrameRef.current);
+      markerFrameRef.current = null;
+    }
 
     if (indicatorSeriesRef.current?.[id]) {
       const oldGroup = indicatorSeriesRef.current[id];
@@ -148,9 +155,14 @@ export default function BodyDNAPlot({
     ].sort((a, b) => a.time - b.time);
 
     if (markersToSet?.length > 0) {
-      const markersPrimitive = createSeriesMarkers(bodySeries, markersToSet);
-      bodySeries.attachPrimitive(markersPrimitive);
-      groupedSeries.markersPrimitive = markersPrimitive;
+      markerFrameRef.current = requestAnimationFrame(() => {
+        markerFrameRef.current = null;
+        try {
+          const markersPrimitive = createSeriesMarkers(bodySeries, markersToSet);
+          bodySeries.attachPrimitive(markersPrimitive);
+          groupedSeries.markersPrimitive = markersPrimitive;
+        } catch {}
+      });
     }
 
     indicatorSeriesRef.current[id] = groupedSeries;
@@ -176,6 +188,14 @@ export default function BodyDNAPlot({
       });
     });
   }, [indicatorStyle]);
+
+  useEffect(() => {
+    return () => {
+      if (markerFrameRef.current) {
+        cancelAnimationFrame(markerFrameRef.current);
+      }
+    };
+  }, []);
 
   return null;
 }
