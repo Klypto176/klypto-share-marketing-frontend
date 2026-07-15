@@ -51,10 +51,19 @@ import {
 import { getStrategySocket } from "../services/websocket/socket";
 import { toast } from "react-toastify";
 import useAlerts from "../util/useAlerts";
-import CodeEditorPanel from "../components/layout/CodeEditorPanel";
+import CodeEditorPanel, {
+  DEFAULT_EDITOR_CODE,
+} from "../components/layout/CodeEditorPanel";
 import OIAnalytics from "../components/tradingModals/OIAnalytics";
 import Swal from "sweetalert2";
 import apiService from "../services/apiServices";
+import {
+  saveNotebookStrategy,
+  updateNotebookStrategy,
+} from "../services/notebookStrategyService";
+import { generateStrategyAgent } from "../services/strategyAgentService";
+import { executeIndicatorSandbox } from "../services/sandboxService";
+import { getUser } from "./auth/protected";
 import useDrawingTools from "../util/useDrawingTools";
 import DrawingToolbar from "../components/tradingModals/DrawingToolbar";
 import DrawingToolbox from "../components/tradingModals/DrawingToolbox";
@@ -74,6 +83,60 @@ const getInitialLookbackDate = (timeframe) => {
 };
 
 const getTodayDateString = () => new Date().toISOString().split("T")[0];
+const SANDBOX_DEPLOYMENT_CODE = "SANDBOX_EXECUTION";
+
+const buildStrategyAgentPrompt = (editorCode, symbol, timeframe) => `
+Convert the current strategy editor content into runnable ChartLab-compatible Python for sandbox execution.
+
+Requirements:
+- Preserve the strategy intent from the editor code below.
+- Return only executable Python code, with no markdown fences or explanation.
+- Use ChartLab-compatible Python when needed.
+- Emit trade markers with signal(...) when possible.
+- If the existing code is already runnable ChartLab-compatible Python, keep the logic and return the final code.
+- The chart symbol is ${symbol || "the selected symbol"} on timeframe ${timeframe || "the selected timeframe"}.
+
+Current editor code:
+${editorCode}
+`.trim();
+
+const normalizeChartTime = (rawTime) => {
+  if (rawTime === null || rawTime === undefined || rawTime === "") {
+    return null;
+  }
+
+  if (typeof rawTime === "number" && Number.isFinite(rawTime)) {
+    return rawTime > 1e12 ? Math.floor(rawTime / 1000) : Math.floor(rawTime);
+  }
+
+  const numericTime = Number(rawTime);
+  if (Number.isFinite(numericTime)) {
+    return numericTime > 1e12
+      ? Math.floor(numericTime / 1000)
+      : Math.floor(numericTime);
+  }
+
+  const parsedTime = new Date(rawTime).getTime();
+  if (Number.isNaN(parsedTime)) {
+    return null;
+  }
+
+  return Math.floor(parsedTime / 1000);
+};
+
+const toSeriesValue = (point) => {
+  const time = normalizeChartTime(point?.time);
+  const value =
+    typeof point?.value === "number" && Number.isFinite(point.value)
+      ? point.value
+      : null;
+
+  if (time === null || value === null) {
+    return null;
+  }
+
+  return { time, value };
+};
 
 const mergeHistoricalSeries = (existing, incoming, mode = "replace") => {
   if (mode === "replace" || !Array.isArray(existing) || existing.length === 0) {
@@ -116,6 +179,8 @@ export default function Candlestick() {
   const lastDeployedMarkersRef = useRef(null);
   const scannerIntervalRef = useRef(null);
   const pyodideRef = useRef(null);
+  const strategyAgentSessionIdRef = useRef(null);
+  const sandboxSessionIdRef = useRef(null);
   const lastIndicatorRequestRef = useRef(0);
   const lastHistoricalRequestRef = useRef({ key: null, at: 0 });
   const lastLiveTickRequestRef = useRef({ key: null, at: 0 });
@@ -249,14 +314,16 @@ export default function Candlestick() {
   const [symbolTransitioning, setSymbolTransitioning] = useState(false);
   const symbolTransitioningRef = useRef(false);
   const [noDataAvailable, setNoDataAvailable] = useState(false);
-  const [editorCode, setEditorCode] = useState(
-    `markers = []
-# user strategy here
-plot_markers(markers)`,
-  );
+  const [editorCode, setEditorCode] = useState(DEFAULT_EDITOR_CODE);
   const [openScannerTrigger, setOpenScannerTrigger] = useState(0);
   const [customSignals, setCustomSignals] = useState([]);
   const [isDeploying, setIsDeploying] = useState(false);
+  const [isSavingStrategy, setIsSavingStrategy] = useState(false);
+  const [isUpdatingStrategy, setIsUpdatingStrategy] = useState(false);
+  const [activeStrategyRecord, setActiveStrategyRecord] = useState(null);
+  const [isStrategyDirty, setIsStrategyDirty] = useState(false);
+  const [areStrategyVisualsVisible, setAreStrategyVisualsVisible] =
+    useState(true);
   const [scannerProgressData, setScannerProgressData] = useState(null);
   const [dashboardSignals, setDashboardSignals] = useState([]);
   const [deployedStrategyCode, setDeployedStrategyCode] = useState(null);
@@ -418,6 +485,312 @@ plot_markers(markers)`,
     setDashboardSignals([]);
     setDeployedStrategyCode(null);
     setIsDeployed(false);
+    setAreStrategyVisualsVisible(true);
+  }, []);
+
+  const handleSaveStrategy = useCallback(
+    async (code) => {
+      if (!code || !code.trim()) {
+        Swal.fire({
+          icon: "warning",
+          title: "Empty Strategy",
+          text: "Please write some strategy code before saving.",
+          background: "var(--bg-secondary)",
+          color: "var(--text-primary)",
+        });
+        return;
+      }
+
+      try {
+        setIsSavingStrategy(true);
+        const symbolName = selectedCurrency?.name || selectedCurrency?.symbol || "Strategy";
+        const strategyName = `${symbolName} ${timeframeValue} Notebook Strategy`;
+        const currentUser = getUser();
+        const resolvedUserId =
+          currentUser?.id ||
+          currentUser?._id ||
+          currentUser?.userId ||
+          "";
+        const resolvedUserName =
+          currentUser?.name ||
+          currentUser?.username ||
+          currentUser?.fullName ||
+          currentUser?.firstName ||
+          "";
+
+        if (!resolvedUserId) {
+          throw new Error("User id not found in session.");
+        }
+
+        const payload = {
+          id: resolvedUserId,
+          userId: resolvedUserId,
+          userName: resolvedUserName || null,
+          user: {
+            id: resolvedUserId,
+            userId: resolvedUserId,
+            name: resolvedUserName || null,
+          },
+          strategyName,
+          name: strategyName,
+          strategy_type: "custom_notebook",
+          language: "python",
+          code,
+          config: {
+            symbol: symbolName,
+            lookupSymbol: selectedCurrency?.symbol || null,
+            token: selectedCurrency?.token || null,
+            exchange: selectedCurrency?.exchange || selectedCurrency?.segment || "NSE",
+            timeframe: timeframeValue,
+            fromDate,
+            toDate,
+          },
+          isActive: false,
+          isDeployed: Boolean(isDeployed),
+        };
+
+        console.log(
+          "[Strategy.saveNotebookStrategy] Frontend payload:",
+          payload,
+        );
+
+        const response = await saveNotebookStrategy(payload);
+        if (response?.data) {
+          setActiveStrategyRecord(response.data);
+          setIsStrategyDirty(false);
+        }
+
+        toast.success(
+          response?.message || "Strategy payload logged successfully.",
+        );
+      } catch (err) {
+        Swal.fire({
+          icon: "error",
+          title: "Save Failed",
+          text:
+            err?.response?.data?.message ||
+            err?.response?.data?.error ||
+            err?.message ||
+            "Unable to save strategy.",
+          background: "var(--bg-secondary)",
+          color: "var(--text-primary)",
+        });
+      } finally {
+        setIsSavingStrategy(false);
+      }
+    },
+    [fromDate, isDeployed, selectedCurrency, timeframeValue, toDate],
+  );
+
+  const handleUpdateStrategy = useCallback(
+    async (code) => {
+      if (!activeStrategyRecord?.id) {
+        Swal.fire({
+          icon: "warning",
+          title: "No Saved Strategy",
+          text: "Please load a saved strategy first, then update it.",
+          background: "var(--bg-secondary)",
+          color: "var(--text-primary)",
+        });
+        return;
+      }
+
+      if (!code || !code.trim()) {
+        Swal.fire({
+          icon: "warning",
+          title: "Empty Strategy",
+          text: "Please write some strategy code before updating.",
+          background: "var(--bg-secondary)",
+          color: "var(--text-primary)",
+        });
+        return;
+      }
+
+      try {
+        setIsUpdatingStrategy(true);
+        const symbolName = selectedCurrency?.name || selectedCurrency?.symbol || "Strategy";
+        const currentUser = getUser();
+        const resolvedUserId =
+          currentUser?.id ||
+          currentUser?._id ||
+          currentUser?.userId ||
+          "";
+        const resolvedUserName =
+          currentUser?.name ||
+          currentUser?.username ||
+          currentUser?.fullName ||
+          currentUser?.firstName ||
+          "";
+
+        if (!resolvedUserId) {
+          throw new Error("User id not found in session.");
+        }
+
+        const strategyName =
+          activeStrategyRecord?.name ||
+          `${symbolName} ${timeframeValue} Notebook Strategy`;
+
+        const payload = {
+          id: resolvedUserId,
+          userId: resolvedUserId,
+          userName: resolvedUserName || null,
+          user: {
+            id: resolvedUserId,
+            userId: resolvedUserId,
+            name: resolvedUserName || null,
+          },
+          strategyName,
+          name: strategyName,
+          strategy_type: activeStrategyRecord?.strategy_type || "custom_notebook",
+          language: activeStrategyRecord?.language || "python",
+          code,
+          config: {
+            ...(activeStrategyRecord?.config || {}),
+            symbol: symbolName,
+            lookupSymbol: selectedCurrency?.symbol || null,
+            token: selectedCurrency?.token || null,
+            exchange: selectedCurrency?.exchange || selectedCurrency?.segment || "NSE",
+            timeframe: timeframeValue,
+            fromDate,
+            toDate,
+          },
+          isActive: Boolean(activeStrategyRecord?.isActive),
+          isDeployed: Boolean(isDeployed),
+          version: activeStrategyRecord?.version || 1,
+        };
+
+        console.log(
+          "[Strategy.updateNotebookStrategy] Frontend payload:",
+          payload,
+        );
+
+        const response = await updateNotebookStrategy(activeStrategyRecord.id, payload);
+        if (response?.data) {
+          setActiveStrategyRecord(response.data);
+          setIsStrategyDirty(false);
+        }
+
+        toast.success(
+          response?.message || "Strategy updated successfully.",
+        );
+      } catch (err) {
+        Swal.fire({
+          icon: "error",
+          title: "Update Failed",
+          text:
+            err?.response?.data?.message ||
+            err?.response?.data?.error ||
+            err?.message ||
+            "Unable to update strategy.",
+          background: "var(--bg-secondary)",
+          color: "var(--text-primary)",
+        });
+      } finally {
+        setIsUpdatingStrategy(false);
+      }
+    },
+    [activeStrategyRecord, fromDate, isDeployed, selectedCurrency, timeframeValue, toDate],
+  );
+
+  const renderSandboxPlots = useCallback((chartContract) => {
+    if (!chartRef.current) return;
+
+    const createdSeries = [];
+    const chartPane = String(chartContract?.pane || "overlay").toLowerCase();
+    const useMainPane =
+      chartPane === "overlay" ||
+      chartPane === "main" ||
+      chartPane === "price";
+    const paneIndex = useMainPane
+      ? 0
+      : Math.max(
+          0,
+          ...Object.values(paneIndexRef.current)
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value) && value > 0),
+        ) + 1;
+
+    const seriesTypeMap = {
+      line: LineSeries,
+      histogram: HistogramSeries,
+      bar: BarSeries,
+      area: AreaSeries,
+      step: LineSeries,
+      scatter: LineSeries,
+    };
+
+    const plots = Array.isArray(chartContract?.plots) ? chartContract.plots : [];
+
+    plots.forEach((plot) => {
+      const plotType = String(plot?.type || "line").toLowerCase();
+      const seriesType = seriesTypeMap[plotType] || LineSeries;
+      const seriesOptions = {
+        color: plot?.style?.color || "#2962ff",
+        lineWidth: Number(plot?.style?.width) || 2,
+        visible:
+          plot?.style?.visible !== false && areStrategyVisualsVisible,
+        lineVisible: plotType !== "scatter",
+        pointMarkersVisible: plotType === "scatter",
+        priceLineVisible: false,
+        lastValueVisible: false,
+      };
+
+      const series = chartRef.current.addSeries(
+        seriesType,
+        seriesOptions,
+        paneIndex,
+      );
+      const seriesData = Array.isArray(plot?.data)
+        ? plot.data.map(toSeriesValue).filter(Boolean)
+        : [];
+
+      if (seriesData.length > 0) {
+        series.setData(seriesData);
+      }
+
+      createdSeries.push(series);
+    });
+
+    customScriptSeriesRef.current = createdSeries;
+  }, [areStrategyVisualsVisible]);
+
+  const applyStrategyVisualVisibility = useCallback(
+    (visible) => {
+      const seriesList = Array.isArray(customScriptSeriesRef.current)
+        ? customScriptSeriesRef.current
+        : [];
+
+      seriesList.forEach((series) => {
+        try {
+          series.applyOptions({ visible });
+        } catch (error) {
+          console.warn("Unable to toggle strategy series visibility:", error);
+        }
+      });
+
+      if (customScriptMarkersRef.current) {
+        try {
+          customScriptMarkersRef.current.setMarkers(
+            visible ? lastDeployedMarkersRef.current || [] : [],
+          );
+        } catch (error) {
+          console.warn("Unable to toggle strategy markers visibility:", error);
+        }
+      }
+    },
+    [],
+  );
+
+  const handleToggleStrategyVisuals = useCallback(() => {
+    setAreStrategyVisualsVisible((prev) => {
+      const next = !prev;
+      applyStrategyVisualVisibility(next);
+      return next;
+    });
+  }, [applyStrategyVisualVisibility]);
+
+  const handleOpenStrategyEditor = useCallback(() => {
+    setIsCodeEditorOpen(true);
   }, []);
 
   // 1. Initial Dashboard Fetch (Replaces Polling)
@@ -425,7 +798,8 @@ plot_markers(markers)`,
     if (
       !isDeployed ||
       !deployedStrategyCode ||
-      deployedStrategyCode === "API_PREDICTION"
+      deployedStrategyCode === "API_PREDICTION" ||
+      deployedStrategyCode === SANDBOX_DEPLOYMENT_CODE
     ) {
       return;
     }
@@ -796,22 +1170,39 @@ plot_markers(markers)`,
       if (!customScriptMarkersRef.current) {
         customScriptMarkersRef.current = createSeriesMarkers(
           seriesRef.current,
-          markersToSet,
+          areStrategyVisualsVisible ? markersToSet : [],
         );
         seriesRef.current.attachPrimitive(customScriptMarkersRef.current);
       } else {
-        customScriptMarkersRef.current.setMarkers(markersToSet);
+        customScriptMarkersRef.current.setMarkers(
+          areStrategyVisualsVisible ? markersToSet : [],
+        );
       }
     } else if (customScriptMarkersRef.current) {
       customScriptMarkersRef.current.setMarkers([]);
     }
 
     setCustomSignals(newSignals);
-  }, [dashboardSignals, isDeployed, selectedCurrency]);
+  }, [dashboardSignals, isDeployed, selectedCurrency, areStrategyVisualsVisible]);
 
   const handleDeployCode = useCallback(
-    async (code) => {
+    async (code, runtimeContext = {}) => {
       if (!chartRef.current) return;
+
+      const effectiveSymbol =
+        runtimeContext?.symbol ||
+        selectedCurrency?.name ||
+        selectedCurrency?.symbol;
+      const effectiveLookupSymbol =
+        runtimeContext?.lookupSymbol || selectedCurrency?.symbol;
+      const effectiveToken = runtimeContext?.token || selectedCurrency?.token;
+      const effectiveExchange =
+        runtimeContext?.exchange ||
+        selectedCurrency?.exchange ||
+        selectedCurrency?.segment;
+      const effectiveTimeframe = runtimeContext?.timeframe || timeframeValue;
+      const effectiveFromDate = runtimeContext?.fromDate || fromDate;
+      const effectiveToDate = runtimeContext?.toDate || toDate;
 
       // 1. Clear previous
       handleClearCode();
@@ -1011,6 +1402,7 @@ json.dumps(result)
             background: "var(--bg-secondary)",
             color: "var(--text-primary)",
           });
+          setIsDeploying(false);
           return;
         }
 
@@ -1024,16 +1416,8 @@ json.dumps(result)
           setIsCodeEditorOpen(false);
         }
 
-        const payload = {
-          strategy_code: `${code}`,
-          use_historical_only: !isMarketOpen,
-        };
         const localUser = JSON.parse(localStorage.getItem("session") || "{}");
         const userId = localUser?.user?.id || localUser?.user?._id || "123";
-
-        console.log("🚀 [API] Triggering run-scanner API...");
-        console.log("📦 [API] Payload:", payload);
-        console.log("👤 Active User ID (from auth):", userId);
 
         // Guard: do not call the API if code is effectively empty
         if (!code || !code.trim()) {
@@ -1041,27 +1425,196 @@ json.dumps(result)
           return;
         }
 
-        const response = await apiService.post(
-          `/api/strategy/run-scanner`,
-          payload,
-        );
+        const generated = await generateStrategyAgent({
+          prompt: buildStrategyAgentPrompt(
+            code,
+            effectiveLookupSymbol || effectiveSymbol,
+            effectiveTimeframe,
+          ),
+          session_id: strategyAgentSessionIdRef.current,
+          user_id: userId,
+          current_file_path: "strategy.py",
+          current_editor_code: code,
+          project_summary:
+            "ChartLab Python strategy editor. Convert editor strategies into runnable sandbox code and preserve signal behavior.",
+          timeframe: effectiveTimeframe,
+          market: effectiveLookupSymbol || effectiveSymbol,
+          constraints: [
+            "Return only executable Python code.",
+            "Use ChartLab-compatible Python.",
+            "Emit BUY/SELL markers with signal(...) when possible.",
+          ],
+        });
 
-        // Decoupled: We don't fetch and plot here anymore. The useEffect handles it.
-        setDeployedStrategyCode(code);
+        if (generated?.session_id) {
+          strategyAgentSessionIdRef.current = generated.session_id;
+        }
+
+        const canReplaceEditor =
+          generated?.replace_editor_code === true &&
+          typeof generated?.code === "string" &&
+          generated.code.trim().length > 0 &&
+          generated?.meta?.code_validation_passed === true &&
+          generated?.meta?.security_validation_passed === true;
+
+        if (!canReplaceEditor) {
+          Swal.fire({
+            icon: "warning",
+            title: generated?.title || "Strategy Generation Failed",
+            text:
+              generated?.reply ||
+              "The strategy agent could not produce runnable code from the editor content.",
+            background: "var(--bg-secondary)",
+            color: "var(--text-primary)",
+          });
+          setIsDeploying(false);
+          toast.dismiss("compiling");
+          return;
+        }
+
+        const runnableCode = generated.code.trim();
+        setEditorCode(runnableCode);
+
+        const sandboxResponse = await executeIndicatorSandbox({
+          sessionId: sandboxSessionIdRef.current,
+          resetBeforeExecution: Boolean(sandboxSessionIdRef.current),
+          timeoutSeconds: 120,
+          mode: "indicator",
+          code: runnableCode,
+          inputs: {
+            symbol: effectiveSymbol,
+            lookupSymbol: effectiveLookupSymbol,
+            token: effectiveToken,
+            timeframe: effectiveTimeframe,
+            exchange: effectiveExchange,
+            fromDate: effectiveFromDate,
+            toDate: effectiveToDate,
+            settings: {
+              use_historical_only: !isMarketOpen,
+              pane: null,
+            },
+          },
+        });
+
+        if (sandboxResponse?.sessionStatus?.sessionId) {
+          sandboxSessionIdRef.current = sandboxResponse.sessionStatus.sessionId;
+        }
+
+        if (!sandboxResponse?.success) {
+          const firstError = sandboxResponse?.errors?.[0];
+          const fetchError =
+            sandboxResponse?.result?.settings?.backendCandleFetchError ||
+            sandboxResponse?.settings?.backendCandleFetchError;
+          Swal.fire({
+            icon: "error",
+            title: "Sandbox Execution Error",
+            text:
+              fetchError ||
+              firstError?.message ||
+              generated?.reply ||
+              "The strategy code could not be executed in the sandbox.",
+            background: "var(--bg-secondary)",
+            color: "var(--text-primary)",
+          });
+          setIsDeploying(false);
+          toast.dismiss("compiling");
+          return;
+        }
+
+        const chartSignals =
+          sandboxResponse?.result?.chart?.signals ||
+          sandboxResponse?.result?.signals ||
+          [];
+
+        const normalizedSignals = chartSignals
+          .map((signal) => {
+            const signalTime = normalizeChartTime(signal?.time);
+            if (signalTime === null) return null;
+
+            return {
+              symbol: effectiveLookupSymbol || effectiveSymbol,
+              signalType: String(
+                signal?.side || signal?.label || "BUY",
+              ).toUpperCase(),
+              timestamp: new Date(signalTime * 1000).toISOString(),
+              unix_timestamp: signalTime,
+              segment: "SCRIPT",
+            };
+          })
+          .filter(Boolean);
+
+        renderSandboxPlots(sandboxResponse?.result?.chart);
+        setDashboardSignals(normalizedSignals);
+        setCustomSignals(normalizedSignals);
+        setDeployedStrategyCode(SANDBOX_DEPLOYMENT_CODE);
         setIsDeployed(true);
+        setIsDeploying(false);
+        toast.dismiss("compiling");
+        toast.success(
+          normalizedSignals.length > 0
+            ? "Strategy executed and plotted successfully."
+            : "Strategy executed successfully.",
+        );
       } catch (err) {
         console.error("Python Execution Error:", err);
         Swal.fire({
           icon: "error",
           title: "Python Execution Error",
-          text: err?.message || "An error occurred",
+          text:
+            err?.response?.data?.detail ||
+            err?.response?.data?.message ||
+            err?.message ||
+            "An error occurred",
           background: "var(--bg-secondary)",
           color: "var(--text-primary)",
         });
+        toast.dismiss("compiling");
         setIsDeploying(false);
       }
     },
-    [handleClearCode, selectedCurrency, timeframeValue],
+    [
+      handleClearCode,
+      fromDate,
+      isMarketOpen,
+      renderSandboxPlots,
+      selectedCurrency,
+      timeframeValue,
+      toDate,
+    ],
+  );
+
+  const handleSelectSavedStrategy = useCallback(
+    async (strategy) => {
+      const strategyCode =
+        typeof strategy?.code === "string" && strategy.code.trim()
+          ? strategy.code
+          : DEFAULT_EDITOR_CODE;
+      const savedTimeframe = strategy?.config?.timeframe;
+      const savedConfig = strategy?.config || {};
+
+      setEditorCode(strategyCode);
+      setActiveStrategyRecord(strategy);
+      setIsStrategyDirty(false);
+      setAreStrategyVisualsVisible(true);
+      if (savedTimeframe) {
+        setTimeframeValue(savedTimeframe);
+      }
+      setIsCodeEditorOpen(false);
+
+      await handleDeployCode(strategyCode, {
+        symbol: savedConfig?.symbol || selectedCurrency?.name,
+        lookupSymbol: savedConfig?.lookupSymbol || selectedCurrency?.symbol,
+        token: savedConfig?.token || selectedCurrency?.token,
+        exchange:
+          savedConfig?.exchange ||
+          selectedCurrency?.exchange ||
+          selectedCurrency?.segment,
+        timeframe: savedConfig?.timeframe || timeframeValue,
+        fromDate: savedConfig?.fromDate || fromDate,
+        toDate: savedConfig?.toDate || toDate,
+      });
+    },
+    [fromDate, handleDeployCode, selectedCurrency, timeframeValue, toDate],
   );
 
   useEffect(() => {
@@ -3111,12 +3664,12 @@ json.dumps(result)
         if (!customScriptMarkersRef.current) {
           customScriptMarkersRef.current = createSeriesMarkers(
             seriesRef.current,
-            lastDeployedMarkersRef.current,
+            areStrategyVisualsVisible ? lastDeployedMarkersRef.current : [],
           );
           seriesRef.current.attachPrimitive(customScriptMarkersRef.current);
         } else {
           customScriptMarkersRef.current.setMarkers(
-            lastDeployedMarkersRef.current,
+            areStrategyVisualsVisible ? lastDeployedMarkersRef.current : [],
           );
         }
       }
@@ -4062,6 +4615,11 @@ json.dumps(result)
                     setToDate={setToDate}
                     alertResult={matchedCoins}
                     addAlert={addAlert}
+                    onSelectStrategy={handleSelectSavedStrategy}
+                    onToggleStrategyVisuals={handleToggleStrategyVisuals}
+                    onOpenStrategyEditor={handleOpenStrategyEditor}
+                    areStrategyVisualsVisible={areStrategyVisualsVisible}
+                    hasActiveStrategy={Boolean(activeStrategyRecord?.id)}
                     onOpenScanner={() => {
                       // Open details panel, close watchlist
                       setIsDetailsOpen(true);
@@ -4827,12 +5385,23 @@ json.dumps(result)
                     <CodeEditorPanel
                       onClose={() => setIsCodeEditorOpen(false)}
                       onDeploy={handleDeployCode}
+                      onSave={handleSaveStrategy}
+                      onUpdate={handleUpdateStrategy}
                       onClear={handleClearCode}
-                      onEdit={() => setIsDeployed(false)}
+                      onEdit={() => {
+                        setIsDeployed(false);
+                        if (activeStrategyRecord?.id) {
+                          setIsStrategyDirty(true);
+                        }
+                      }}
                       editorCode={editorCode}
                       setEditorCode={setEditorCode}
                       isDeployed={isDeployed}
                       isDeploying={isDeploying}
+                      isSaving={isSavingStrategy}
+                      isUpdating={isUpdatingStrategy}
+                      canUpdate={Boolean(activeStrategyRecord?.id) && isStrategyDirty}
+                      loadedStrategyName={activeStrategyRecord?.name || ""}
                     />
                   )}
                 </div>

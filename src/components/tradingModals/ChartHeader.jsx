@@ -1,5 +1,7 @@
 import { FiPlus } from "react-icons/fi";
 import { VscGraphLine } from "react-icons/vsc";
+import { LuLibrary } from "react-icons/lu";
+import { FiEye, FiEyeOff, FiSettings } from "react-icons/fi";
 import { useState, useEffect } from "react";
 import { ListingModal } from "./ListingModal";
 import apiService from "../../services/apiServices";
@@ -111,6 +113,11 @@ export default function ChartHeader({
   alertResult,
   addAlert,
   onOpenScanner,
+  onSelectStrategy,
+  onToggleStrategyVisuals,
+  onOpenStrategyEditor,
+  areStrategyVisualsVisible,
+  hasActiveStrategy,
 }) {
   const navigate = useNavigate();
   const [timeframe, setTimeframe] = useState(60);
@@ -272,6 +279,32 @@ export default function ChartHeader({
           <span>Indicators</span>
         </button>
 
+        <button title="Strategies" onClick={() => openModal("Strategies")} style={d.btn}>
+          <LuLibrary size={15} />
+          <span>Strategies</span>
+        </button>
+
+        {hasActiveStrategy && (
+          <>
+            <button
+              title={areStrategyVisualsVisible ? "Hide strategy visuals" : "Show strategy visuals"}
+              onClick={onToggleStrategyVisuals}
+              style={d.btn}
+            >
+              {areStrategyVisualsVisible ? <FiEyeOff size={15} /> : <FiEye size={15} />}
+              <span>{areStrategyVisualsVisible ? "Hide" : "Show"}</span>
+            </button>
+
+            <button
+              title="Open strategy editor"
+              onClick={onOpenStrategyEditor}
+              style={d.btn}
+            >
+              <FiSettings size={15} />
+            </button>
+          </>
+        )}
+
         {/* Date pickers */}
         {/* <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 4 }}>
           <input
@@ -323,6 +356,7 @@ export default function ChartHeader({
         setAlertResult={setAlertResult}
         alertResult={alertResult}
         timeframeValue={timeframeValue}
+        onSelectStrategy={onSelectStrategy}
         onSubmit={(data) => {
           if (addAlert) addAlert(data);
           closeModal();
