@@ -104,9 +104,9 @@ export const ListingModal = ({
 
     try {
       const response = await apiService.post(`equity/getIndicators`);
-      // const response = await axios.get("http://192.168.1.20:8000/api/indicators")
+      // const response = await axios.get("http://192.168.1.17:4000/api/indicators")
 
-      console.log("indicator API response:", response?.data);
+      // console.log("indicator API response:", response?.data);
 
       // setIndicators(response?.data?.data || []);
       setIndicators(response?.data || []);
