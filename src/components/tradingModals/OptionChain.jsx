@@ -102,7 +102,7 @@ const OptionChain = ({ onSymbolChange, onBack }) => {
 
     // Listen for live-options-list to update symbol dropdown
     s.on("live-options-list", (response) => {
-      // console.log("[OptionChain] live-options-list received:", response);
+      console.log("[OptionChain] live-options-list received:", response);
       if (Array.isArray(response?.data) && response?.data?.length > 0) {
         setLiveContractsList((prev) => {
           if (prev?.length === 0) return response?.data;

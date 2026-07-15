@@ -59,9 +59,9 @@ export default function SuperSmootherPlot({
         
         const styledData = lineData.map((d) => {
           const isRising = d.value >= 0;
-          const color = d.histogramColor || d.color || (isRising 
-            ? (styleConfig?.palette?.pr || "rgba(0,255,127,0.6)")
-            : (styleConfig?.palette?.pf || "rgba(255,0,0,0.6)"));
+          const color = isRising 
+            ? (styleConfig?.pr || styleConfig?.palette?.pr || d.histogramColor || d.color || "rgba(0,255,127,0.6)")
+            : (styleConfig?.pf || styleConfig?.palette?.pf || d.histogramColor || d.color || "rgba(255,0,0,0.6)");
           return { ...d, color };
         });
 
@@ -126,7 +126,7 @@ export default function SuperSmootherPlot({
         const zeroSeries = addSeries(id, LineSeries, {
           color: style?.zeroLine?.color || "rgba(128,128,128,1)",
           lineWidth: style?.zeroLine?.width ?? 1,
-          lineStyle: 2, // dashed
+          lineStyle: style?.zeroLine?.lineStyle ?? 2, // dashed
           visible: style?.zeroLine?.visible ?? true,
           priceLineVisible: false,
           lastValueVisible: false,
@@ -184,6 +184,7 @@ export default function SuperSmootherPlot({
     group.zeroLine?.applyOptions({
       color: style?.zeroLine?.color,
       lineWidth: style?.zeroLine?.width,
+      lineStyle: style?.zeroLine?.lineStyle,
       visible: style?.zeroLine?.visible,
     });
 
@@ -198,9 +199,9 @@ export default function SuperSmootherPlot({
 
         const styledData = histDataToColor.map((d) => {
           const isRising = d.value >= 0;
-          const color = d.histogramColor || d.color || (isRising 
-            ? (style?.histogram?.palette?.pr || "rgba(0,255,127,0.6)")
-            : (style?.histogram?.palette?.pf || "rgba(255,0,0,0.6)"));
+          const color = isRising 
+            ? (style?.histogram?.pr || style?.histogram?.palette?.pr || d.histogramColor || d.color || "rgba(0,255,127,0.6)")
+            : (style?.histogram?.pf || style?.histogram?.palette?.pf || d.histogramColor || d.color || "rgba(255,0,0,0.6)");
           return { ...d, color };
         });
         group.histogram.setData(styledData);
