@@ -1160,6 +1160,8 @@ json.dumps(result)
   const lastLiveBarPaintAtRef = useRef(0);
   const seriesReadyRef = useRef(false);
   const selectedIndicatorRef = useRef(selectedIndicator);
+  const chartTypeRef = useRef(chartType);
+  const crosshairActiveRef = useRef(false);
   const ohlcvDisplayRef = useRef(null);
   const actionButtonsRef = useRef(null);
   const strategyMarkersRef = useRef(null); //ref for markers
@@ -1200,6 +1202,129 @@ json.dumps(result)
     } catch {}
   }, []);
 
+  const normalizeSeriesTime = useCallback((value) => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+
+    if (typeof value === "string") {
+      const numericValue = Number(value);
+      if (Number.isFinite(numericValue)) return numericValue;
+
+      const parsedMs = Date.parse(value);
+      if (Number.isFinite(parsedMs)) return Math.floor(parsedMs / 1000);
+      return null;
+    }
+
+    if (
+      value &&
+      typeof value === "object" &&
+      Number.isFinite(value.year) &&
+      Number.isFinite(value.month) &&
+      Number.isFinite(value.day)
+    ) {
+      return Math.floor(
+        Date.UTC(value.year, value.month - 1, value.day) / 1000,
+      );
+    }
+
+    return null;
+  }, []);
+
+  const writeOhlcvDisplay = useCallback((bar) => {
+    if (!bar || !ohlcvDisplayRef.current) return;
+
+    const el = ohlcvDisplayRef.current;
+    const isUp = Number(bar.close) >= Number(bar.open);
+    const color = isUp ? "#22c55e" : "#ef4444";
+    const o = el.querySelector("[data-o]");
+    const h = el.querySelector("[data-h]");
+    const l = el.querySelector("[data-l]");
+    const c = el.querySelector("[data-c]");
+
+    if (o) o.textContent = Number(bar.open).toFixed(2);
+    if (h) h.textContent = Number(bar.high).toFixed(2);
+    if (l) l.textContent = Number(bar.low).toFixed(2);
+    if (c) c.textContent = Number(bar.close).toFixed(2);
+    el.querySelectorAll("[data-val]").forEach((s) => (s.style.color = color));
+  }, []);
+
+  const writeActionButtonPrices = useCallback((bar) => {
+    if (!bar || !actionButtonsRef.current) return;
+
+    const buyPrice =
+      actionButtonsRef.current.querySelector("[data-buy-price]");
+    const sellPrice =
+      actionButtonsRef.current.querySelector("[data-sell-price]");
+    const formattedClose = Number(bar.close).toFixed(2);
+
+    if (buyPrice) buyPrice.textContent = formattedClose;
+    if (sellPrice) sellPrice.textContent = formattedClose;
+  }, []);
+
+  const restoreLiveHeader = useCallback(() => {
+    writeOhlcvDisplay(currentCandleRef.current);
+    writeActionButtonPrices(currentCandleRef.current);
+  }, [writeActionButtonPrices, writeOhlcvDisplay]);
+
+  const buildSeriesDataForChartType = useCallback((data, activeChartType) => {
+    if (!Array.isArray(data)) return [];
+
+    switch (activeChartType) {
+      case "line":
+      case "area":
+      case "baseline":
+        return data.map((d) => ({
+          time: d.time,
+          value: Number(d.close),
+        }));
+      case "histogram":
+        return data.map((d, index, arr) => {
+          const prev = arr[index - 1];
+          const isUp = prev ? Number(d.close) >= Number(prev.close) : true;
+          return {
+            time: d.time,
+            value: Number(d.volume || 0),
+            color: isUp ? "#22c55e" : "#ef4444",
+          };
+        });
+      case "heikinashi":
+        return convertToHeikinAshi(data);
+      default:
+        return data;
+    }
+  }, []);
+
+  const buildLiveSeriesPoint = useCallback((bar, activeChartType) => {
+    if (!bar) return null;
+
+    switch (activeChartType) {
+      case "line":
+      case "area":
+      case "baseline":
+        return {
+          time: bar.time,
+          value: Number(bar.close),
+        };
+      case "histogram": {
+        const candles = candlesRef.current;
+        const index = candles.findIndex((c) => c.time === bar.time);
+        const prev = index > 0 ? candles[index - 1] : null;
+        const isUp = prev ? Number(bar.close) >= Number(prev.close) : true;
+        return {
+          time: bar.time,
+          value: Number(bar.volume || 0),
+          color: isUp ? "#22c55e" : "#ef4444",
+        };
+      }
+      case "heikinashi": {
+        const sourceData = candlesRef.current;
+        const heikinData = convertToHeikinAshi(sourceData);
+        return heikinData[heikinData.length - 1] || null;
+      }
+      default:
+        return bar;
+    }
+  }, []);
+
   useEffect(() => {
     selectedIndicatorRef.current = selectedIndicator;
   }, [selectedIndicator]);
@@ -1207,6 +1332,10 @@ json.dumps(result)
   useEffect(() => {
     selectedCurrencyRef.current = selectedCurrency;
   }, [selectedCurrency]);
+
+  useEffect(() => {
+    chartTypeRef.current = chartType;
+  }, [chartType]);
 
   useEffect(() => {
     historyBackfillInFlightRef.current = false;
@@ -2345,7 +2474,9 @@ json.dumps(result)
 
       // clear crosshair if invalid
       if (!param?.point || param.time === undefined) {
+        crosshairActiveRef.current = false;
         charts.forEach((c) => c.clearCrosshairPosition?.());
+        restoreLiveHeader();
         // Since we bypassed React state for live indicators, we need to show the last available data if crosshair leaves
         Object.keys(indicatorSeriesRef.current).forEach((indicator) => {
           const mainEl = document.getElementById(
@@ -2416,6 +2547,8 @@ json.dumps(result)
         });
         return;
       }
+
+      crosshairActiveRef.current = true;
 
       // sync crosshair
       charts.forEach((c) => {
@@ -2687,37 +2820,58 @@ json.dumps(result)
     lastRenderedLiveBarSignatureRef.current = barSignature;
     pendingLiveBarRef.current = null;
 
+    const latestTrackedBar =
+      candlesRef.current?.[candlesRef.current.length - 1] || null;
+    const updatedBarTime = normalizeSeriesTime(updatedBar.time);
+    const latestTrackedBarTime = normalizeSeriesTime(latestTrackedBar?.time);
+    if (
+      Number.isFinite(updatedBarTime) &&
+      Number.isFinite(latestTrackedBarTime) &&
+      updatedBarTime < latestTrackedBarTime
+    ) {
+      return;
+    }
+
+    const activeChartType = chartTypeRef.current;
+    const liveSeriesPoint = buildLiveSeriesPoint(updatedBar, activeChartType);
+    if (!liveSeriesPoint) return;
+
     try {
-      seriesRef.current.update(updatedBar);
+      seriesRef.current.update(liveSeriesPoint);
     } catch (e) {
-      console.warn("[LiveTick] Series update failed:", e.message);
+      if (e.message?.includes("oldest data")) {
+        try {
+          const rebuiltSeriesData = buildSeriesDataForChartType(
+            candlesRef.current,
+            activeChartType,
+          );
+          if (rebuiltSeriesData.length > 0) {
+            seriesRef.current.setData(rebuiltSeriesData);
+          }
+        } catch (rebuildError) {
+          console.warn(
+            "[LiveTick] Series rebuild failed:",
+            rebuildError.message,
+          );
+        }
+      } else {
+        console.warn("[LiveTick] Series update failed:", e.message);
+      }
     }
 
-    if (ohlcvDisplayRef.current) {
-      const el = ohlcvDisplayRef.current;
-      const isUp = updatedBar.close >= updatedBar.open;
-      const color = isUp ? "#22c55e" : "#ef4444";
-      const o = el.querySelector("[data-o]");
-      const h = el.querySelector("[data-h]");
-      const l = el.querySelector("[data-l]");
-      const c = el.querySelector("[data-c]");
-      if (o) o.textContent = Number(updatedBar.open).toFixed(2);
-      if (h) h.textContent = Number(updatedBar.high).toFixed(2);
-      if (l) l.textContent = Number(updatedBar.low).toFixed(2);
-      if (c) c.textContent = Number(updatedBar.close).toFixed(2);
-      if (c) c.style.color = color;
+    if (!crosshairActiveRef.current) {
+      writeOhlcvDisplay(updatedBar);
+      writeActionButtonPrices(updatedBar);
     }
-
-    if (actionButtonsRef.current) {
-      const buyPrice =
-        actionButtonsRef.current.querySelector("[data-buy-price]");
-      const sellPrice =
-        actionButtonsRef.current.querySelector("[data-sell-price]");
-      const formattedClose = Number(updatedBar.close).toFixed(2);
-      if (buyPrice) buyPrice.textContent = formattedClose;
-      if (sellPrice) sellPrice.textContent = formattedClose;
-    }
-  }, [buildLiveBarSignature, setMainChartAutoScale]);
+  }, [
+    buildLiveBarSignature,
+    buildLiveSeriesPoint,
+    buildSeriesDataForChartType,
+    normalizeSeriesTime,
+    setMainChartAutoScale,
+    writeActionButtonPrices,
+    writeOhlcvDisplay,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -3125,31 +3279,8 @@ json.dumps(result)
 
       setTimeout(() => {
         const last = mergedData[mergedData?.length - 1];
-        if (last && ohlcvDisplayRef.current) {
-          const el = ohlcvDisplayRef.current;
-          const isUp = last.close >= last.open;
-          const color = isUp ? "#22c55e" : "#ef4444";
-          const o = el.querySelector("[data-o]");
-          const h = el.querySelector("[data-h]");
-          const l = el.querySelector("[data-l]");
-          const c = el.querySelector("[data-c]");
-          if (o) o.textContent = Number(last.open).toFixed(2);
-          if (h) h.textContent = Number(last.high).toFixed(2);
-          if (l) l.textContent = Number(last.low).toFixed(2);
-          if (c) c.textContent = Number(last.close).toFixed(2);
-          el.querySelectorAll("[data-val]").forEach(
-            (s) => (s.style.color = color),
-          );
-        }
-        if (last && actionButtonsRef.current) {
-          const buyPrice =
-            actionButtonsRef.current.querySelector("[data-buy-price]");
-          const sellPrice =
-            actionButtonsRef.current.querySelector("[data-sell-price]");
-          const formattedClose = Number(last.close).toFixed(2);
-          if (buyPrice) buyPrice.textContent = formattedClose;
-          if (sellPrice) sellPrice.textContent = formattedClose;
-        }
+        writeOhlcvDisplay(last);
+        writeActionButtonPrices(last);
 
         if (mergeMode === "prepend" && requestMeta?.preserveVisibleRange) {
           chartRef.current?.timeScale().setVisibleLogicalRange({
