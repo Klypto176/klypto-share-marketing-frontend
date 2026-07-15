@@ -5,6 +5,8 @@ import { Form, InputGroup, ListGroup } from "react-bootstrap";
 import { Spinner } from "./Spinner";
 import apiService from "../../services/apiServices";
 import { useDebounce } from "../../util/common";
+import { getUser } from "../../pages/auth/protected";
+import { getNotebookStrategies } from "../../services/notebookStrategyService";
 import NSE from "../../assets/NSE.svg";
 import BSE from "../../assets/BSE.svg";
 import axios from "axios";
@@ -48,8 +50,10 @@ export const ListingModal = ({
   renderActions,
   timeframeValue,
   onSubmit,
+  onSelectStrategy,
 }) => {
   const [indicators, setIndicators] = useState([]);
+  const [strategies, setStrategies] = useState([]);
   const [currencies, setCurrencies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -96,6 +100,7 @@ export const ListingModal = ({
     // Close modal if needed or let parent handle it
   };
   const debouncedIndicator = useDebounce(searchIndicator, 500);
+  const debouncedStrategySearch = useDebounce(searchIndicator, 400);
 
   // 🔥 Fetch Indicators
   async function fetchIndicators() {
@@ -114,6 +119,30 @@ export const ListingModal = ({
     } catch (err) {
       console.error(err);
       setError(err?.message || "Failed to fetch indicators");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function fetchStrategies(searchValue = "") {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const currentUser = getUser();
+      const resolvedUserId =
+        currentUser?.id || currentUser?._id || currentUser?.userId || undefined;
+      const response = await getNotebookStrategies({
+        search: searchValue || undefined,
+        userId: resolvedUserId,
+        limit: 100,
+        offset: 0,
+      });
+
+      setStrategies(Array.isArray(response?.data) ? response.data : []);
+    } catch (err) {
+      console.error(err);
+      setError(err?.message || "Failed to fetch strategies");
     } finally {
       setLoading(false);
     }
@@ -188,6 +217,11 @@ export const ListingModal = ({
       return;
     }
 
+    if (title === "Strategies") {
+      fetchStrategies(debouncedStrategySearch);
+      return;
+    }
+
     if (title === "Symbol Search") {
       if (activeTab === "ALL") {
         if (equity?.length === 0) fetchCurrencies();
@@ -209,7 +243,7 @@ export const ListingModal = ({
         fetchIndices();
       }
     }
-  }, [title, activeTab, isOpen]);
+  }, [title, activeTab, isOpen, debouncedStrategySearch]);
 
   // 🔍 Indicator Filter
   const filteredIndicators = (indicators ?? []).filter((item) => {
@@ -232,6 +266,23 @@ export const ListingModal = ({
       label.includes(search) ||
       slug.includes(search) ||
       getInitials(label).includes(search)
+    );
+  });
+
+  const filteredStrategies = (strategies ?? []).filter((item) => {
+    if (!searchIndicator) return true;
+
+    const search = searchIndicator.toLowerCase().trim();
+    const name = item?.name?.toLowerCase() || "";
+    const strategyType = item?.strategy_type?.toLowerCase() || "";
+    const symbol = item?.config?.symbol?.toLowerCase() || "";
+    const timeframe = item?.config?.timeframe?.toLowerCase() || "";
+
+    return (
+      name.includes(search) ||
+      strategyType.includes(search) ||
+      symbol.includes(search) ||
+      timeframe.includes(search)
     );
   });
 
@@ -631,6 +682,117 @@ export const ListingModal = ({
                 </ListGroup>
               ) : (
                 <p className="text-muted">No Data found</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {title === "Strategies" && (
+          <div className="mt-3 flex flex-col flex-1 overflow-hidden">
+            <InputGroup className="mb-3">
+              <InputGroup.Text
+                style={{
+                  background: "var(--bg-secondary)",
+                  color: "var(--text-secondary)",
+                  borderColor: "rgba(255, 255, 255, 0.2)",
+                }}
+              >
+                <FiSearch />
+              </InputGroup.Text>
+              <Form.Control
+                style={{
+                  background: "var(--bg-secondary)",
+                  color: "var(--text-primary)",
+                  borderColor: "rgba(255, 255, 255, 0.2)",
+                  boxShadow: "none",
+                }}
+                type="text"
+                autoFocus
+                placeholder="Search strategies"
+                value={searchIndicator}
+                onChange={(e) => setSearchIndicator(e.target.value)}
+              />
+            </InputGroup>
+
+            <div
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                marginTop: "10px",
+                paddingRight: "5px",
+              }}
+              className="custom-scrollbar"
+            >
+              {loading ? (
+                <Spinner />
+              ) : filteredStrategies?.length > 0 ? (
+                <ListGroup variant="flush">
+                  {filteredStrategies.map((item, index) => {
+                    const symbol = item?.config?.symbol || item?.config?.lookupSymbol || "--";
+                    const timeframe = item?.config?.timeframe || "--";
+                    const strategyType = item?.strategy_type || "custom_notebook";
+
+                    return (
+                      <ListGroup.Item
+                        key={`${item?.id || item?.name || "strategy"}-${index}`}
+                        action
+                        onClick={() => {
+                          if (onSelectStrategy) {
+                            onSelectStrategy(item);
+                          }
+                          onClose();
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "var(--bg-tertiary)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "var(--bg-secondary)";
+                        }}
+                        style={{
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "10px 14px",
+                          background: "var(--bg-secondary)",
+                          color: "var(--text-primary)",
+                          borderColor: "var(--border-color)",
+                          transition: "background 0.2s ease",
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontWeight: 500,
+                              fontSize: 13,
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {item?.name || "Untitled Strategy"}
+                          </div>
+                          <div
+                            style={{
+                              marginTop: 4,
+                              fontSize: 11,
+                              color: "#888",
+                              display: "flex",
+                              gap: 8,
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <span>{strategyType}</span>
+                            <span>{symbol}</span>
+                            <span>{timeframe}</span>
+                          </div>
+                        </div>
+                      </ListGroup.Item>
+                    );
+                  })}
+                </ListGroup>
+              ) : (
+                <p className="text-muted">No strategies found</p>
               )}
             </div>
           </div>
