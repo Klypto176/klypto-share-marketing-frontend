@@ -100,6 +100,11 @@ const OptionChain = ({ selectedCurrency, onSymbolChange, onBack }) => {
     }
   }, [selectedSymbol, metadata, onSymbolChange]);
 
+  const selectedSymbolRef = useRef(selectedSymbol);
+  useEffect(() => {
+    selectedSymbolRef.current = selectedSymbol;
+  }, [selectedSymbol]);
+
   // Socket setup (one persistent connection)
   useEffect(() => {
     const s = io(SOCKET_URL);
@@ -130,14 +135,22 @@ const OptionChain = ({ selectedCurrency, onSymbolChange, onBack }) => {
           return Array.from(mergedMap.values());
         });
 
-        // Auto-select first contract if none is selected
+        // Auto-select first contract matching selectedSymbol if none is selected
         setSelectedContract((prev) => {
           if (!prev) {
-            const first = response.data[0];
-            setSelectedSymbol(first.symbol);
-            setActiveExpiry(first.expiry ?? first.expiry_date);
-            setSymbolSearch(first.symbol);
-            return first;
+            const currentSym = (selectedSymbolRef.current || "").toLowerCase();
+            let first = response.data.find(c => (c.symbol || "").toLowerCase() === currentSym);
+            
+            if (!first) {
+              first = response.data[0]; // fallback if the requested symbol isn't in the list
+            }
+            
+            if (first) {
+              setSelectedSymbol(first.symbol);
+              setActiveExpiry(first.expiry ?? first.expiry_date);
+              // Do NOT setSymbolSearch here, so the default filter behavior applies
+              return first;
+            }
           }
           return prev;
         });
