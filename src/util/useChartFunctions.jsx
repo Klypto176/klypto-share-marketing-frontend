@@ -11,7 +11,12 @@ const INDICATOR_CONCURRENCY_LIMIT = 2;
 
 const IST_OFFSET = 19800;
 
-const getIndicatorFetchContextKey = (selectedCurrency, timeframeValue, fromDate, toDate) =>
+const getIndicatorFetchContextKey = (
+  selectedCurrency,
+  timeframeValue,
+  fromDate,
+  toDate,
+) =>
   JSON.stringify({
     symbol: selectedCurrency?.name,
     interval: timeframeValue,
@@ -38,7 +43,7 @@ export default function useChartFunctions({
     selectedCurrency,
     timeframeValue,
     customFromDate,
-    customToDate
+    customToDate,
   ) {
     if (!selectedIndicator?.length) return;
 
@@ -110,7 +115,7 @@ export default function useChartFunctions({
         if (error.message === "Socket disconnected") {
           return;
         }
-        
+
         console.warn("Batch indicator request failed:", error);
         try {
           // await Swal.fire({
@@ -129,20 +134,29 @@ export default function useChartFunctions({
         });
         return;
       } finally {
-        if (currentSessionId === globalFetchSessionId && onIndicatorLoadingChange) {
-          indicatorMeta.forEach(({ id }) => onIndicatorLoadingChange(id, false));
+        if (
+          currentSessionId === globalFetchSessionId &&
+          onIndicatorLoadingChange
+        ) {
+          indicatorMeta.forEach(({ id }) =>
+            onIndicatorLoadingChange(id, false),
+          );
         }
       }
     }
 
-    for (let i = 0; i < selectedIndicator.length; i += INDICATOR_CONCURRENCY_LIMIT) {
+    for (
+      let i = 0;
+      i < selectedIndicator.length;
+      i += INDICATOR_CONCURRENCY_LIMIT
+    ) {
       if (currentSessionId !== globalFetchSessionId) {
         console.log("Fetch session aborted due to symbol/timeframe change.");
         break; // Cancel the rest of the queue
       }
 
       const batch = selectedIndicator.slice(i, i + INDICATOR_CONCURRENCY_LIMIT);
-      
+
       await Promise.all(
         batch.map(async (indItem) => {
           const id = typeof indItem === "object" ? indItem.id : indItem;
@@ -161,7 +175,7 @@ export default function useChartFunctions({
               indicatorConfigs?.[id] || {},
               requestId,
             );
-            
+
             // Critical: check if session changed while waiting for API
             if (currentSessionId !== globalFetchSessionId) {
               return; // Ignore the outdated response
@@ -186,15 +200,21 @@ export default function useChartFunctions({
                 color: "var(--text-primary)",
               });
             } catch (alertError) {
-              console.error("Failed to show indicator error alert:", alertError);
+              console.error(
+                "Failed to show indicator error alert:",
+                alertError,
+              );
             }
             if (typeof onIndicatorError === "function") onIndicatorError(id);
           } finally {
-            if (currentSessionId === globalFetchSessionId && onIndicatorLoadingChange) {
+            if (
+              currentSessionId === globalFetchSessionId &&
+              onIndicatorLoadingChange
+            ) {
               onIndicatorLoadingChange(id, false);
             }
           }
-        })
+        }),
       );
     }
   }
@@ -982,22 +1002,22 @@ async function fetchBatchIndicatorData(
       "1M": "ONE_MINUTE",
       "1MIN": "ONE_MINUTE",
       "1MINUTE": "ONE_MINUTE",
-      "ONE_MINUTE": "ONE_MINUTE",
+      ONE_MINUTE: "ONE_MINUTE",
       "5M": "FIVE_MINUTE",
       "5MIN": "FIVE_MINUTE",
       "5MINUTE": "FIVE_MINUTE",
-      "FIVE_MINUTE": "FIVE_MINUTE",
+      FIVE_MINUTE: "FIVE_MINUTE",
       "15M": "FIFTEEN_MINUTE",
       "15MIN": "FIFTEEN_MINUTE",
       "15MINUTE": "FIFTEEN_MINUTE",
-      "FIFTEEN_MINUTE": "FIFTEEN_MINUTE",
+      FIFTEEN_MINUTE: "FIFTEEN_MINUTE",
       "1H": "ONE_HOUR",
       "1HR": "ONE_HOUR",
       "1HOUR": "ONE_HOUR",
-      "ONE_HOUR": "ONE_HOUR",
+      ONE_HOUR: "ONE_HOUR",
       "1D": "ONE_DAY",
       "1DAY": "ONE_DAY",
-      "ONE_DAY": "ONE_DAY",
+      ONE_DAY: "ONE_DAY",
     };
 
     return intervalMap[normalized] || normalized;
@@ -1010,11 +1030,14 @@ async function fetchBatchIndicatorData(
 
     return (
       (responseSymbol == null ||
-        normalizeSymbol(responseSymbol) === normalizeSymbol(expectedContext.symbol)) &&
+        normalizeSymbol(responseSymbol) ===
+          normalizeSymbol(expectedContext.symbol)) &&
       (responseInterval == null ||
-        normalizeInterval(responseInterval) === normalizeInterval(expectedContext.interval)) &&
+        normalizeInterval(responseInterval) ===
+          normalizeInterval(expectedContext.interval)) &&
       (responseFromDate == null ||
-        normalizeDate(responseFromDate) === normalizeDate(expectedContext.fromDate)) &&
+        normalizeDate(responseFromDate) ===
+          normalizeDate(expectedContext.fromDate)) &&
       (responseToDate == null ||
         normalizeDate(responseToDate) === normalizeDate(expectedContext.toDate))
     );
@@ -1084,8 +1107,7 @@ async function fetchBatchIndicatorData(
         ) ||
         requests.find(
           (item) =>
-            !usedRequestIds.has(item.requestId) &&
-            item.id === result?.id,
+            !usedRequestIds.has(item.requestId) && item.id === result?.id,
         ) ||
         requests.find(
           (item) =>
@@ -1195,7 +1217,7 @@ async function fetchDataForIndicators(
         }))
         .filter((d) => d.value !== null) ?? [];
 
-    console.log(type,"mapped conversion", response?.data, "conversionLine");
+    console.log(type, "mapped conversion", response?.data, "conversionLine");
 
     switch (type) {
       /* ---------------- SINGLE VALUE ---------------- */
@@ -2006,14 +2028,19 @@ async function fetchDataForIndicators(
           data: {
             aroonUp:
               response?.data
-                ?.filter((d) => (d.aroonUp != null || d.up != null) && d.time != null)
+                ?.filter(
+                  (d) => (d.aroonUp != null || d.up != null) && d.time != null,
+                )
                 .map((d) => ({
                   time: Number(d.time) + IST_OFFSET,
                   value: Number(d.aroonUp ?? d.up),
                 })) ?? [],
             aroonDown:
               response?.data
-                ?.filter((d) => (d.aroonDown != null || d.down != null) && d.time != null)
+                ?.filter(
+                  (d) =>
+                    (d.aroonDown != null || d.down != null) && d.time != null,
+                )
                 .map((d) => ({
                   time: Number(d.time) + IST_OFFSET,
                   value: Number(d.aroonDown ?? d.down),
