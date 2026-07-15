@@ -305,19 +305,20 @@ const Overview = ({ selectedCurrency, onBack }) => {
 
   const { emit } = useSocket({
     handleLiveTick: (payload) => {
-      // payload from strategyLiveTick
-      // console.log(`[Overview Response] Event: ${EVENTS.OVERVIEW.RESPONSE}`, "Payload:", payload);
+      const actualPayload = payload?.data || payload;
       const symbol =
-        payload?.symbol || payload?.raw?.tradingSymbol || payload?.name;
+        actualPayload?.symbol || actualPayload?.raw?.tradingSymbol || actualPayload?.name;
       const targetSymbol = selectedCurrency?.name || selectedCurrency?.symbol;
-      if (String(symbol) !== String(targetSymbol)) return;
+      
+      // Allow it to pass if symbol is missing, just to show data instead of getting stuck
+      if (symbol && String(symbol) !== String(targetSymbol)) return;
 
-      setDataPayload(payload);
+      setDataPayload(actualPayload);
       setLoading(false);
 
       try {
         const cacheKey = `overview_${targetSymbol}`;
-        localStorage.setItem(cacheKey, JSON.stringify(payload));
+        localStorage.setItem(cacheKey, JSON.stringify(actualPayload));
       } catch (e) {
         console.warn("Failed to cache overview data", e);
       }
@@ -347,12 +348,14 @@ const Overview = ({ selectedCurrency, onBack }) => {
     emit("getAllStocks");
 
     const payload = { symbol: targetSymbol };
-    // console.log(
-    //   `[Overview Emit] Event: ${EVENTS.OVERVIEW.GET}`,
-    //   "Payload:",
-    //   payload,
-    // );
     emit(EVENTS.OVERVIEW.GET, payload);
+
+    // Fallback: If socket doesn't respond within 3 seconds, stop spinning
+    const fallbackTimer = setTimeout(() => {
+      setLoading(false);
+    }, 3000);
+    
+    return () => clearTimeout(fallbackTimer);
   }, [selectedCurrency, emit]);
 
   if (!selectedCurrency) {
@@ -386,25 +389,10 @@ const Overview = ({ selectedCurrency, onBack }) => {
     );
   }
 
-  if (!dataPayload) {
-    return (
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "var(--text-secondary)",
-        }}
-      >
-        Waiting for live data...
-      </div>
-    );
-  }
-
-  const raw = dataPayload.raw || {};
-  const tick = dataPayload.tick || {};
-  const overview = dataPayload.overview || {};
+  const safeData = dataPayload || {};
+  const raw = safeData.raw || {};
+  const tick = safeData.tick || {};
+  const overview = safeData.overview || {};
 
   // Basic Fields
   const ltp =
@@ -461,7 +449,8 @@ const Overview = ({ selectedCurrency, onBack }) => {
   const spread =
     bestSell != null && bestBuy != null ? bestSell - bestBuy : null;
 
-  const tradingSymbol = raw.symbol || dataPayload.symbol || "--";
+  const targetSymbol = selectedCurrency?.name || selectedCurrency?.symbol || "--";
+  const tradingSymbol = raw.symbol || safeData.symbol || targetSymbol;
   const symbolToken = raw.token || "--";
   const exchange = raw.exchange || "NSE";
 
