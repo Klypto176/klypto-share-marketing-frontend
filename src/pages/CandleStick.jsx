@@ -85,7 +85,8 @@ const getInitialLookbackDate = (timeframe) => {
 const getTodayDateString = () => new Date().toISOString().split("T")[0];
 const SANDBOX_DEPLOYMENT_CODE = "SANDBOX_EXECUTION";
 
-const buildStrategyAgentPrompt = (editorCode, symbol, timeframe) => `
+const buildStrategyAgentPrompt = (editorCode, symbol, timeframe) =>
+  `
 Convert the current strategy editor content into runnable ChartLab-compatible Python for sandbox execution.
 
 Requirements:
@@ -503,14 +504,12 @@ export default function Candlestick() {
 
       try {
         setIsSavingStrategy(true);
-        const symbolName = selectedCurrency?.name || selectedCurrency?.symbol || "Strategy";
+        const symbolName =
+          selectedCurrency?.name || selectedCurrency?.symbol || "Strategy";
         const strategyName = `${symbolName} ${timeframeValue} Notebook Strategy`;
         const currentUser = getUser();
         const resolvedUserId =
-          currentUser?.id ||
-          currentUser?._id ||
-          currentUser?.userId ||
-          "";
+          currentUser?.id || currentUser?._id || currentUser?.userId || "";
         const resolvedUserName =
           currentUser?.name ||
           currentUser?.username ||
@@ -540,7 +539,8 @@ export default function Candlestick() {
             symbol: symbolName,
             lookupSymbol: selectedCurrency?.symbol || null,
             token: selectedCurrency?.token || null,
-            exchange: selectedCurrency?.exchange || selectedCurrency?.segment || "NSE",
+            exchange:
+              selectedCurrency?.exchange || selectedCurrency?.segment || "NSE",
             timeframe: timeframeValue,
             fromDate,
             toDate,
@@ -608,13 +608,11 @@ export default function Candlestick() {
 
       try {
         setIsUpdatingStrategy(true);
-        const symbolName = selectedCurrency?.name || selectedCurrency?.symbol || "Strategy";
+        const symbolName =
+          selectedCurrency?.name || selectedCurrency?.symbol || "Strategy";
         const currentUser = getUser();
         const resolvedUserId =
-          currentUser?.id ||
-          currentUser?._id ||
-          currentUser?.userId ||
-          "";
+          currentUser?.id || currentUser?._id || currentUser?.userId || "";
         const resolvedUserName =
           currentUser?.name ||
           currentUser?.username ||
@@ -641,7 +639,8 @@ export default function Candlestick() {
           },
           strategyName,
           name: strategyName,
-          strategy_type: activeStrategyRecord?.strategy_type || "custom_notebook",
+          strategy_type:
+            activeStrategyRecord?.strategy_type || "custom_notebook",
           language: activeStrategyRecord?.language || "python",
           code,
           config: {
@@ -649,7 +648,8 @@ export default function Candlestick() {
             symbol: symbolName,
             lookupSymbol: selectedCurrency?.symbol || null,
             token: selectedCurrency?.token || null,
-            exchange: selectedCurrency?.exchange || selectedCurrency?.segment || "NSE",
+            exchange:
+              selectedCurrency?.exchange || selectedCurrency?.segment || "NSE",
             timeframe: timeframeValue,
             fromDate,
             toDate,
@@ -664,15 +664,16 @@ export default function Candlestick() {
           payload,
         );
 
-        const response = await updateNotebookStrategy(activeStrategyRecord.id, payload);
+        const response = await updateNotebookStrategy(
+          activeStrategyRecord.id,
+          payload,
+        );
         if (response?.data) {
           setActiveStrategyRecord(response.data);
           setIsStrategyDirty(false);
         }
 
-        toast.success(
-          response?.message || "Strategy updated successfully.",
-        );
+        toast.success(response?.message || "Strategy updated successfully.");
       } catch (err) {
         Swal.fire({
           icon: "error",
@@ -689,97 +690,105 @@ export default function Candlestick() {
         setIsUpdatingStrategy(false);
       }
     },
-    [activeStrategyRecord, fromDate, isDeployed, selectedCurrency, timeframeValue, toDate],
+    [
+      activeStrategyRecord,
+      fromDate,
+      isDeployed,
+      selectedCurrency,
+      timeframeValue,
+      toDate,
+    ],
   );
 
-  const renderSandboxPlots = useCallback((chartContract) => {
-    if (!chartRef.current) return;
+  const renderSandboxPlots = useCallback(
+    (chartContract) => {
+      if (!chartRef.current) return;
 
-    const createdSeries = [];
-    const chartPane = String(chartContract?.pane || "overlay").toLowerCase();
-    const useMainPane =
-      chartPane === "overlay" ||
-      chartPane === "main" ||
-      chartPane === "price";
-    const paneIndex = useMainPane
-      ? 0
-      : Math.max(
-          0,
-          ...Object.values(paneIndexRef.current)
-            .map((value) => Number(value))
-            .filter((value) => Number.isFinite(value) && value > 0),
-        ) + 1;
+      const createdSeries = [];
+      const chartPane = String(chartContract?.pane || "overlay").toLowerCase();
+      const useMainPane =
+        chartPane === "overlay" ||
+        chartPane === "main" ||
+        chartPane === "price";
+      const paneIndex = useMainPane
+        ? 0
+        : Math.max(
+            0,
+            ...Object.values(paneIndexRef.current)
+              .map((value) => Number(value))
+              .filter((value) => Number.isFinite(value) && value > 0),
+          ) + 1;
 
-    const seriesTypeMap = {
-      line: LineSeries,
-      histogram: HistogramSeries,
-      bar: BarSeries,
-      area: AreaSeries,
-      step: LineSeries,
-      scatter: LineSeries,
-    };
-
-    const plots = Array.isArray(chartContract?.plots) ? chartContract.plots : [];
-
-    plots.forEach((plot) => {
-      const plotType = String(plot?.type || "line").toLowerCase();
-      const seriesType = seriesTypeMap[plotType] || LineSeries;
-      const seriesOptions = {
-        color: plot?.style?.color || "#2962ff",
-        lineWidth: Number(plot?.style?.width) || 2,
-        visible:
-          plot?.style?.visible !== false && areStrategyVisualsVisible,
-        lineVisible: plotType !== "scatter",
-        pointMarkersVisible: plotType === "scatter",
-        priceLineVisible: false,
-        lastValueVisible: false,
+      const seriesTypeMap = {
+        line: LineSeries,
+        histogram: HistogramSeries,
+        bar: BarSeries,
+        area: AreaSeries,
+        step: LineSeries,
+        scatter: LineSeries,
       };
 
-      const series = chartRef.current.addSeries(
-        seriesType,
-        seriesOptions,
-        paneIndex,
-      );
-      const seriesData = Array.isArray(plot?.data)
-        ? plot.data.map(toSeriesValue).filter(Boolean)
+      const plots = Array.isArray(chartContract?.plots)
+        ? chartContract.plots
         : [];
 
-      if (seriesData.length > 0) {
-        series.setData(seriesData);
-      }
+      plots.forEach((plot) => {
+        const plotType = String(plot?.type || "line").toLowerCase();
+        const seriesType = seriesTypeMap[plotType] || LineSeries;
+        const seriesOptions = {
+          color: plot?.style?.color || "#2962ff",
+          lineWidth: Number(plot?.style?.width) || 2,
+          visible: plot?.style?.visible !== false && areStrategyVisualsVisible,
+          lineVisible: plotType !== "scatter",
+          pointMarkersVisible: plotType === "scatter",
+          priceLineVisible: false,
+          lastValueVisible: false,
+        };
 
-      createdSeries.push(series);
-    });
+        const series = chartRef.current.addSeries(
+          seriesType,
+          seriesOptions,
+          paneIndex,
+        );
+        const seriesData = Array.isArray(plot?.data)
+          ? plot.data.map(toSeriesValue).filter(Boolean)
+          : [];
 
-    customScriptSeriesRef.current = createdSeries;
-  }, [areStrategyVisualsVisible]);
-
-  const applyStrategyVisualVisibility = useCallback(
-    (visible) => {
-      const seriesList = Array.isArray(customScriptSeriesRef.current)
-        ? customScriptSeriesRef.current
-        : [];
-
-      seriesList.forEach((series) => {
-        try {
-          series.applyOptions({ visible });
-        } catch (error) {
-          console.warn("Unable to toggle strategy series visibility:", error);
+        if (seriesData.length > 0) {
+          series.setData(seriesData);
         }
+
+        createdSeries.push(series);
       });
 
-      if (customScriptMarkersRef.current) {
-        try {
-          customScriptMarkersRef.current.setMarkers(
-            visible ? lastDeployedMarkersRef.current || [] : [],
-          );
-        } catch (error) {
-          console.warn("Unable to toggle strategy markers visibility:", error);
-        }
-      }
+      customScriptSeriesRef.current = createdSeries;
     },
-    [],
+    [areStrategyVisualsVisible],
   );
+
+  const applyStrategyVisualVisibility = useCallback((visible) => {
+    const seriesList = Array.isArray(customScriptSeriesRef.current)
+      ? customScriptSeriesRef.current
+      : [];
+
+    seriesList.forEach((series) => {
+      try {
+        series.applyOptions({ visible });
+      } catch (error) {
+        console.warn("Unable to toggle strategy series visibility:", error);
+      }
+    });
+
+    if (customScriptMarkersRef.current) {
+      try {
+        customScriptMarkersRef.current.setMarkers(
+          visible ? lastDeployedMarkersRef.current || [] : [],
+        );
+      } catch (error) {
+        console.warn("Unable to toggle strategy markers visibility:", error);
+      }
+    }
+  }, []);
 
   const handleToggleStrategyVisuals = useCallback(() => {
     setAreStrategyVisualsVisible((prev) => {
@@ -1183,7 +1192,12 @@ export default function Candlestick() {
     }
 
     setCustomSignals(newSignals);
-  }, [dashboardSignals, isDeployed, selectedCurrency, areStrategyVisualsVisible]);
+  }, [
+    dashboardSignals,
+    isDeployed,
+    selectedCurrency,
+    areStrategyVisualsVisible,
+  ]);
 
   const handleDeployCode = useCallback(
     async (code, runtimeContext = {}) => {
@@ -1803,8 +1817,7 @@ json.dumps(result)
   const writeActionButtonPrices = useCallback((bar) => {
     if (!bar || !actionButtonsRef.current) return;
 
-    const buyPrice =
-      actionButtonsRef.current.querySelector("[data-buy-price]");
+    const buyPrice = actionButtonsRef.current.querySelector("[data-buy-price]");
     const sellPrice =
       actionButtonsRef.current.querySelector("[data-sell-price]");
     const formattedClose = Number(bar.close).toFixed(2);
@@ -3135,7 +3148,11 @@ json.dumps(result)
     };
 
     chart.subscribeCrosshairMove(handler);
-    return () => chart.unsubscribeCrosshairMove(handler);
+    return () => {
+      try {
+        chart.unsubscribeCrosshairMove(handler);
+      } catch (e) {}
+    };
   }, []);
 
   const { fetchIndicatorData } = useChartFunctions({
@@ -3869,7 +3886,7 @@ json.dumps(result)
             selectedCurrency,
             timeframeValue,
             fetchFrom,
-            fetchTo
+            fetchTo,
           );
         }
 
@@ -3936,14 +3953,23 @@ json.dumps(result)
         // The actual current price is last_traded_price / ltp
         const ltp = Number(
           liveData?.last_traded_price ??
-          rawData?.ltp ??
-          liveData?.ltp ??
-          liveData?.price
+            rawData?.ltp ??
+            liveData?.ltp ??
+            liveData?.price,
         );
 
-        if (!Number.isFinite(ltp) || ltp <= 0) { console.warn("[LIVE TICK] LTP is invalid, skipping"); return; }
-        if (!Number.isFinite(tickTime)) { console.warn("[LIVE TICK] tickTime is not finite, skipping"); return; }
-        if (!Number.isFinite(normalizedTime) || normalizedTime <= 0) { console.warn("[LIVE TICK] normalizedTime invalid, skipping"); return; }
+        if (!Number.isFinite(ltp) || ltp <= 0) {
+          console.warn("[LIVE TICK] LTP is invalid, skipping");
+          return;
+        }
+        if (!Number.isFinite(tickTime)) {
+          console.warn("[LIVE TICK] tickTime is not finite, skipping");
+          return;
+        }
+        if (!Number.isFinite(normalizedTime) || normalizedTime <= 0) {
+          console.warn("[LIVE TICK] normalizedTime invalid, skipping");
+          return;
+        }
 
         // The volume from liveData.volume is per-tick; use raw.volume (total day volume) as fallback
         const liveVolume = Number(rawData?.volume ?? liveData?.volume ?? 0);
@@ -3992,7 +4018,6 @@ json.dumps(result)
             volume: liveVolume || Number(latestCandle.volume || 0),
           };
         }
-
 
         const nextBarSignature = buildLiveBarSignature(updatedBar);
         if (
@@ -4098,8 +4123,10 @@ json.dumps(result)
           const dynamicValue =
             lastPoint[lineName] ??
             lastPoint[lineName + "Band"] ??
-            (lineName === indicatorType.toLowerCase() ? lastPoint[lineName] : undefined);
-            
+            (lineName === indicatorType.toLowerCase()
+              ? lastPoint[lineName]
+              : undefined);
+
           if (dynamicValue !== undefined && dynamicValue !== null) {
             value = dynamicValue;
           } else if (staticKeys.includes(lineName)) {
@@ -4116,13 +4143,13 @@ json.dumps(result)
             ) {
               value =
                 instType === "CCI"
-                  ? style?.upperBand?.value ?? 100
-                  : style?.upper?.value ?? 70;
+                  ? (style?.upperBand?.value ?? 100)
+                  : (style?.upper?.value ?? 70);
             } else if (lineName === "middle" || lineName === "middleBand") {
               value =
                 instType === "CCI"
-                  ? style?.middleBand?.value ?? 0
-                  : style?.middle?.value ?? 50;
+                  ? (style?.middleBand?.value ?? 0)
+                  : (style?.middle?.value ?? 50);
             } else if (
               lineName === "lower" ||
               lineName === "lowerBand" ||
@@ -4130,14 +4157,12 @@ json.dumps(result)
             ) {
               value =
                 instType === "CCI"
-                  ? style?.lowerBand?.value ?? -100
-                  : style?.lower?.value ?? 30;
+                  ? (style?.lowerBand?.value ?? -100)
+                  : (style?.lower?.value ?? 30);
             }
           } else {
             // For single-line indicators when lineName doesn't exactly match
-            value =
-              lastPoint.value ??
-              lastPoint[indicatorType.toLowerCase()];
+            value = lastPoint.value ?? lastPoint[indicatorType.toLowerCase()];
           }
 
           if (value == null || !Number.isFinite(Number(value))) return;
@@ -4147,7 +4172,10 @@ json.dumps(result)
 
             // Update associated data array used for canvas drawings (clouds/bands)
             const dataArrayKey = `${lineName}Data`;
-            if (seriesGroup[dataArrayKey] && Array.isArray(seriesGroup[dataArrayKey])) {
+            if (
+              seriesGroup[dataArrayKey] &&
+              Array.isArray(seriesGroup[dataArrayKey])
+            ) {
               const arr = seriesGroup[dataArrayKey];
               const last = arr[arr.length - 1];
               if (last && last.time === pointTime) {
@@ -4157,7 +4185,10 @@ json.dumps(result)
               }
             }
           } catch (e) {
-            if (!e.message.includes("oldest data") && !e.message.includes("Object is disposed")) {
+            if (
+              !e.message.includes("oldest data") &&
+              !e.message.includes("Object is disposed")
+            ) {
               console.warn(
                 `Indicator update failed [${indicatorType}][${instId}]:`,
                 e.message,
@@ -4167,7 +4198,10 @@ json.dumps(result)
         });
 
         // Trigger the custom cloud/band drawing function if the indicator has one (e.g., KC, DC, VWAP, BB)
-        if (seriesGroup._drawCloud && typeof seriesGroup._drawCloud === "function") {
+        if (
+          seriesGroup._drawCloud &&
+          typeof seriesGroup._drawCloud === "function"
+        ) {
           seriesGroup._drawCloud();
         }
       });
@@ -4204,7 +4238,9 @@ json.dumps(result)
     const timeScale = chartRef.current.timeScale();
     timeScale.subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
     return () => {
-      timeScale.unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+      try {
+        timeScale.unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+      } catch (e) {}
     };
   }, [
     connected,
@@ -4299,7 +4335,8 @@ json.dumps(result)
       const todayStr = getTodayDateString();
       const d = getInitialLookbackDate(timeframeValue);
       const minDate = new Date("2024-10-01");
-      const initialFrom = d < minDate ? "2024-10-01" : d.toISOString().split("T")[0];
+      const initialFrom =
+        d < minDate ? "2024-10-01" : d.toISOString().split("T")[0];
 
       if (toDate !== todayStr) {
         setMainChartLoading(true);
@@ -4351,21 +4388,26 @@ json.dumps(result)
     // The candles are stored such that their UNIX timestamp directly corresponds
     // to the IST time (e.g., 9:15 IST corresponds to 9:15 UTC in lightweight charts).
     // So we just take the user's input time (which was parsed as local) and get the UTC timestamp.
-    const targetTimeSec = Math.floor(Date.UTC(
-      targetDate.getFullYear(),
-      targetDate.getMonth(),
-      targetDate.getDate(),
-      targetDate.getHours(),
-      targetDate.getMinutes(),
-      targetDate.getSeconds()
-    ) / 1000);
-    const isMidnight = targetDate.getHours() === 0 && targetDate.getMinutes() === 0;
+    const targetTimeSec = Math.floor(
+      Date.UTC(
+        targetDate.getFullYear(),
+        targetDate.getMonth(),
+        targetDate.getDate(),
+        targetDate.getHours(),
+        targetDate.getMinutes(),
+        targetDate.getSeconds(),
+      ) / 1000,
+    );
+    const isMidnight =
+      targetDate.getHours() === 0 && targetDate.getMinutes() === 0;
 
     // Find the closest candle
     let closestIndex = 0;
 
     if (isMidnight) {
-      closestIndex = candlesRef.current.findIndex(c => c.time >= targetTimeSec);
+      closestIndex = candlesRef.current.findIndex(
+        (c) => c.time >= targetTimeSec,
+      );
       if (closestIndex === -1) {
         closestIndex = candlesRef.current.length - 1;
       }
@@ -4388,7 +4430,7 @@ json.dumps(result)
       isMidnight,
       closestIndex,
       closestCandleTime: closestCandle?.time,
-      diff: closestCandle ? Math.abs(closestCandle.time - targetTimeSec) : null
+      diff: closestCandle ? Math.abs(closestCandle.time - targetTimeSec) : null,
     });
 
     // Calculate range using actual times to avoid logical index mismatch
@@ -4426,31 +4468,63 @@ json.dumps(result)
         xPixel = chartRef.current
           .timeScale()
           .timeToCoordinate(closestCandle.time);
-          
-        if (seriesRef.current && typeof seriesRef.current.priceToCoordinate === "function") {
+
+        if (
+          seriesRef.current &&
+          typeof seriesRef.current.priceToCoordinate === "function"
+        ) {
           yPixel = seriesRef.current.priceToCoordinate(closestCandle.high);
         }
       } catch (e) {
         console.error("[GoTo] Error getting coordinate", e);
       }
 
-      console.log("[GoTo] xPixel:", xPixel, "yPixel:", yPixel, "candle.time:", closestCandle.time);
+      console.log(
+        "[GoTo] xPixel:",
+        xPixel,
+        "yPixel:",
+        yPixel,
+        "candle.time:",
+        closestCandle.time,
+      );
 
       // Build a human-readable label in IST
       // closestCandle.time is already UTC + IST_OFFSET seconds
       const candleLocalMs = (closestCandle.time - IST_OFFSET) * 1000;
       const candleDateIST = new Date(candleLocalMs + 5.5 * 60 * 60 * 1000); // shift to IST
       const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      const dayName  = weekdays[candleDateIST.getUTCDay()];
-      const dd       = String(candleDateIST.getUTCDate()).padStart(2, "0");
-      const mon      = months[candleDateIST.getUTCMonth()];
-      const yr       = candleDateIST.getUTCFullYear();
-      const hh       = String(candleDateIST.getUTCHours()).padStart(2, "0");
-      const mm       = String(candleDateIST.getUTCMinutes()).padStart(2, "0");
+      const months = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+      const dayName = weekdays[candleDateIST.getUTCDay()];
+      const dd = String(candleDateIST.getUTCDate()).padStart(2, "0");
+      const mon = months[candleDateIST.getUTCMonth()];
+      const yr = candleDateIST.getUTCFullYear();
+      const hh = String(candleDateIST.getUTCHours()).padStart(2, "0");
+      const mm = String(candleDateIST.getUTCMinutes()).padStart(2, "0");
       const isIntraday = [
-        "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "60m", "120m", "240m",
+        "1m",
+        "3m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "4h",
+        "60m",
+        "120m",
+        "240m",
       ].includes(timeframeValue);
       const label = isIntraday
         ? `${dayName} ${dd} ${mon} '${String(yr).slice(-2)}\n${hh}:${mm}`
@@ -4488,9 +4562,11 @@ json.dumps(result)
     let animationFrameId;
     const updatePosition = () => {
       try {
-        const newX = chartRef.current.timeScale().timeToCoordinate(goToMarker.time);
+        const newX = chartRef.current
+          .timeScale()
+          .timeToCoordinate(goToMarker.time);
         if (newX !== null) {
-          setGoToMarker(prev => {
+          setGoToMarker((prev) => {
             if (prev && prev.x !== newX) return { ...prev, x: newX };
             return prev;
           });
@@ -4509,7 +4585,7 @@ json.dumps(result)
 
     const handleScroll = () => {
       if (ignoreNextScrollRef.current) return;
-      
+
       if (goToMarkerCleanupRef.current) {
         clearTimeout(goToMarkerCleanupRef.current);
         goToMarkerCleanupRef.current = null;
@@ -4519,7 +4595,9 @@ json.dumps(result)
 
     ts.subscribeVisibleLogicalRangeChange(handleScroll);
     return () => {
-      ts.unsubscribeVisibleLogicalRangeChange(handleScroll);
+      try {
+        ts.unsubscribeVisibleLogicalRangeChange(handleScroll);
+      } catch (e) {}
     };
   }, []);
 
@@ -4807,7 +4885,7 @@ json.dumps(result)
                         onDelete={deleteLine}
                         onClose={closeToolbox}
                       />
-                      
+
                       {/* ── Go To Date Tooltip Overlay ── */}
                       {goToMarker && (
                         <div
@@ -4815,54 +4893,62 @@ json.dumps(result)
                             position: "absolute",
                             top: 0,
                             left: goToMarker.x,
-                            height: goToMarker.y != null ? goToMarker.y : "100%",
+                            height:
+                              goToMarker.y != null ? goToMarker.y : "100%",
                             zIndex: 200,
                             pointerEvents: "none",
                           }}
                         >
                           {/* vertical dashed line */}
-                          <div style={{
-                            width: 1,
-                            height: "100%",
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            borderLeft: "1px dashed #999",
-                            opacity: 0.6,
-                            pointerEvents: "none",
-                          }} />
+                          <div
+                            style={{
+                              width: 1,
+                              height: "100%",
+                              position: "absolute",
+                              top: 0,
+                              left: 0,
+                              borderLeft: "1px dashed #999",
+                              opacity: 0.6,
+                              pointerEvents: "none",
+                            }}
+                          />
                           {/* tooltip bubble */}
-                          <div style={{
-                            position: "absolute",
-                            left: 0,
-                            top: goToMarker.y != null ? "auto" : 30,
-                            bottom: goToMarker.y != null ? 10 : "auto",
-                            transform: "translateX(-50%)",
-                            background: "#2a2e39", // dark grey matching TV
-                            borderRadius: 4,
-                            padding: "6px 12px",
-                            color: "#d1d4dc",
-                            fontSize: 13,
-                            fontWeight: 500,
-                            fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-                            whiteSpace: "pre",
-                            textAlign: "center",
-                            boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
-                            lineHeight: 1.4,
-                          }}>
+                          <div
+                            style={{
+                              position: "absolute",
+                              left: 0,
+                              top: goToMarker.y != null ? "auto" : 30,
+                              bottom: goToMarker.y != null ? 10 : "auto",
+                              transform: "translateX(-50%)",
+                              background: "#2a2e39", // dark grey matching TV
+                              borderRadius: 4,
+                              padding: "6px 12px",
+                              color: "#d1d4dc",
+                              fontSize: 13,
+                              fontWeight: 500,
+                              fontFamily:
+                                "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+                              whiteSpace: "pre",
+                              textAlign: "center",
+                              boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                              lineHeight: 1.4,
+                            }}
+                          >
                             {goToMarker.label}
                             {/* tooltip caret/arrow */}
-                            <div style={{
-                              position: "absolute",
-                              bottom: -5,
-                              left: "50%",
-                              transform: "translateX(-50%)",
-                              width: 0,
-                              height: 0,
-                              borderLeft: "5px solid transparent",
-                              borderRight: "5px solid transparent",
-                              borderTop: "5px solid #2a2e39",
-                            }} />
+                            <div
+                              style={{
+                                position: "absolute",
+                                bottom: -5,
+                                left: "50%",
+                                transform: "translateX(-50%)",
+                                width: 0,
+                                height: 0,
+                                borderLeft: "5px solid transparent",
+                                borderRight: "5px solid transparent",
+                                borderTop: "5px solid #2a2e39",
+                              }}
+                            />
                           </div>
                         </div>
                       )}
@@ -5531,7 +5617,9 @@ json.dumps(result)
                       isDeploying={isDeploying}
                       isSaving={isSavingStrategy}
                       isUpdating={isUpdatingStrategy}
-                      canUpdate={Boolean(activeStrategyRecord?.id) && isStrategyDirty}
+                      canUpdate={
+                        Boolean(activeStrategyRecord?.id) && isStrategyDirty
+                      }
                       loadedStrategyName={activeStrategyRecord?.name || ""}
                     />
                   )}
@@ -5548,7 +5636,7 @@ json.dumps(result)
                   borderRight: "1px solid var(--border-color)",
                   display: activeTab === "Overview" ? "flex" : "none",
                   flexDirection: "column",
-                  minHeight: "100%",
+                  overflow: "hidden",
                 }}
               >
                 <Overview
@@ -5568,11 +5656,14 @@ json.dumps(result)
                   borderRight: "1px solid var(--border-color)",
                   display: activeTab === "Option Chain" ? "flex" : "none",
                   flexDirection: "column",
-                  height: "100%",
+                  overflow: "hidden",
                 }}
               >
                 {activeTab === "Option Chain" && (
-                  <OptionChain onBack={() => setActiveTab("Chart")} />
+                  <OptionChain
+                    selectedCurrency={selectedCurrency}
+                    onBack={() => setActiveTab("Chart")}
+                  />
                 )}
               </div>
 
@@ -5586,7 +5677,7 @@ json.dumps(result)
                   borderRight: "1px solid var(--border-color)",
                   display: activeTab === "OI Analytics" ? "flex" : "none",
                   flexDirection: "column",
-                  height: "100%",
+                  overflow: "hidden",
                 }}
               >
                 {activeTab === "OI Analytics" && (

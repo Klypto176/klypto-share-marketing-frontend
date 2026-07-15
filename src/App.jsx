@@ -32,7 +32,7 @@ function App() {
 
           {/* Protected Routes */}
           <Route element={<ProtectedRoute />}>
-            <Route path="/goldchart" element={<Chart />} />
+            {/* <Route path="/goldchart" element={<Chart />} /> */}
             <Route path="/" element={<Candlestick />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/backtest" element={<Backtest />} />

@@ -1985,26 +1985,26 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instance
             },
           ],
         },
-        {
-          key: "buySignals",
-          label: "Buy Signals",
-          type: "marker",
-        },
-        {
-          key: "sellSignals",
-          label: "Sell Signals",
-          type: "marker",
-        },
-        {
-          key: "strongBuySignals",
-          label: "Strong Buy Signals",
-          type: "marker",
-        },
-        {
-          key: "strongSellSignals",
-          label: "Strong Sell Signals",
-          type: "marker",
-        },
+        // {
+        //   key: "buySignals",
+        //   label: "Buy Signals",
+        //   type: "marker",
+        // },
+        // {
+        //   key: "sellSignals",
+        //   label: "Sell Signals",
+        //   type: "marker",
+        // },
+        // {
+        //   key: "strongBuySignals",
+        //   label: "Strong Buy Signals",
+        //   type: "marker",
+        // },
+        // {
+        //   key: "strongSellSignals",
+        //   label: "Strong Sell Signals",
+        //   type: "marker",
+        // },
         {
           key: "zeroLine",
           label: "Zero Line",

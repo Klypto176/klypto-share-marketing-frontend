@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { FiX, FiCalendar, FiClock, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 
 const GoToDateDialog = ({ onClose, onGoTo }) => {
   const [selectedDate, setSelectedDate] = useState(() => localStorage.getItem('goToDateDialog_date') || new Date().toISOString().split('T')[0]);
   const [selectedTime, setSelectedTime] = useState(() => localStorage.getItem('goToDateDialog_time') || '09:15');
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const d = new Date(localStorage.getItem('goToDateDialog_date') || new Date().toISOString().split('T')[0]);
+    return isNaN(d.getTime()) ? new Date() : d;
+  });
 
   const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
   const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
@@ -31,6 +34,16 @@ const GoToDateDialog = ({ onClose, onGoTo }) => {
     }
     onClose();
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Enter') {
+        handleGoTo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedDate, selectedTime, onGoTo, onClose]);
 
   const handleGoToLatest = () => {
     onGoTo("latest");
@@ -137,7 +150,7 @@ const GoToDateDialog = ({ onClose, onGoTo }) => {
         {/* Footer */}
         <div className="border-t border-[#2a2e39] p-4 flex justify-end gap-2 bg-[#1e222d]">
           <button onClick={handleGoToLatest} className="px-6 py-2 rounded border border-[#434651] text-[#d1d4dc] hover:bg-[#2a2e39] transition-colors text-sm font-semibold cursor-pointer">
-            Go to latest
+            Today's Date
           </button>
           <button onClick={handleGoTo} className="px-6 py-2 rounded bg-white text-black hover:bg-gray-200 transition-colors text-sm font-semibold cursor-pointer">
             Go to
