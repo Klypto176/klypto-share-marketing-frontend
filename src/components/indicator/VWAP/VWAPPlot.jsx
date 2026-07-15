@@ -6,6 +6,7 @@ export default function VWAPPlot({
   indicatorStyle,
   indicatorSeriesRef,
   addSeries,
+  removeSeries,
   chart,
   containerRef,
   indicatorConfigs,
@@ -101,9 +102,7 @@ export default function VWAPPlot({
     if (indicatorSeriesRef.current?.VWAP) {
       Object.values(indicatorSeriesRef.current.VWAP).forEach((s) => {
         if (s?.setData) {
-          try {
-            chart?.removeSeries(s);
-          } catch {}
+          removeSeries(s);
         }
       });
 
@@ -225,12 +224,15 @@ export default function VWAPPlot({
       const style = indicatorStyle?.VWAP?.[key];
       if (!style) return;
 
-      series.applyOptions({
-        color: style.color,
-        lineWidth: style.width,
-        lineStyle: style.lineStyle,
-        visible: style.visible,
-      });
+      const opts = {};
+      if (style.color !== undefined) opts.color = style.color;
+      if (style.width !== undefined) opts.lineWidth = style.width;
+      if (style.lineStyle !== undefined) opts.lineStyle = style.lineStyle;
+      if (style.visible !== undefined) opts.visible = style.visible;
+
+      if (Object.keys(opts).length > 0) {
+        series.applyOptions(opts);
+      }
     });
 
     drawBands();
@@ -253,9 +255,7 @@ export default function VWAPPlot({
       if (indicatorSeriesRef.current?.VWAP) {
         Object.values(indicatorSeriesRef.current.VWAP).forEach((s) => {
           if (s?.setData) {
-            try {
-              chart?.removeSeries(s);
-            } catch {}
+            removeSeries(s);
           }
         });
         indicatorSeriesRef.current.VWAP = null;

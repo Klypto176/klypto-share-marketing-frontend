@@ -3707,13 +3707,13 @@ json.dumps(result)
       diff: closestCandle ? Math.abs(closestCandle.time - targetTimeSec) : null
     });
 
-    // Calculate logical range to put the candle in the center
+    // Calculate range using actual times to avoid logical index mismatch
     const fromIndex = Math.max(0, closestIndex - 25);
     const toIndex = Math.min(candlesRef.current.length - 1, closestIndex + 25);
 
-    chartRef.current.timeScale().setVisibleLogicalRange({
-      from: fromIndex,
-      to: toIndex,
+    chartRef.current.timeScale().setVisibleRange({
+      from: candlesRef.current[fromIndex].time,
+      to: candlesRef.current[toIndex].time,
     });
 
     // Ignore the immediate scroll events triggered by our own navigation

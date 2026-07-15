@@ -1741,7 +1741,8 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instance
       ];
 
     case "VWAP": {
-      const config = indicatorConfigs?.[instanceId] || indicatorConfigs?.[indicator] || {};
+      const defaults = { band1: { enabled: true }, band2: { enabled: false }, band3: { enabled: false } };
+      const config = { ...defaults, ...(indicatorConfigs?.[instanceId] || indicatorConfigs?.[indicator] || {}) };
 
       const rows = [
         {

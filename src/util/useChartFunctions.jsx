@@ -113,14 +113,14 @@ export default function useChartFunctions({
         
         console.warn("Batch indicator request failed:", error);
         try {
-          await Swal.fire({
-            icon: "error",
-            title: "Indicator Error",
-            text: "Indicator not found",
-            confirmButtonText: "OK",
-            background: "var(--bg-secondary)",
-            color: "var(--text-primary)",
-          });
+          // await Swal.fire({
+          //   icon: "error",
+          //   title: "Indicator Error",
+          //   text: "Indicator not found",
+          //   confirmButtonText: "OK",
+          //   background: "var(--bg-secondary)",
+          //   color: "var(--text-primary)",
+          // });
         } catch (alertError) {
           console.error("Failed to show indicator error alert:", alertError);
         }
