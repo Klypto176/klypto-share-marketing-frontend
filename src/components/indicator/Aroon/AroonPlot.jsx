@@ -30,23 +30,35 @@ export default function AroonPlot({
 
     /* ================= MAIN LINES ================= */
 
-    const dataArray = Array.isArray(result.data) ? result.data : [];
+    let formattedUp = [];
+    let formattedDown = [];
 
-    const formattedUp = dataArray
-      .filter((d) => (d.aroonUp != null || d.value != null || d.up != null) && d.time != null)
-      .map((d) => ({
-        time: Number(d.time) + 19800,
-        value: Number(d.aroonUp ?? d.up ?? d.value),
-      }))
-      .sort((a, b) => a.time - b.time);
+    if (Array.isArray(result.data)) {
+      formattedUp = result.data
+        .filter((d) => (d.aroonUp != null || d.up != null) && d.time != null)
+        .map((d) => ({
+          time: Number(d.time),
+          value: Number(d.aroonUp ?? d.up),
+        }))
+        .sort((a, b) => a.time - b.time);
 
-    const formattedDown = dataArray
-      .filter((d) => (d.aroonDown != null || d.value != null || d.down != null) && d.time != null)
-      .map((d) => ({
-        time: Number(d.time) + 19800,
-        value: Number(d.aroonDown ?? d.down ?? d.value),
-      }))
-      .sort((a, b) => a.time - b.time);
+      formattedDown = result.data
+        .filter((d) => (d.aroonDown != null || d.down != null) && d.time != null)
+        .map((d) => ({
+          time: Number(d.time),
+          value: Number(d.aroonDown ?? d.down),
+        }))
+        .sort((a, b) => a.time - b.time);
+    } else if (result.data && typeof result.data === "object") {
+      formattedUp = (result.data.aroonUp || result.data.up || []).map(d => ({
+        time: Number(d.time),
+        value: Number(d.value)
+      }));
+      formattedDown = (result.data.aroonDown || result.data.down || []).map(d => ({
+        time: Number(d.time),
+        value: Number(d.value)
+      }));
+    }
 
     /* AROON UP */
     const upStyle = indicatorStyle?.AROON?.aroonUp;

@@ -108,6 +108,15 @@ const useSocket = (props = {}) => {
         if (propsRef.current.handleScannerComplete) propsRef.current.handleScannerComplete(response);
       },
 
+      [EVENTS.STRATEGY.AI_PREDICTION_STATUS]: (response) => {
+        console.log(`[SOCKET] signal ${EVENTS.STRATEGY.AI_PREDICTION_STATUS} Payload:`, response);
+      },
+
+      [EVENTS.STRATEGY.AI_TRADE_SIGNAL]: (response) => {
+        console.log(`[SOCKET] ${EVENTS.STRATEGY.AI_TRADE_SIGNAL} Payload:`, response);
+      },
+
+
       "connect": () => {
          if (propsRef.current.handleConnect) propsRef.current.handleConnect();
       },
