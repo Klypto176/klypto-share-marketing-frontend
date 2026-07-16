@@ -18,7 +18,7 @@ def run(ctx):
   {
     id: "chartlab-ema-cloud",
     label: "ChartLab EMA Cloud",
-    code: `from chartlab import indicator, plot, fill, signal
+    code: `from chartlab import indicator, plot, fill
 
 @indicator(name="EMA Cloud", pane="overlay")
 def run(ctx):
@@ -28,15 +28,12 @@ def run(ctx):
     fast_plot = plot(fast, title="EMA 9", color="#22c55e", width=2)
     slow_plot = plot(slow, title="EMA 21", color="#f59e0b", width=2)
 
-    fill(fast_plot, slow_plot, colorTop="rgba(34,197,94,0.18)", colorBottom="rgba(245,158,11,0.10)")
-
-    signal(ctx.ta.crossover(fast, slow), side="BUY", label="")
-    signal(ctx.ta.crossunder(fast, slow), side="SELL", label="")`,
+    fill(fast_plot, slow_plot, colorTop="rgba(34,197,94,0.18)", colorBottom="rgba(245,158,11,0.10)")`,
   },
   {
     id: "chartlab-rsi-pane",
     label: "ChartLab RSI Pane",
-    code: `from chartlab import indicator, input_int, plot, hline, signal
+    code: `from chartlab import indicator, input_int, plot, hline
 
 @indicator(name="RSI Pane", pane="oscillator")
 def run(ctx):
@@ -45,10 +42,7 @@ def run(ctx):
 
     plot(rsi_value, title="RSI", color="#8b5cf6", width=2)
     hline(70, "Overbought", color="#ef4444")
-    hline(30, "Oversold", color="#22c55e")
-
-    signal(ctx.ta.crossover(rsi_value, 30), side="BUY", label="")
-    signal(ctx.ta.crossunder(rsi_value, 70), side="SELL", label="")`,
+    hline(30, "Oversold", color="#22c55e")`,
   },
   {
     id: "chartlab-macd-histogram",
@@ -132,24 +126,21 @@ def run(ctx):
   {
     id: "chartlab-scatter-signals",
     label: "ChartLab Scatter Signals",
-    code: `from chartlab import indicator, plot_scatter, signal
+    code: `from chartlab import indicator, plot_scatter
 
 @indicator(name="Scatter Signals", pane="overlay")
 def run(ctx):
     fast = ctx.ta.ema(ctx.close, length=5)
     slow = ctx.ta.ema(ctx.close, length=13)
 
-    buy = ctx.ta.crossover(fast, slow)
-    sell = ctx.ta.crossunder(fast, slow)
+    fast_cross = ctx.ta.crossover(fast, slow)
+    slow_cross = ctx.ta.crossunder(fast, slow)
 
-    buy_points = [close if active else None for close, active in zip(ctx.close, buy)]
-    sell_points = [close if active else None for close, active in zip(ctx.close, sell)]
+    fast_points = [close if active else None for close, active in zip(ctx.close, fast_cross)]
+    slow_points = [close if active else None for close, active in zip(ctx.close, slow_cross)]
 
-    plot_scatter(buy_points, title="Buy Dots", color="#22c55e")
-    plot_scatter(sell_points, title="Sell Dots", color="#ef4444")
-
-    signal(buy, side="BUY", label="")
-    signal(sell, side="SELL", label="")`,
+    plot_scatter(fast_points, title="Fast Cross", color="#22c55e")
+    plot_scatter(slow_points, title="Slow Cross", color="#ef4444")`,
   },
   {
     id: "chartlab-atr-bands",
@@ -195,7 +186,7 @@ def run(ctx):
   {
     id: "chartlab-obv-sma",
     label: "ChartLab OBV + SMA",
-    code: `from chartlab import indicator, input_int, plot, signal
+    code: `from chartlab import indicator, input_int, plot
 
 @indicator(name="OBV with SMA", pane="volume")
 def run(ctx):
@@ -205,10 +196,7 @@ def run(ctx):
     obv_ma = ctx.ta.sma(obv_value, length=ma_length)
 
     plot(obv_value, title="OBV", color="#60a5fa", width=2)
-    plot(obv_ma, title="OBV SMA", color="#f59e0b", width=2)
-
-    signal(ctx.ta.crossover(obv_value, obv_ma), side="BUY", label="")
-    signal(ctx.ta.crossunder(obv_value, obv_ma), side="SELL", label="")`,
+    plot(obv_ma, title="OBV SMA", color="#f59e0b", width=2)`,
   },
   {
     id: "chartlab-pvo-histogram",
@@ -238,22 +226,19 @@ def run(ctx):
   {
     id: "chartlab-cmf-zero-line",
     label: "ChartLab CMF Zero Line",
-    code: `from chartlab import indicator, plot, hline, signal
+    code: `from chartlab import indicator, plot, hline
 
 @indicator(name="CMF Zero Line", pane="oscillator")
 def run(ctx):
     cmf = ctx.ta.cmf(ctx.high, ctx.low, ctx.close, ctx.volume, length=20)
 
     plot(cmf, title="CMF", color="#facc15", width=2)
-    hline(0, "Zero", color="#94a3b8")
-
-    signal(ctx.ta.crossover(cmf, 0), side="BUY", label="")
-    signal(ctx.ta.crossunder(cmf, 0), side="SELL", label="")`,
+    hline(0, "Zero", color="#94a3b8")`,
   },
   {
     id: "chartlab-mfi-bands",
     label: "ChartLab MFI Bands",
-    code: `from chartlab import indicator, plot, hline, signal
+    code: `from chartlab import indicator, plot, hline
 
 @indicator(name="MFI Bands", pane="oscillator")
 def run(ctx):
@@ -262,15 +247,12 @@ def run(ctx):
     plot(mfi, title="MFI", color="#14b8a6", width=2)
     hline(80, "Overbought", color="#ef4444")
     hline(50, "Middle", color="#94a3b8")
-    hline(20, "Oversold", color="#22c55e")
-
-    signal(ctx.ta.crossunder(mfi, 20), side="BUY", label="")
-    signal(ctx.ta.crossover(mfi, 80), side="SELL", label="")`,
+    hline(20, "Oversold", color="#22c55e")`,
   },
   {
     id: "chartlab-williams-r",
     label: "ChartLab Williams %R",
-    code: `from chartlab import indicator, plot, hline, signal
+    code: `from chartlab import indicator, plot, hline
 
 @indicator(name="Williams %R", pane="oscillator")
 def run(ctx):
@@ -279,15 +261,12 @@ def run(ctx):
     plot(wpr, title="WPR", color="#a78bfa", width=2)
     hline(-20, "Upper Band", color="#ef4444")
     hline(-50, "Middle", color="#94a3b8")
-    hline(-80, "Lower Band", color="#22c55e")
-
-    signal(ctx.ta.crossunder(wpr, -80), side="BUY", label="")
-    signal(ctx.ta.crossover(wpr, -20), side="SELL", label="")`,
+    hline(-80, "Lower Band", color="#22c55e")`,
   },
   {
     id: "chartlab-stochrsi",
     label: "ChartLab Stoch RSI",
-    code: `from chartlab import indicator, plot, hline, fill, signal
+    code: `from chartlab import indicator, plot, hline, fill
 
 @indicator(name="Stoch RSI", pane="oscillator")
 def run(ctx):
@@ -306,26 +285,19 @@ def run(ctx):
     )
 
     hline(80, "Upper", color="#ef4444")
-    hline(20, "Lower", color="#22c55e")
-
-    signal(ctx.ta.crossover(k_line, d_line), side="BUY", label="")
-    signal(ctx.ta.crossunder(k_line, d_line), side="SELL", label="")`,
+    hline(20, "Lower", color="#22c55e")`,
   },
   {
     id: "chartlab-supertrend-overlay",
     label: "ChartLab SuperTrend Overlay",
-    code: `from chartlab import indicator, plot, signal
+    code: `from chartlab import indicator, plot
 
 @indicator(name="SuperTrend Overlay", pane="overlay")
 def run(ctx):
     supertrend_data = ctx.ta.supertrend(ctx.high, ctx.low, ctx.close, length=10, multiplier=3.0)
     trend_line = supertrend_data["supertrend"]
-    direction = supertrend_data["direction"]
 
-    plot(trend_line, title="SuperTrend", color="#22c55e", width=2)
-
-    signal(ctx.ta.crossover(direction, 0), side="BUY", label="")
-    signal(ctx.ta.crossunder(direction, 0), side="SELL", label="")`,
+    plot(trend_line, title="SuperTrend", color="#22c55e", width=2)`,
   },
   {
     id: "chartlab-sma-ribbon",
@@ -361,9 +333,383 @@ def run(ctx):
     fill(basis_plot, lower_plot, colorTop="rgba(255,255,255,0.02)", colorBottom="rgba(34,197,94,0.05)")`,
   },
   {
+    id: "chartlab-advanced-wedge-overlay",
+    label: "Advanced Wedge Overlay",
+    code: `from chartlab import indicator, plot, fill, plot_scatter, input_int, input_float
+
+
+@indicator(name="Advanced Historical Wedge Overlay", pane="overlay")
+def run(ctx):
+    bb_length = input_int("BB Length", 20, min=5, max=200)
+    bb_mult = input_float("BB StdDev", 2.5, min=0.5, max=10.0, step=0.5)
+    pivot_len = input_int("Pivot Length", 5, min=2, max=30)
+    min_span = input_int("Min Pattern Bars", 12, min=4, max=200)
+    max_span = input_int("Max Pattern Bars", 80, min=10, max=400)
+    edge_window = input_int("Edge Sync Bars", 8, min=1, max=40)
+    min_inner_touches = input_int("Min Inner Touches", 1, min=0, max=10)
+    candle_tolerance_pct = input_float("Containment Tolerance %", 0.08, min=0.01, max=0.5, step=0.01)
+    slope_tolerance = input_float("Slope Tolerance", 0.15, min=0.01, max=5.0, step=0.01)
+    min_compression_ratio = input_float("Min Compression Ratio", 0.12, min=0.02, max=0.9, step=0.01)
+    max_break_fraction = input_float("Max Break Fraction", 0.18, min=0.0, max=0.5, step=0.01)
+    max_body_offset = input_float("Max Body Offset", 0.55, min=0.10, max=1.0, step=0.01)
+
+    n = len(ctx.close)
+    if n == 0:
+        return
+
+    basis = ctx.ta.sma(ctx.close, length=bb_length)
+    dev = ctx.ta.rolling_std(ctx.close, length=bb_length)
+
+    upper_band = [
+        None if basis[i] is None or dev[i] is None else basis[i] + (dev[i] * bb_mult)
+        for i in range(n)
+    ]
+    lower_band = [
+        None if basis[i] is None or dev[i] is None else basis[i] - (dev[i] * bb_mult)
+        for i in range(n)
+    ]
+
+    pivot_highs = [None] * n
+    pivot_lows = [None] * n
+
+    for center in range(pivot_len, n - pivot_len):
+        high_window = ctx.high[center - pivot_len : center + pivot_len + 1]
+        low_window = ctx.low[center - pivot_len : center + pivot_len + 1]
+
+        center_high = ctx.high[center]
+        center_low = ctx.low[center]
+
+        if center_high == max(high_window) and high_window.count(center_high) == 1:
+            confirm_bar = center + pivot_len
+            if confirm_bar < n:
+                pivot_highs[confirm_bar] = {"bar": center, "price": center_high}
+
+        if center_low == min(low_window) and low_window.count(center_low) == 1:
+            confirm_bar = center + pivot_len
+            if confirm_bar < n:
+                pivot_lows[confirm_bar] = {"bar": center, "price": center_low}
+
+    highs = []
+    lows = []
+    pivot_high_marks = [None] * n
+    pivot_low_marks = [None] * n
+
+    for i in range(n):
+        if pivot_highs[i] is not None:
+            highs.append(pivot_highs[i])
+            pivot_high_marks[pivot_highs[i]["bar"]] = pivot_highs[i]["price"]
+        if pivot_lows[i] is not None:
+            lows.append(pivot_lows[i])
+            pivot_low_marks[pivot_lows[i]["bar"]] = pivot_lows[i]["price"]
+
+    wedge_upper = [None] * n
+    wedge_lower = [None] * n
+    chosen_high_marks = [None] * n
+    chosen_low_marks = [None] * n
+
+    def line_params(x1, y1, x2, y2):
+        m = (y2 - y1) / max(x2 - x1, 1)
+        c = y1 - (m * x1)
+        return m, c
+
+    def line_value(m, c, x):
+        return (m * x) + c
+
+    def count_near_touches(points, left_bar, right_bar, m, c, tol):
+        count = 0
+        for point in points:
+            if left_bar < point["bar"] < right_bar:
+                projected = line_value(m, c, point["bar"])
+                if abs(point["price"] - projected) <= tol:
+                    count += 1
+        return count
+
+    def band_touched_high(point):
+        band_value = upper_band[point["bar"]]
+        return band_value is not None and point["price"] >= band_value
+
+    def pivot_set_respects_lines(points, left_bar, right_bar, m, c, tol, is_highs):
+        for point in points:
+            if left_bar <= point["bar"] <= right_bar:
+                projected = line_value(m, c, point["bar"])
+                if is_highs and point["price"] > projected + tol:
+                    return False
+                if (not is_highs) and point["price"] < projected - tol:
+                    return False
+        return True
+
+    def candles_stay_inside(start_bar, end_bar, high_m, high_c, low_m, low_c, tol):
+        outside_count = 0
+        total_count = 0
+        for bar in range(start_bar, end_bar + 1):
+            upper_value = line_value(high_m, high_c, bar)
+            lower_value = line_value(low_m, low_c, bar)
+            if upper_value <= lower_value:
+                return False
+            total_count += 1
+            if ctx.high[bar] > upper_value + tol or ctx.low[bar] < lower_value - tol:
+                outside_count += 1
+        if total_count == 0:
+            return False
+        return (outside_count / total_count) <= max_break_fraction
+
+    def edge_violation_fraction(start_bar, end_bar, high_m, high_c, low_m, low_c, tol):
+        outside_count = 0
+        total_count = 0
+        for bar in range(start_bar, end_bar + 1):
+            upper_value = line_value(high_m, high_c, bar)
+            lower_value = line_value(low_m, low_c, bar)
+            if upper_value <= lower_value:
+                return 1.0
+            total_count += 1
+            if ctx.high[bar] > upper_value + tol or ctx.low[bar] < lower_value - tol:
+                outside_count += 1
+        if total_count == 0:
+            return 1.0
+        return outside_count / total_count
+
+    def line_respected_by_anchors(points, start_bar, end_bar, m, c, tol, is_highs):
+        touches = []
+        for point in points:
+            if start_bar <= point["bar"] <= end_bar:
+                projected = line_value(m, c, point["bar"])
+                delta = point["price"] - projected
+                if is_highs:
+                    if delta > tol:
+                        return None
+                    if abs(delta) <= tol:
+                        touches.append(point["bar"])
+                else:
+                    if delta < -tol:
+                        return None
+                    if abs(delta) <= tol:
+                        touches.append(point["bar"])
+        return touches
+
+    def alternating_touch_score(high_touch_bars, low_touch_bars):
+        sequence = []
+        for bar in high_touch_bars:
+            sequence.append((bar, "H"))
+        for bar in low_touch_bars:
+            sequence.append((bar, "L"))
+        sequence.sort()
+        if len(sequence) < 4:
+            return 0
+        alternations = 0
+        for idx in range(1, len(sequence)):
+            if sequence[idx][1] != sequence[idx - 1][1]:
+                alternations += 1
+        return alternations
+
+    def body_position_score(start_bar, end_bar, high_m, high_c, low_m, low_c):
+        score = 0.0
+        counted = 0
+        for bar in range(start_bar, end_bar + 1):
+            upper_value = line_value(high_m, high_c, bar)
+            lower_value = line_value(low_m, low_c, bar)
+            gap = upper_value - lower_value
+            if gap <= 0:
+                return None
+            midpoint = lower_value + (gap / 2.0)
+            close_value = ctx.close[bar]
+            score += abs(close_value - midpoint) / gap
+            counted += 1
+        if counted == 0:
+            return None
+        return score / counted
+
+    candidates = []
+
+    for hi1_idx in range(len(highs)):
+        h1 = highs[hi1_idx]
+        if not band_touched_high(h1):
+            continue
+
+        for hi2_idx in range(hi1_idx + 1, len(highs)):
+            h2 = highs[hi2_idx]
+            span = h2["bar"] - h1["bar"]
+            if span < min_span:
+                continue
+            if span > max_span:
+                break
+            if not band_touched_high(h2):
+                continue
+
+            high_m, high_c = line_params(h1["bar"], h1["price"], h2["bar"], h2["price"])
+            if h2["price"] > h1["price"] + (slope_tolerance * span):
+                continue
+
+            inner_lows = [point for point in lows if h1["bar"] < point["bar"] < h2["bar"]]
+            if len(inner_lows) < 2:
+                continue
+
+            for lo1_idx in range(len(inner_lows)):
+                l1 = inner_lows[lo1_idx]
+                for lo2_idx in range(lo1_idx + 1, len(inner_lows)):
+                    l2 = inner_lows[lo2_idx]
+                    if l2["bar"] <= l1["bar"]:
+                        continue
+                    if l2["price"] <= l1["price"]:
+                        continue
+                    if abs(l1["bar"] - h1["bar"]) > edge_window:
+                        continue
+                    if abs(l2["bar"] - h2["bar"]) > edge_window:
+                        continue
+
+                    low_m, low_c = line_params(l1["bar"], l1["price"], l2["bar"], l2["price"])
+                    if low_m <= 0:
+                        continue
+                    if low_m <= high_m:
+                        continue
+
+                    start_bar = min(h1["bar"], l1["bar"])
+                    end_bar = max(h2["bar"], l2["bar"])
+                    start_gap = line_value(high_m, high_c, start_bar) - line_value(low_m, low_c, start_bar)
+                    end_gap = line_value(high_m, high_c, end_bar) - line_value(low_m, low_c, end_bar)
+
+                    if start_gap <= 0 or end_gap <= 0:
+                        continue
+                    if end_gap >= start_gap:
+                        continue
+                    compression_ratio = (start_gap - end_gap) / start_gap
+                    tolerance = max(0.0001, start_gap * candle_tolerance_pct)
+
+                    if not pivot_set_respects_lines(highs, start_bar, end_bar, high_m, high_c, tolerance, True):
+                        continue
+                    if not pivot_set_respects_lines(lows, start_bar, end_bar, low_m, low_c, tolerance, False):
+                        continue
+                    high_touch_bars = line_respected_by_anchors(highs, start_bar, end_bar, high_m, high_c, tolerance, True)
+                    low_touch_bars = line_respected_by_anchors(lows, start_bar, end_bar, low_m, low_c, tolerance, False)
+                    if high_touch_bars is None or low_touch_bars is None:
+                        continue
+
+                    high_touches = count_near_touches(highs, h1["bar"], h2["bar"], high_m, high_c, tolerance)
+                    low_touches = count_near_touches(lows, l1["bar"], l2["bar"], low_m, low_c, tolerance)
+                    if high_touches + 1 < min_inner_touches or low_touches + 1 < min_inner_touches:
+                        continue
+                    if len(high_touch_bars) < 2 or len(low_touch_bars) < 2:
+                        continue
+
+                    alternation_score = alternating_touch_score(high_touch_bars, low_touch_bars)
+
+                    average_body_offset = body_position_score(start_bar, end_bar, high_m, high_c, low_m, low_c)
+                    if average_body_offset is None:
+                        continue
+                    break_fraction = edge_violation_fraction(start_bar, end_bar, high_m, high_c, low_m, low_c, tolerance)
+                    containment_ok = candles_stay_inside(start_bar, end_bar, high_m, high_c, low_m, low_c, tolerance)
+
+                    quality_penalty = 0.0
+                    if compression_ratio < min_compression_ratio:
+                        quality_penalty += (min_compression_ratio - compression_ratio) * 120.0
+                    if alternation_score < 2:
+                        quality_penalty += (2 - alternation_score) * 18.0
+                    if average_body_offset > max_body_offset:
+                        quality_penalty += (average_body_offset - max_body_offset) * 90.0
+                    if break_fraction > max_break_fraction:
+                        quality_penalty += (break_fraction - max_break_fraction) * 160.0
+
+                    if compression_ratio <= 0.04:
+                        continue
+                    if average_body_offset >= 0.80:
+                        continue
+                    if break_fraction >= 0.35:
+                        continue
+                    if (not containment_ok) and quality_penalty > 28.0:
+                        continue
+
+                    compression = start_gap - end_gap
+                    edge_alignment_penalty = abs(l1["bar"] - h1["bar"]) + abs(l2["bar"] - h2["bar"])
+                    score = (
+                        span * 2.0 +
+                        compression * 12.0 +
+                        high_touches * 10.0 +
+                        low_touches * 10.0 -
+                        abs(high_m) * 25.0 -
+                        edge_alignment_penalty * 4.0 +
+                        alternation_score * 8.0 -
+                        average_body_offset * 35.0 -
+                        quality_penalty
+                    )
+
+                    candidates.append(
+                        {
+                            "score": score,
+                            "h1": h1,
+                            "h2": h2,
+                            "l1": l1,
+                            "l2": l2,
+                            "high_m": high_m,
+                            "high_c": high_c,
+                            "low_m": low_m,
+                            "low_c": low_c,
+                            "start_bar": start_bar,
+                            "end_bar": end_bar,
+                        }
+                    )
+
+    selected_patterns = []
+    occupied_until = -1
+
+    if candidates:
+        candidates.sort(key=lambda item: (item["end_bar"], item["start_bar"], -item["score"]))
+        current_bucket = []
+        current_end = None
+
+        for candidate in candidates:
+            candidate_end = candidate["end_bar"]
+            if current_end is None or candidate_end == current_end:
+                current_bucket.append(candidate)
+                current_end = candidate_end
+                continue
+
+            current_bucket.sort(key=lambda item: item["score"], reverse=True)
+            chosen = current_bucket[0]
+            if chosen["start_bar"] > occupied_until:
+                selected_patterns.append(chosen)
+                occupied_until = chosen["end_bar"]
+
+            current_bucket = [candidate]
+            current_end = candidate_end
+
+        if current_bucket:
+            current_bucket.sort(key=lambda item: item["score"], reverse=True)
+            chosen = current_bucket[0]
+            if chosen["start_bar"] > occupied_until:
+                selected_patterns.append(chosen)
+
+    for pattern in selected_patterns:
+        for bar in range(pattern["start_bar"], pattern["end_bar"] + 1):
+            wedge_upper[bar] = line_value(pattern["high_m"], pattern["high_c"], bar)
+            wedge_lower[bar] = line_value(pattern["low_m"], pattern["low_c"], bar)
+
+        chosen_high_marks[pattern["h1"]["bar"]] = pattern["h1"]["price"]
+        chosen_high_marks[pattern["h2"]["bar"]] = pattern["h2"]["price"]
+        chosen_low_marks[pattern["l1"]["bar"]] = pattern["l1"]["price"]
+        chosen_low_marks[pattern["l2"]["bar"]] = pattern["l2"]["price"]
+
+    upper_band_plot = plot(upper_band, title="BB Upper", color="#f59e0b", width=1)
+    basis_plot = plot(basis, title="BB Mid", color="#94a3b8", width=1)
+    lower_band_plot = plot(lower_band, title="BB Lower", color="#60a5fa", width=1)
+
+    wedge_upper_plot = plot(wedge_upper, title="Wedge Upper", color="#ef4444", width=2)
+    wedge_lower_plot = plot(wedge_lower, title="Wedge Lower", color="#22c55e", width=2)
+
+    fill(
+        wedge_upper_plot,
+        wedge_lower_plot,
+        colorTop="rgba(239,68,68,0.08)",
+        colorBottom="rgba(34,197,94,0.08)",
+    )
+
+    plot_scatter(pivot_high_marks, title="Pivot Highs", color="rgba(245,158,11,0.30)")
+    plot_scatter(pivot_low_marks, title="Pivot Lows", color="rgba(96,165,250,0.30)")
+    plot_scatter(chosen_high_marks, title="Chosen Highs", color="#ef4444")
+    plot_scatter(chosen_low_marks, title="Chosen Lows", color="#22c55e")`,
+  },
+  {
     id: "chartlab-vwap-trend",
     label: "ChartLab VWAP Trend",
-    code: `from chartlab import indicator, plot, signal
+    code: `from chartlab import indicator, plot
 
 @indicator(name="VWAP Trend", pane="overlay")
 def run(ctx):
@@ -371,10 +717,7 @@ def run(ctx):
     ema_21 = ctx.ta.ema(ctx.close, length=21)
 
     plot(vwap_line, title="VWAP", color="#f59e0b", width=2)
-    plot(ema_21, title="EMA 21", color="#3b82f6", width=2)
-
-    signal(ctx.ta.crossover(ctx.close, vwap_line), side="BUY", label="")
-    signal(ctx.ta.crossunder(ctx.close, vwap_line), side="SELL", label="")`,
+    plot(ema_21, title="EMA 21", color="#3b82f6", width=2)`,
   },
   {
     id: "chartlab-ssl-channel",
@@ -633,7 +976,7 @@ def run(ctx):
   {
     id: "chartlab-cci-reversal",
     label: "ChartLab CCI Reversal",
-    code: `from chartlab import indicator, plot, hline, signal
+    code: `from chartlab import indicator, plot, hline
 
 @indicator(name="CCI Reversal", pane="oscillator")
 def run(ctx):
@@ -642,10 +985,7 @@ def run(ctx):
     plot(cci, title="CCI", color="#38bdf8", width=2)
     hline(100, "Upper", color="#ef4444")
     hline(0, "Zero", color="#94a3b8")
-    hline(-100, "Lower", color="#22c55e")
-
-    signal(ctx.ta.crossover(cci, -100), side="BUY", label="")
-    signal(ctx.ta.crossunder(cci, 100), side="SELL", label="")`,
+    hline(-100, "Lower", color="#22c55e")`,
   },
   {
     id: "chartlab-adx-trend",
@@ -678,16 +1018,13 @@ def run(ctx):
   {
     id: "chartlab-psar-overlay",
     label: "ChartLab PSAR Overlay",
-    code: `from chartlab import indicator, plot_scatter, signal
+    code: `from chartlab import indicator, plot_scatter
 
 @indicator(name="PSAR Overlay", pane="overlay")
 def run(ctx):
     psar = ctx.ta.psar(ctx.high, ctx.low, step=0.02, max_step=0.2)
 
-    plot_scatter(psar, title="PSAR", color="#f472b6")
-
-    signal(ctx.ta.crossover(ctx.close, psar), side="BUY", label="")
-    signal(ctx.ta.crossunder(ctx.close, psar), side="SELL", label="")`,
+    plot_scatter(psar, title="PSAR", color="#f472b6")`,
   },
   {
     id: "chartlab-heikin-overlay",
@@ -714,7 +1051,7 @@ def run(ctx):
   {
     id: "chartlab-regime-pressure",
     label: "ChartLab Regime Pressure",
-    code: `from chartlab import indicator, input_int, input_float, plot, fill, signal, hline
+    code: `from chartlab import indicator, input_int, input_float, plot, fill, hline
 
 @indicator(name="Regime Pressure", pane="oscillator")
 def run(ctx):
@@ -741,15 +1078,12 @@ def run(ctx):
 
     hline(pressure_threshold, "Bull Trigger", color="#22c55e")
     hline(0, "Balance", color="#94a3b8")
-    hline(-pressure_threshold, "Bear Trigger", color="#ef4444")
-
-    signal(ctx.ta.crossover(pressure, pressure_threshold), side="BUY", label="")
-    signal(ctx.ta.crossunder(pressure, -pressure_threshold), side="SELL", label="")`,
+    hline(-pressure_threshold, "Bear Trigger", color="#ef4444")`,
   },
   {
     id: "chartlab-liquidity-pulse",
     label: "ChartLab Liquidity Pulse",
-    code: `from chartlab import indicator, input_int, input_float, plot, fill, signal
+    code: `from chartlab import indicator, input_int, input_float, plot, fill
 
 @indicator(name="Liquidity Pulse", pane="overlay")
 def run(ctx):
@@ -773,18 +1107,12 @@ def run(ctx):
     base_plot = plot(base, title="Pulse Base", color="#38bdf8", width=2)
     upper_plot = plot(upper_band, title="Upper Liquidity Band", color="#f59e0b", width=1)
     lower_plot = plot(lower_band, title="Lower Liquidity Band", color="#22c55e", width=1)
-    fill(upper_plot, lower_plot, colorTop="rgba(245,158,11,0.08)", colorBottom="rgba(34,197,94,0.08)")
-
-    long_signal = expansion & heavy_volume & (liquidity_pulse > 0) & ctx.ta.crossover(ctx.close, base)
-    short_signal = expansion & heavy_volume & (liquidity_pulse < 0) & ctx.ta.crossunder(ctx.close, base)
-
-    signal(long_signal, side="BUY", label="", price=ctx.close)
-    signal(short_signal, side="SELL", label="", price=ctx.close)`,
+    fill(upper_plot, lower_plot, colorTop="rgba(245,158,11,0.08)", colorBottom="rgba(34,197,94,0.08)")`,
   },
   {
     id: "chartlab-fractal-drift",
     label: "ChartLab Fractal Drift",
-    code: `from chartlab import indicator, input_int, plot, plot_step, fill, signal
+    code: `from chartlab import indicator, input_int, plot, plot_step, fill
 
 @indicator(name="Fractal Drift", pane="overlay")
 def run(ctx):
@@ -801,18 +1129,12 @@ def run(ctx):
     anchor_plot = plot(anchor, title="Anchor", color="#60a5fa", width=2)
 
     fill(high_plot, low_plot, colorTop="rgba(239,68,68,0.08)", colorBottom="rgba(34,197,94,0.08)")
-    fill(anchor_plot, low_plot, colorTop="rgba(96,165,250,0.03)", colorBottom="rgba(34,197,94,0.05)")
-
-    long_signal = ctx.ta.crossover(ctx.close, local_high) & (ctx.close > anchor)
-    short_signal = ctx.ta.crossunder(ctx.close, local_low) & (ctx.close < anchor)
-
-    signal(long_signal, side="BUY", label="", price=ctx.close)
-    signal(short_signal, side="SELL", label="", price=ctx.close)`,
+    fill(anchor_plot, low_plot, colorTop="rgba(96,165,250,0.03)", colorBottom="rgba(34,197,94,0.05)")`,
   },
   {
     id: "chartlab-delta-stretch",
     label: "ChartLab Delta Stretch",
-    code: `from chartlab import indicator, input_int, input_float, plot, hline, signal
+    code: `from chartlab import indicator, input_int, input_float, plot, hline
 
 @indicator(name="Delta Stretch", pane="histogram")
 def run(ctx):
@@ -838,18 +1160,12 @@ def run(ctx):
     plot(delta_basis, title="Delta Basis", color="#f59e0b", width=2)
     hline(stretch_mult, "Upper Stretch", color="#ef4444")
     hline(0, "Zero", color="#94a3b8")
-    hline(-stretch_mult, "Lower Stretch", color="#22c55e")
-
-    long_signal = ctx.ta.crossover(stretch_score, -stretch_mult) & (ctx.close > trend_filter)
-    short_signal = ctx.ta.crossunder(stretch_score, stretch_mult) & (ctx.close < trend_filter)
-
-    signal(long_signal, side="BUY", label="")
-    signal(short_signal, side="SELL", label="")`,
+    hline(-stretch_mult, "Lower Stretch", color="#22c55e")`,
   },
   {
     id: "chartlab-volume-imbalance-map",
     label: "ChartLab Volume Imbalance Map",
-    code: `from chartlab import indicator, input_int, plot, plot_area, signal
+    code: `from chartlab import indicator, input_int, plot, plot_area
 
 @indicator(name="Volume Imbalance Map", pane="volume")
 def run(ctx):
@@ -870,10 +1186,7 @@ def run(ctx):
         bottomColor="rgba(6,182,212,0.04)",
         width=2,
     )
-    plot(slow_imbalance, title="Slow Imbalance", color="#f59e0b", width=2)
-
-    signal(ctx.ta.crossover(spread, 0), side="BUY", label="")
-    signal(ctx.ta.crossunder(spread, 0), side="SELL", label="")`,
+    plot(slow_imbalance, title="Slow Imbalance", color="#f59e0b", width=2)`,
   },
   {
     id: "ema-crossover",
@@ -885,15 +1198,7 @@ slow_ema = df["close"].ewm(span=21, adjust=False).mean()
 buy_cross = (fast_ema > slow_ema) & (fast_ema.shift(1) <= slow_ema.shift(1))
 sell_cross = (fast_ema < slow_ema) & (fast_ema.shift(1) >= slow_ema.shift(1))
 
-markers = []
-
-for idx in df.index[buy_cross.fillna(False)]:
-    markers.append({"time": df.loc[idx, "time"], "text": "BUY", "position": "belowBar"})
-
-for idx in df.index[sell_cross.fillna(False)]:
-    markers.append({"time": df.loc[idx, "time"], "text": "SELL", "position": "aboveBar"})
-
-plot_markers(markers)`,
+# Use buy_cross and sell_cross in your own workflow.`,
   },
   {
     id: "rsi-reversal",
@@ -908,15 +1213,7 @@ rsi = 100 - (100 / (1 + rs))
 buy_signal = (rsi < 30) & (rsi.shift(1) >= 30)
 sell_signal = (rsi > 70) & (rsi.shift(1) <= 70)
 
-markers = []
-
-for idx in df.index[buy_signal.fillna(False)]:
-    markers.append({"time": df.loc[idx, "time"], "text": "BUY", "position": "belowBar"})
-
-for idx in df.index[sell_signal.fillna(False)]:
-    markers.append({"time": df.loc[idx, "time"], "text": "SELL", "position": "aboveBar"})
-
-plot_markers(markers)`,
+# Use buy_signal and sell_signal in your own workflow.`,
   },
   {
     id: "breakout",
@@ -928,15 +1225,7 @@ rolling_low = df["low"].rolling(20).min()
 buy_breakout = df["close"] > rolling_high.shift(1)
 sell_breakout = df["close"] < rolling_low.shift(1)
 
-markers = []
-
-for idx in df.index[buy_breakout.fillna(False)]:
-    markers.append({"time": df.loc[idx, "time"], "text": "BUY", "position": "belowBar"})
-
-for idx in df.index[sell_breakout.fillna(False)]:
-    markers.append({"time": df.loc[idx, "time"], "text": "SELL", "position": "aboveBar"})
-
-plot_markers(markers)`,
+# Use buy_breakout and sell_breakout in your own workflow.`,
   },
 ];
 
@@ -954,6 +1243,8 @@ const findTemplateIdByCode = (code) => {
 export const DEFAULT_EDITOR_CODE =
   STRATEGY_EDITOR_TEMPLATES.find((template) => template.id === DEFAULT_TEMPLATE_ID)
     ?.code || STRATEGY_EDITOR_TEMPLATES[0].code;
+
+export { CUSTOM_TEMPLATE_ID };
 
 const renderInlineMarkdown = (text, keyPrefix) =>
   text.split(/(`[^`]+`)/g).map((part, index) => {
@@ -1174,6 +1465,8 @@ const CodeEditorPanel = ({
     },
     [onEdit, setEditorCode],
   );
+
+  const isCustomStrategy = selectedTemplateId === CUSTOM_TEMPLATE_ID;
 
   return (
     <>
@@ -1454,7 +1747,9 @@ const CodeEditorPanel = ({
         }}
       >
         <button
-          onClick={() => onSave(editorCode)}
+          onClick={() =>
+            onSave(editorCode, { requireStrategyName: isCustomStrategy })
+          }
           disabled={isSaving || isDeploying || isUpdating || hasErrors}
           style={{
             flex: 1,
@@ -1582,7 +1877,9 @@ const CodeEditorPanel = ({
           </button>
         ) : (
           <button
-            onClick={() => onDeploy(editorCode)}
+            onClick={() =>
+              onDeploy(editorCode, { requireStrategyName: isCustomStrategy })
+            }
             disabled={isDeploying || hasErrors}
             style={{
               flex: 1,

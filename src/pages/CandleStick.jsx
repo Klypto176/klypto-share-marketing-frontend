@@ -13,7 +13,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { LuCirclePlus, LuCircleMinus } from "react-icons/lu";
 import { RiResetRightLine } from "react-icons/ri";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import ChartHeader from "../components/tradingModals/ChartHeader";
 import Navbar from "../components/layout/Navbar";
 import LeftWatchlist from "../components/layout/LeftWatchlist";
@@ -197,6 +197,94 @@ const getBackfillChunkDays = (timeframe) => {
   return 365;
 };
 
+const formatBacktestDateTime = (chartTime) => {
+  if (!Number.isFinite(chartTime)) return "--";
+
+  return new Date((chartTime - CHART_TIME_OFFSET_SECONDS) * 1000).toLocaleString(
+    "en-IN",
+    {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    },
+  );
+};
+
+const getSignalBacktestOhlc = (signal, matchedCandle) => {
+  const signalResponse = signal?.response || {};
+
+  const pickValue = (primary, fallback) => {
+    const value = primary ?? fallback;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
+
+  return {
+    open: pickValue(matchedCandle?.open, signalResponse.candle_open),
+    high: pickValue(matchedCandle?.high, signalResponse.candle_high),
+    low: pickValue(matchedCandle?.low, signalResponse.candle_low),
+    close: pickValue(matchedCandle?.close, signalResponse.candle_close),
+  };
+};
+
+const normalizeApiBacktestRows = (tables, fallbackSymbol, fallbackTimeframe) => {
+  if (!Array.isArray(tables) || tables.length === 0) return [];
+
+  const targetTable =
+    tables.find((table) => table?.name === "signal_events") ||
+    tables.find((table) => table?.title === "Signal Events") ||
+    tables.find((table) => {
+      const columns = Array.isArray(table?.columns) ? table.columns : [];
+      return (
+        columns.includes("datetime") &&
+        columns.includes("open") &&
+        columns.includes("high") &&
+        columns.includes("low") &&
+        columns.includes("close")
+      );
+    });
+
+  if (!targetTable || !Array.isArray(targetTable.rows)) return [];
+
+  return targetTable.rows
+    .map((row, index) => {
+      const rawTime = normalizeChartTime(row?.time);
+      const chartTime =
+        rawTime === null ? null : rawTime + CHART_TIME_OFFSET_SECONDS;
+      const signalType = String(
+        row?.signal || row?.side || row?.label || "SIGNAL",
+      ).toUpperCase();
+
+      return {
+        id: `${chartTime || row?.datetime || "row"}-${signalType}-${index}`,
+        signalType,
+        label: row?.label || signalType,
+        symbol: row?.symbol || fallbackSymbol || "--",
+        timeframe: row?.timeframe || fallbackTimeframe || "--",
+        dateTime:
+          row?.datetime ||
+          (Number.isFinite(chartTime) ? formatBacktestDateTime(chartTime) : "--"),
+        time: chartTime,
+        open: Number.isFinite(Number(row?.open)) ? Number(row.open) : null,
+        high: Number.isFinite(Number(row?.high)) ? Number(row.high) : null,
+        low: Number.isFinite(Number(row?.low)) ? Number(row.low) : null,
+        close: Number.isFinite(Number(row?.close)) ? Number(row.close) : null,
+      };
+    })
+    .filter(
+      (row) =>
+        row.dateTime !== "--" ||
+        Number.isFinite(row.open) ||
+        Number.isFinite(row.high) ||
+        Number.isFinite(row.low) ||
+        Number.isFinite(row.close),
+    );
+};
+
 export default function Candlestick() {
   const chartRef = useRef();
   const containerRef = useRef();
@@ -259,8 +347,6 @@ export default function Candlestick() {
         return {
           ...candle,
           color: overrideColor,
-          borderColor: overrideColor,
-          wickColor: overrideColor,
         };
       });
     },
@@ -346,16 +432,11 @@ export default function Candlestick() {
   });
 
   const handleSetFromDate = (newDate) => {
-    const minDate = new Date("2024-10-01");
     let d = new Date(newDate);
     if (isNaN(d.getTime())) {
       d = new Date();
     }
-    if (d < minDate) {
-      setFromDate("2024-10-01");
-    } else {
-      setFromDate(d.toISOString().split("T")[0]);
-    }
+    setFromDate(d.toISOString().split("T")[0]);
   };
   const [toDate, setToDate] = useState(() => {
     const today = getTodayDateString();
@@ -395,11 +476,25 @@ export default function Candlestick() {
   const [isStrategyDirty, setIsStrategyDirty] = useState(false);
   const [areStrategyVisualsVisible, setAreStrategyVisualsVisible] =
     useState(true);
+  const areStrategyVisualsVisibleRef = useRef(areStrategyVisualsVisible);
   const [scannerProgressData, setScannerProgressData] = useState(null);
   const [dashboardSignals, setDashboardSignals] = useState([]);
   const [deployedStrategyCode, setDeployedStrategyCode] = useState(null);
   const [sandboxLegendGroups, setSandboxLegendGroups] = useState({});
+  const [draftStrategyName, setDraftStrategyName] = useState("");
+  const [apiBacktestRows, setApiBacktestRows] = useState([]);
+  const [backtestRows, setBacktestRows] = useState([]);
+  const [candleDataVersion, setCandleDataVersion] = useState(0);
   const sandboxLegendGroupsRef = useRef({});
+  const previousTimeframeRef = useRef(timeframeValue);
+  const skipNextTimeframeAutoDeployRef = useRef(false);
+  const lastPaginationAutoDeployKeyRef = useRef(null);
+  const previousDateRangeRef = useRef({ fromDate, toDate });
+  const lastDateRangeAutoDeployKeyRef = useRef(null);
+
+  useEffect(() => {
+    areStrategyVisualsVisibleRef.current = areStrategyVisualsVisible;
+  }, [areStrategyVisualsVisible]);
 
   const handleStrategyClick = () => {
     setIsPredicting(true);
@@ -637,13 +732,12 @@ export default function Candlestick() {
     setDashboardSignals([]);
     setDeployedStrategyCode(null);
     setIsDeployed(false);
-    setAreStrategyVisualsVisible(true);
     sandboxLegendGroupsRef.current = {};
     setSandboxLegendGroups({});
   }, [chartType]);
 
   const handleSaveStrategy = useCallback(
-    async (code) => {
+    async (code, options = {}) => {
       if (!code || !code.trim()) {
         Swal.fire({
           icon: "warning",
@@ -658,7 +752,32 @@ export default function Candlestick() {
       try {
         setIsSavingStrategy(true);
         const symbolName = selectedCurrency?.name || selectedCurrency?.symbol || "Strategy";
-        const strategyName = `${symbolName} ${timeframeValue} Notebook Strategy`;
+        const existingStrategyName =
+          draftStrategyName?.trim() || activeStrategyRecord?.name?.trim() || "";
+        let strategyName =
+          existingStrategyName ||
+          `${symbolName} ${timeframeValue} Notebook Strategy`;
+
+        if (options?.requireStrategyName && !existingStrategyName) {
+          const { value } = await Swal.fire({
+            title: "Strategy Name Required",
+            input: "text",
+            inputLabel: "Enter a name for this strategy",
+            inputPlaceholder: `${symbolName} ${timeframeValue} Strategy`,
+            inputValidator: (value) =>
+              value?.trim() ? undefined : "Strategy name is required.",
+            showCancelButton: true,
+            background: "var(--bg-secondary)",
+            color: "var(--text-primary)",
+          });
+
+          if (!value?.trim()) {
+            return;
+          }
+
+          strategyName = value.trim();
+          setDraftStrategyName(strategyName);
+        }
         const currentUser = getUser();
         const resolvedUserId =
           currentUser?.id ||
@@ -733,7 +852,15 @@ export default function Candlestick() {
         setIsSavingStrategy(false);
       }
     },
-    [fromDate, isDeployed, selectedCurrency, timeframeValue, toDate],
+    [
+      activeStrategyRecord?.name,
+      draftStrategyName,
+      fromDate,
+      isDeployed,
+      selectedCurrency,
+      timeframeValue,
+      toDate,
+    ],
   );
 
   const handleUpdateStrategy = useCallback(
@@ -846,6 +973,43 @@ export default function Candlestick() {
     [activeStrategyRecord, fromDate, isDeployed, selectedCurrency, timeframeValue, toDate],
   );
 
+  const ensureStrategyName = useCallback(
+    async ({ requireStrategyName } = {}) => {
+      let strategyName =
+        activeStrategyRecord?.name?.trim() || draftStrategyName?.trim() || "";
+
+      if (!requireStrategyName) {
+        return strategyName;
+      }
+
+      if (strategyName) {
+        return strategyName;
+      }
+
+      const symbolName = selectedCurrency?.name || selectedCurrency?.symbol || "Strategy";
+      const { value } = await Swal.fire({
+        title: "Strategy Name Required",
+        input: "text",
+        inputLabel: "Enter a name for this strategy",
+        inputPlaceholder: `${symbolName} ${timeframeValue} Strategy`,
+        inputValidator: (value) =>
+          value?.trim() ? undefined : "Strategy name is required.",
+        showCancelButton: true,
+        background: "var(--bg-secondary)",
+        color: "var(--text-primary)",
+      });
+
+      if (!value?.trim()) {
+        return null;
+      }
+
+      strategyName = value.trim();
+      setDraftStrategyName(strategyName);
+      return strategyName;
+    },
+    [activeStrategyRecord?.name, draftStrategyName, selectedCurrency, timeframeValue],
+  );
+
   const renderSandboxPlots = useCallback((chartContract) => {
     if (!chartRef.current) return;
 
@@ -856,6 +1020,8 @@ export default function Candlestick() {
     const sandboxPaneKeys = new Set();
     const legendGroups = {};
     const legendGroupsMeta = {};
+    const isStrategyVisualVisible = (baseVisible = true) =>
+      baseVisible !== false && areStrategyVisualsVisibleRef.current !== false;
 
     const normalizeSandboxPane = (value) =>
       String(value || chartContract?.pane || "overlay")
@@ -922,8 +1088,8 @@ export default function Candlestick() {
     const getSeriesOptions = (plot) => {
       const plotType = String(plot?.type || "line").toLowerCase();
       const lineStyle = toLineStyleValue(plot?.style?.lineStyle);
-      const visible =
-        plot?.style?.visible !== false && areStrategyVisualsVisible;
+      const baseVisible = plot?.style?.visible !== false;
+      const visible = isStrategyVisualVisible(baseVisible);
       const baseOptions = {
         visible,
         priceLineVisible: false,
@@ -1131,6 +1297,7 @@ export default function Candlestick() {
         paneKey,
         series,
         data: seriesData,
+        baseVisible: plot?.style?.visible !== false,
       });
 
       const plotEntry = {
@@ -1139,6 +1306,7 @@ export default function Candlestick() {
         plotType: String(plot?.type || "line").toLowerCase(),
         series,
         data: seriesData,
+        baseVisible: plot?.style?.visible !== false,
       };
       if (plot?.id) {
         plotEntriesById.set(plot.id, plotEntry);
@@ -1193,6 +1361,106 @@ export default function Candlestick() {
       });
     });
 
+    const drawings = Array.isArray(chartContract?.drawings)
+      ? chartContract.drawings
+      : [];
+    drawings.forEach((drawing) => {
+      const drawingType = String(drawing?.type || "line").toLowerCase();
+      if (!["line", "line_segment", "segment", "polyline"].includes(drawingType)) {
+        return;
+      }
+
+      const points = Array.isArray(drawing?.points) ? drawing.points : [];
+      const seriesData = points
+        .map((point) => {
+          const time = toChartTimestamp(point?.time);
+          const value = Number(point?.value ?? point?.price);
+          if (time === null || !Number.isFinite(value)) return null;
+          return { time, value };
+        })
+        .filter(Boolean);
+
+      if (seriesData.length < 2) return;
+
+      const paneKey = getSandboxPaneKey(drawing?.pane);
+      if (paneKey) {
+        sandboxPaneKeys.add(paneKey);
+      }
+
+      const style = drawing?.style || {};
+      const baseVisible = style.visible !== false;
+      const visible = isStrategyVisualVisible(baseVisible);
+      const series = addSeries(
+        paneKey || "__sandbox_overlay__",
+        LineSeries,
+        {
+          visible,
+          color: getSeriesOptionColor(style.color, "#22c55e"),
+          lineWidth: Number(style.width) || 2,
+          lineStyle: toLineStyleValue(style.lineStyle),
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        },
+        paneKey,
+      );
+
+      if (!series) return;
+
+      try {
+        series.setData(seriesData);
+      } catch (error) {
+        console.warn("[Sandbox] Drawing setData failed:", error);
+        return;
+      }
+
+      const drawingId =
+        drawing?.id || drawing?.title || `sandbox_drawing_${createdSeries.length + 1}`;
+      createdSeries.push({
+        id: drawingId,
+        paneKey,
+        series,
+        data: seriesData,
+        baseVisible,
+        isDrawing: true,
+      });
+
+      const paneSeriesKey = paneKey || SANDBOX_OVERLAY_KEY;
+      if (!paneSeriesMap.has(paneSeriesKey)) {
+        paneSeriesMap.set(paneSeriesKey, []);
+      }
+      paneSeriesMap.get(paneSeriesKey).push(series);
+
+      if (style.showInLegend === true) {
+        const legendKey = paneKey || SANDBOX_OVERLAY_KEY;
+        if (!legendGroups[legendKey]) {
+          legendGroups[legendKey] = {
+            paneKey,
+            title: chartContract?.name || "Sandbox Indicator",
+            items: [],
+          };
+          legendGroupsMeta[legendKey] = {
+            paneKey,
+            title: chartContract?.name || "Sandbox Indicator",
+            items: [],
+          };
+        }
+
+        const legendItem = {
+          id: drawingId,
+          label: drawing?.title || drawingId,
+          color: getSeriesOptionColor(style.color, "#22c55e"),
+          value: getLastNumericValue(seriesData, "line"),
+        };
+        legendGroups[legendKey].items.push(legendItem);
+        legendGroupsMeta[legendKey].items.push({
+          ...legendItem,
+          series,
+          plotType: "line",
+        });
+      }
+    });
+
     const getPaneElement = (paneKey) =>
       paneKey
         ? panesRef.current?.[paneKey]?.div ||
@@ -1203,7 +1471,7 @@ export default function Candlestick() {
       paneSeriesMap.get(paneKey || SANDBOX_OVERLAY_KEY)?.[0] ||
       (paneKey ? null : seriesRef.current);
 
-    const addCanvasLayer = (paneKey, drawLayer, zIndex = 2) => {
+    const addCanvasLayer = (paneKey, drawLayer, zIndex = 2, baseVisible = true) => {
       const paneElement = getPaneElement(paneKey);
       const hostElement = containerRef.current;
       if (!paneElement || !hostElement || typeof drawLayer !== "function") {
@@ -1220,6 +1488,9 @@ export default function Candlestick() {
       canvas.style.top = "0";
       canvas.style.pointerEvents = "none";
       canvas.style.zIndex = String(zIndex);
+      canvas.style.display = isStrategyVisualVisible(baseVisible)
+        ? "block"
+        : "none";
       hostElement.appendChild(canvas);
 
       const draw = () => {
@@ -1266,6 +1537,7 @@ export default function Candlestick() {
 
       createdFillLayers.push({
         canvas,
+        baseVisible,
         unsubscribe: () => {
           chartRef.current?.timeScale()?.unsubscribeVisibleTimeRangeChange?.(
             redraw,
@@ -1353,6 +1625,10 @@ export default function Candlestick() {
         return;
       }
 
+      const baseVisible =
+        fillConfig?.visible !== false &&
+        fromEntry?.baseVisible !== false &&
+        toEntry?.baseVisible !== false;
       const paneElement =
         paneKey
           ? panesRef.current?.[paneKey]?.div ||
@@ -1374,6 +1650,9 @@ export default function Candlestick() {
       canvas.style.top = "0";
       canvas.style.pointerEvents = "none";
       canvas.style.zIndex = "2";
+      canvas.style.display = isStrategyVisualVisible(baseVisible)
+        ? "block"
+        : "none";
       hostElement.appendChild(canvas);
 
       const drawFill = () => {
@@ -1490,6 +1769,7 @@ export default function Candlestick() {
 
       createdFillLayers.push({
         canvas,
+        baseVisible,
         unsubscribe: () => {
           chartRef.current?.timeScale()?.unsubscribeVisibleTimeRangeChange?.(redraw);
           chartRef.current?.unsubscribeCrosshairMove?.(redraw);
@@ -1750,6 +2030,8 @@ export default function Candlestick() {
         const price = Number(level?.value);
         if (!Number.isFinite(price)) return;
 
+        const baseVisible = level?.visible !== false;
+        const baseAxisLabelVisible = level?.axisLabelVisible ?? true;
         try {
           const priceLine = levelSeries.createPriceLine({
             price,
@@ -1757,10 +2039,16 @@ export default function Candlestick() {
             lineWidth: Number(level?.lineWidth) || 1,
             lineStyle: toLineStyleValue(level?.lineStyle || "dashed"),
             title: level?.label || "",
-            axisLabelVisible: level?.axisLabelVisible ?? true,
-            lineVisible: level?.visible !== false,
+            axisLabelVisible:
+              baseAxisLabelVisible && isStrategyVisualVisible(baseVisible),
+            lineVisible: isStrategyVisualVisible(baseVisible),
           });
-          createdPriceLines.push({ series: levelSeries, priceLine });
+          createdPriceLines.push({
+            series: levelSeries,
+            priceLine,
+            baseVisible,
+            baseAxisLabelVisible,
+          });
         } catch (error) {
           console.warn("Unable to create sandbox price line:", error);
         }
@@ -1775,7 +2063,6 @@ export default function Candlestick() {
     setSandboxLegendGroups(legendGroups);
   }, [
     applySandboxBarColorsToData,
-    areStrategyVisualsVisible,
     chartType,
     timeframeValue,
   ]);
@@ -1788,19 +2075,22 @@ export default function Candlestick() {
 
       seriesList.forEach((entry) => {
         const series = entry?.series || entry;
+        const nextVisible = visible && entry?.baseVisible !== false;
         try {
-          series.applyOptions({ visible });
+          series.applyOptions({ visible: nextVisible });
         } catch (error) {
           console.warn("Unable to toggle strategy series visibility:", error);
         }
       });
 
       if (customScriptPriceLinesRef.current?.length) {
-        customScriptPriceLinesRef.current.forEach(({ priceLine }) => {
+        customScriptPriceLinesRef.current.forEach((entry) => {
+          const nextVisible = visible && entry?.baseVisible !== false;
           try {
-            priceLine?.applyOptions?.({
-              lineVisible: visible,
-              axisLabelVisible: visible,
+            entry?.priceLine?.applyOptions?.({
+              lineVisible: nextVisible,
+              axisLabelVisible:
+                nextVisible && entry?.baseAxisLabelVisible !== false,
             });
           } catch (error) {
             console.warn("Unable to toggle strategy price line visibility:", error);
@@ -1809,9 +2099,11 @@ export default function Candlestick() {
       }
 
       if (customScriptFillLayersRef.current?.length) {
-        customScriptFillLayersRef.current.forEach(({ canvas }) => {
+        customScriptFillLayersRef.current.forEach((entry) => {
+          const nextVisible = visible && entry?.baseVisible !== false;
+          const canvas = entry?.canvas;
           if (canvas) {
-            canvas.style.display = visible ? "block" : "none";
+            canvas.style.display = nextVisible ? "block" : "none";
           }
         });
       }
@@ -1832,6 +2124,7 @@ export default function Candlestick() {
   const handleToggleStrategyVisuals = useCallback(() => {
     setAreStrategyVisualsVisible((prev) => {
       const next = !prev;
+      areStrategyVisualsVisibleRef.current = next;
       applyStrategyVisualVisibility(next);
       return next;
     });
@@ -2213,17 +2506,19 @@ export default function Candlestick() {
     }
 
     lastDeployedMarkersRef.current = markersToSet;
+    const shouldShowStrategyVisuals =
+      areStrategyVisualsVisibleRef.current !== false;
 
     if (markersToSet?.length > 0 && seriesRef.current) {
       if (!customScriptMarkersRef.current) {
         customScriptMarkersRef.current = createSeriesMarkers(
           seriesRef.current,
-          areStrategyVisualsVisible ? markersToSet : [],
+          shouldShowStrategyVisuals ? markersToSet : [],
         );
         seriesRef.current.attachPrimitive(customScriptMarkersRef.current);
       } else {
         customScriptMarkersRef.current.setMarkers(
-          areStrategyVisualsVisible ? markersToSet : [],
+          shouldShowStrategyVisuals ? markersToSet : [],
         );
       }
     } else if (customScriptMarkersRef.current) {
@@ -2236,6 +2531,11 @@ export default function Candlestick() {
   const handleDeployCode = useCallback(
     async (code, runtimeContext = {}) => {
       if (!chartRef.current) return;
+
+      const resolvedStrategyName = await ensureStrategyName(runtimeContext);
+      if (runtimeContext?.requireStrategyName && !resolvedStrategyName) {
+        return;
+      }
 
       const effectiveSymbol =
         runtimeContext?.symbol ||
@@ -2250,7 +2550,8 @@ export default function Candlestick() {
         selectedCurrency?.segment;
       const effectiveTimeframe = runtimeContext?.timeframe || timeframeValue;
       const effectiveFromDate = runtimeContext?.fromDate || fromDate;
-      const effectiveToDate = runtimeContext?.toDate || toDate;
+      const requestedToDate = runtimeContext?.toDate || toDate;
+      const effectiveToDate = requestedToDate || getTodayDateString();
 
       // 1. Clear previous
       handleClearCode();
@@ -2581,6 +2882,11 @@ json.dumps(result)
           sandboxResponse?.result?.chart?.signals ||
           sandboxResponse?.result?.signals ||
           [];
+        const apiRows = normalizeApiBacktestRows(
+          sandboxResponse?.tables,
+          effectiveLookupSymbol || effectiveSymbol,
+          effectiveTimeframe,
+        );
 
         const normalizedSignals = chartSignals
           .map((signal) => {
@@ -2600,6 +2906,7 @@ json.dumps(result)
           .filter(Boolean);
 
         renderSandboxPlots(sandboxResponse?.result?.chart);
+        setApiBacktestRows(apiRows);
         setDashboardSignals(normalizedSignals);
         setCustomSignals(normalizedSignals);
         setDeployedStrategyCode(SANDBOX_DEPLOYMENT_CODE);
@@ -2630,6 +2937,7 @@ json.dumps(result)
     },
     [
       handleClearCode,
+      ensureStrategyName,
       fromDate,
       isMarketOpen,
       renderSandboxPlots,
@@ -2653,6 +2961,7 @@ json.dumps(result)
       setIsStrategyDirty(false);
       setAreStrategyVisualsVisible(true);
       if (savedTimeframe) {
+        skipNextTimeframeAutoDeployRef.current = true;
         setTimeframeValue(savedTimeframe);
       }
       setIsCodeEditorOpen(false);
@@ -2718,6 +3027,99 @@ json.dumps(result)
     const d = getInitialLookbackDate(timeframeValue);
     handleSetFromDate(d.toISOString().split("T")[0]);
   }, [timeframeValue]);
+
+  useEffect(() => {
+    if (previousTimeframeRef.current === timeframeValue) {
+      return;
+    }
+
+    previousTimeframeRef.current = timeframeValue;
+
+    if (skipNextTimeframeAutoDeployRef.current) {
+      skipNextTimeframeAutoDeployRef.current = false;
+      return;
+    }
+
+    if (
+      !isDeployed ||
+      deployedStrategyCode !== SANDBOX_DEPLOYMENT_CODE ||
+      isDeploying ||
+      !editorCode?.trim()
+    ) {
+      return;
+    }
+
+    const nextFromDate = getInitialLookbackDate(timeframeValue);
+    const minDate = new Date("2024-10-01");
+    const effectiveFromDate =
+      nextFromDate < minDate
+        ? "2024-10-01"
+        : nextFromDate.toISOString().split("T")[0];
+
+    handleDeployCode(editorCode, {
+      timeframe: timeframeValue,
+      fromDate: effectiveFromDate,
+      toDate,
+    });
+  }, [
+    deployedStrategyCode,
+    editorCode,
+    handleDeployCode,
+    isDeployed,
+    isDeploying,
+    timeframeValue,
+    toDate,
+  ]);
+
+  useEffect(() => {
+    const previousRange = previousDateRangeRef.current;
+    const rangeChanged =
+      previousRange?.fromDate !== fromDate || previousRange?.toDate !== toDate;
+
+    previousDateRangeRef.current = { fromDate, toDate };
+
+    if (!rangeChanged) {
+      return;
+    }
+
+    if (
+      !isDeployed ||
+      deployedStrategyCode !== SANDBOX_DEPLOYMENT_CODE ||
+      isDeploying ||
+      !editorCode?.trim()
+    ) {
+      return;
+    }
+
+    const dateDeployKey = [
+      selectedCurrency?.symbol || selectedCurrency?.name || "",
+      timeframeValue,
+      fromDate,
+      toDate,
+    ].join("|");
+
+    if (lastDateRangeAutoDeployKeyRef.current === dateDeployKey) {
+      return;
+    }
+
+    lastDateRangeAutoDeployKeyRef.current = dateDeployKey;
+
+    handleDeployCode(editorCode, {
+      timeframe: timeframeValue,
+      fromDate,
+      toDate,
+    });
+  }, [
+    deployedStrategyCode,
+    editorCode,
+    fromDate,
+    handleDeployCode,
+    isDeployed,
+    isDeploying,
+    selectedCurrency,
+    timeframeValue,
+    toDate,
+  ]);
 
   const addStockToDetails = (stock) => {
     if (detailsList.find((s) => s.symbol === stock.symbol)) return;
@@ -2864,6 +3266,145 @@ json.dumps(result)
       setIsWatchlistOpen(true);
     }
   }, [activeTab]);
+
+  const resolveBacktestSignalTime = useCallback((signal) => {
+    if (!signal) return null;
+
+    if (signal.unix_timestamp !== undefined && signal.unix_timestamp !== null) {
+      const unixTime = normalizeChartTime(signal.unix_timestamp);
+      return unixTime === null ? null : unixTime + CHART_TIME_OFFSET_SECONDS;
+    }
+
+    const sourceTime =
+      signal.timestamp ||
+      signal.createdAt ||
+      signal.updatedAt ||
+      signal.tick?.datetime ||
+      signal.response?.entry_time ||
+      signal.time;
+
+    return toChartTimestamp(sourceTime);
+  }, []);
+
+  const backtestSourceSignals = useMemo(() => {
+    if (Array.isArray(customSignals) && customSignals.length > 0) {
+      return customSignals;
+    }
+
+    if (Array.isArray(dashboardSignals) && dashboardSignals.length > 0) {
+      return dashboardSignals;
+    }
+
+    return [];
+  }, [customSignals, dashboardSignals]);
+
+  const resolvedBacktestRows = useMemo(() => {
+    return apiBacktestRows.length > 0 ? apiBacktestRows : backtestRows;
+  }, [apiBacktestRows, backtestRows]);
+
+  useEffect(() => {
+    const chartCandles = Array.isArray(candlesRef.current)
+      ? candlesRef.current
+      : [];
+
+    if (!backtestSourceSignals.length) {
+      setBacktestRows([]);
+      return;
+    }
+
+    const selectedName = selectedCurrency?.name;
+    const selectedSymbol = selectedCurrency?.symbol;
+    const timeframeSeconds = Math.max(
+      1,
+      TIMEFRAME_TO_SECONDS[timeframeValue] ?? 60,
+    );
+    const filteredSignals = backtestSourceSignals.filter((signal) => {
+        if (!signal?.symbol) return true;
+
+        return (
+          isSameSymbolName(signal.symbol, selectedName) ||
+          isSameSymbolName(signal.symbol, selectedSymbol)
+        );
+      });
+    const signalsToUse =
+      filteredSignals.length > 0 ? filteredSignals : backtestSourceSignals;
+
+    const rows = signalsToUse
+      .map((signal, index) => {
+        const chartTime = resolveBacktestSignalTime(signal);
+        if (!Number.isFinite(chartTime)) return null;
+
+        let matchedCandle = null;
+
+        if (chartCandles.length > 0) {
+          matchedCandle =
+            chartCandles.find((candle) => candle?.time === chartTime) || null;
+        }
+
+        if (!matchedCandle && chartCandles.length > 0) {
+          let smallestDiff = Infinity;
+
+          for (const candle of chartCandles) {
+            const candleTime = Number(candle?.time);
+            if (!Number.isFinite(candleTime)) continue;
+
+            const diff = Math.abs(candleTime - chartTime);
+            if (diff <= timeframeSeconds && diff < smallestDiff) {
+              matchedCandle = candle;
+              smallestDiff = diff;
+            }
+          }
+        }
+
+        const signalType = String(
+          signal.signalType || signal.response?.type || signal.side || "BUY",
+        ).toUpperCase();
+        const sourceTime =
+          matchedCandle?.time ||
+          chartTime ||
+          toChartTimestamp(signal.response?.entry_time) ||
+          toChartTimestamp(signal.timestamp);
+        const ohlc = getSignalBacktestOhlc(signal, matchedCandle);
+
+        if (
+          !matchedCandle &&
+          !Number.isFinite(ohlc.open) &&
+          !Number.isFinite(ohlc.high) &&
+          !Number.isFinite(ohlc.low) &&
+          !Number.isFinite(ohlc.close)
+        ) {
+          return null;
+        }
+
+        return {
+          id: `${sourceTime}-${signalType}-${index}`,
+          signalType,
+          label:
+            signal.label ||
+            signal.response?.label ||
+            signal.response?.type ||
+            signalType,
+          symbol: signal.symbol || selectedName || selectedSymbol || "--",
+          timeframe: timeframeValue,
+          dateTime: formatBacktestDateTime(sourceTime),
+          time: sourceTime,
+          open: ohlc.open,
+          high: ohlc.high,
+          low: ohlc.low,
+          close: ohlc.close,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.time - b.time);
+
+    setBacktestRows(rows);
+  }, [
+    backtestSourceSignals,
+    candleDataVersion,
+    selectedCurrency,
+    timeframeValue,
+    resolveBacktestSignalTime,
+  ]);
 
   const [indicatorConfigs, setIndicatorConfigs] = useState(() => {
     try {
@@ -4271,22 +4812,29 @@ json.dumps(result)
       !chartRef.current ||
       !selectedCurrency ||
       !timeframeValue ||
-      historyBackfillInFlightRef.current
+      historyBackfillInFlightRef.current ||
+      !Array.isArray(candlesRef.current) ||
+      candlesRef.current.length === 0
     ) {
       return false;
     }
 
     const visibleRange = chartRef.current.timeScale().getVisibleLogicalRange();
-    const currentFrom = new Date(fromDate);
+    const firstLoadedCandle = candlesRef.current[0];
+    const firstLoadedTime = Number(firstLoadedCandle?.time);
+    const currentFrom = Number.isFinite(firstLoadedTime)
+      ? new Date((firstLoadedTime - IST_OFFSET) * 1000)
+      : new Date(fromDate);
     if (Number.isNaN(currentFrom.getTime())) return false;
 
     const chunkDays = getBackfillChunkDays(timeframeValue);
     const newFrom = new Date(currentFrom);
     newFrom.setDate(newFrom.getDate() - chunkDays);
     const newFromDate = newFrom.toISOString().split("T")[0];
+    const currentFromDate = currentFrom.toISOString().split("T")[0];
 
     if (
-      newFromDate === fromDate ||
+      newFromDate === currentFromDate ||
       lastAutoBackfillFromRef.current === newFromDate
     ) {
       return false;
@@ -4300,7 +4848,7 @@ json.dumps(result)
       true,
       {
         fromDate: newFromDate,
-        toDate: fromDate,
+        toDate: currentFromDate,
       },
       {
         mergeMode: "prepend",
@@ -4317,13 +4865,19 @@ json.dumps(result)
       !chartRef.current ||
       !selectedCurrency ||
       !timeframeValue ||
-      historyBackfillInFlightRef.current
+      historyBackfillInFlightRef.current ||
+      !Array.isArray(candlesRef.current) ||
+      candlesRef.current.length === 0
     ) {
       return false;
     }
 
     const visibleRange = chartRef.current.timeScale().getVisibleLogicalRange();
-    const currentTo = new Date(toDate);
+    const lastLoadedCandle = candlesRef.current[candlesRef.current.length - 1];
+    const lastLoadedTime = Number(lastLoadedCandle?.time);
+    const currentTo = Number.isFinite(lastLoadedTime)
+      ? new Date((lastLoadedTime - IST_OFFSET) * 1000)
+      : new Date(toDate);
     if (Number.isNaN(currentTo.getTime())) return false;
 
     const today = new Date();
@@ -4350,7 +4904,7 @@ json.dumps(result)
     return requestHistoricalData(
       true,
       {
-        fromDate: toDate,
+        fromDate: currentToStr,
         toDate: newToDate,
       },
       {
@@ -4572,6 +5126,7 @@ json.dumps(result)
       const previousLength = candlesRef.current?.length || 0;
       const addedPoints = Math.max(0, mergedData.length - previousLength);
       candlesRef.current = mergedData;
+      setCandleDataVersion((prev) => prev + 1);
       historicalMergeModeRef.current = "replace";
       historyBackfillInFlightRef.current = false;
 
@@ -4832,15 +5387,17 @@ json.dumps(result)
         lastDeployedMarkersRef.current?.length > 0 &&
         seriesRef.current
       ) {
+        const shouldShowStrategyVisuals =
+          areStrategyVisualsVisibleRef.current !== false;
         if (!customScriptMarkersRef.current) {
           customScriptMarkersRef.current = createSeriesMarkers(
             seriesRef.current,
-            areStrategyVisualsVisible ? lastDeployedMarkersRef.current : [],
+            shouldShowStrategyVisuals ? lastDeployedMarkersRef.current : [],
           );
           seriesRef.current.attachPrimitive(customScriptMarkersRef.current);
         } else {
           customScriptMarkersRef.current.setMarkers(
-            areStrategyVisualsVisible ? lastDeployedMarkersRef.current : [],
+            shouldShowStrategyVisuals ? lastDeployedMarkersRef.current : [],
           );
         }
       }
@@ -4911,6 +5468,41 @@ json.dumps(result)
             fetchFrom,
             fetchTo
           );
+        }
+
+        const effectiveFetchFrom =
+          requestMeta?.pendingFromDate ||
+          pendingHistoricalFromDateRef.current ||
+          fromDate;
+        const effectiveFetchTo =
+          requestMeta?.pendingToDate ||
+          pendingHistoricalToDateRef.current ||
+          toDate;
+
+        if (
+          (mergeMode === "prepend" || mergeMode === "append") &&
+          isDeployed &&
+          deployedStrategyCode === SANDBOX_DEPLOYMENT_CODE &&
+          !isDeploying &&
+          editorCode?.trim()
+        ) {
+          const paginationDeployKey = [
+            mergeMode,
+            effectiveFetchFrom,
+            effectiveFetchTo,
+            timeframeValue,
+            selectedCurrency?.symbol || selectedCurrency?.name || "",
+            mergedData.length,
+          ].join("|");
+
+          if (lastPaginationAutoDeployKeyRef.current !== paginationDeployKey) {
+            lastPaginationAutoDeployKeyRef.current = paginationDeployKey;
+            handleDeployCode(editorCode, {
+              fromDate: effectiveFetchFrom,
+              toDate: effectiveFetchTo,
+              timeframe: timeframeValue,
+            });
+          }
         }
 
         setMainChartLoading(false);
@@ -5047,6 +5639,7 @@ json.dumps(result)
         if (existingIndex >= 0) candlesRef.current[existingIndex] = updatedBar;
         else candlesRef.current.push(updatedBar);
         candlesRef.current.sort((a, b) => a.time - b.time);
+        setCandleDataVersion((prev) => prev + 1);
         currentCandleRef.current =
           candlesRef.current[candlesRef.current.length - 1] || updatedBar;
         lastCandleTimeRef.current = normalizedTime;
@@ -5241,9 +5834,21 @@ json.dumps(result)
         return;
       }
 
-      if (range.from <= 25) {
+      const barsInfo =
+        seriesRef.current &&
+        typeof seriesRef.current.barsInLogicalRange === "function"
+          ? seriesRef.current.barsInLogicalRange(range)
+          : null;
+      const shouldLoadOlder = barsInfo
+        ? barsInfo.barsBefore < 50
+        : range.from <= 25;
+      const shouldLoadNewer = barsInfo
+        ? barsInfo.barsAfter < 50
+        : range.to >= candlesRef.current.length - 25;
+
+      if (shouldLoadOlder) {
         requestOlderHistoricalChunk();
-      } else if (range.to >= candlesRef.current.length - 25) {
+      } else if (shouldLoadNewer) {
         requestNewerHistoricalChunk();
       }
     };
@@ -5754,6 +6359,7 @@ json.dumps(result)
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
                 onCodeClick={() => setIsCodeEditorOpen((prev) => !prev)}
+                onBacktestClick={() => setActiveTab("Backtest")}
                 onStrategyClick={handleStrategyClick}
                 onGoToDate={handleGoToDate}
                 isFullscreen={isFullscreen}
@@ -6636,6 +7242,233 @@ json.dumps(result)
                       canShowUpdate={Boolean(activeStrategyRecord?.id)}
                       loadedStrategyName={activeStrategyRecord?.name || ""}
                     />
+                  )}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  borderLeft: isWatchlistOpen
+                    ? "1px solid var(--border-color)"
+                    : "none",
+                  borderRight: "1px solid var(--border-color)",
+                  display: activeTab === "Backtest" ? "flex" : "none",
+                  flexDirection: "column",
+                  minHeight: "100%",
+                  background: "var(--bg-primary)",
+                }}
+              >
+                <div
+                  style={{
+                    padding: "18px 20px 12px",
+                    borderBottom: "1px solid var(--border-color)",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "10px",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: "1rem",
+                        fontWeight: 700,
+                        color: "var(--text-primary)",
+                      }}
+                    >
+                      Backtest Data
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "0.85rem",
+                        color: "var(--text-secondary)",
+                        marginTop: "4px",
+                      }}
+                    >
+                      Signal timestamps matched to chart candles for OHLC-based backtesting.
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "0.82rem",
+                        color: "var(--text-secondary)",
+                        padding: "6px 10px",
+                        border: "1px solid var(--border-color)",
+                        borderRadius: "999px",
+                      }}
+                    >
+                      Rows: {resolvedBacktestRows.length}
+                    </div>
+                    <button
+                      onClick={() => setActiveTab("Chart")}
+                      style={{
+                        padding: "8px 14px",
+                        borderRadius: "8px",
+                        border: "1px solid var(--border-color)",
+                        background: "var(--bg-secondary)",
+                        color: "var(--text-primary)",
+                        cursor: "pointer",
+                        fontSize: "0.85rem",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    flex: 1,
+                    overflow: "auto",
+                    padding: "16px 20px 20px",
+                  }}
+                >
+                  {resolvedBacktestRows.length === 0 ? (
+                    <div
+                      style={{
+                        minHeight: "220px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "var(--text-secondary)",
+                        border: "1px dashed var(--border-color)",
+                        borderRadius: "12px",
+                        background: "var(--bg-secondary)",
+                        padding: "24px",
+                        textAlign: "center",
+                      }}
+                    >
+                      No backtest rows yet. Run or deploy a strategy so matching candles can be captured here.
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        overflowX: "auto",
+                        border: "1px solid var(--border-color)",
+                        borderRadius: "12px",
+                        background: "var(--bg-secondary)",
+                      }}
+                    >
+                      <table
+                        style={{
+                          width: "100%",
+                          borderCollapse: "collapse",
+                          minWidth: "920px",
+                        }}
+                      >
+                        <thead>
+                          <tr style={{ background: "rgba(255,255,255,0.03)" }}>
+                            {[
+                              "Signal",
+                              "Event",
+                              "Date & Time",
+                              "Symbol",
+                              "Timeframe",
+                              "Open",
+                              "High",
+                              "Low",
+                              "Close",
+                            ].map((heading) => (
+                              <th
+                                key={heading}
+                                style={{
+                                  textAlign: "left",
+                                  padding: "12px 14px",
+                                  fontSize: "0.8rem",
+                                  letterSpacing: "0.04em",
+                                  color: "var(--text-secondary)",
+                                  borderBottom: "1px solid var(--border-color)",
+                                }}
+                              >
+                                {heading}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {resolvedBacktestRows.map((row) => (
+                            <tr key={row.id}>
+                              <td
+                                style={{
+                                  padding: "12px 14px",
+                                  borderBottom: "1px solid var(--border-color)",
+                                  color:
+                                    row.signalType === "SELL" ||
+                                    row.signalType === "PUT"
+                                      ? "#ef4444"
+                                      : "#22c55e",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {row.signalType}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "12px 14px",
+                                  borderBottom: "1px solid var(--border-color)",
+                                  color: "var(--text-primary)",
+                                }}
+                              >
+                                {row.label || "--"}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "12px 14px",
+                                  borderBottom: "1px solid var(--border-color)",
+                                  color: "var(--text-primary)",
+                                }}
+                              >
+                                {row.dateTime}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "12px 14px",
+                                  borderBottom: "1px solid var(--border-color)",
+                                  color: "var(--text-primary)",
+                                }}
+                              >
+                                {row.symbol}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "12px 14px",
+                                  borderBottom: "1px solid var(--border-color)",
+                                  color: "var(--text-primary)",
+                                }}
+                              >
+                                {row.timeframe}
+                              </td>
+                              {["open", "high", "low", "close"].map((field) => (
+                                <td
+                                  key={field}
+                                  style={{
+                                    padding: "12px 14px",
+                                    borderBottom: "1px solid var(--border-color)",
+                                    color: "var(--text-primary)",
+                                    fontVariantNumeric: "tabular-nums",
+                                  }}
+                                >
+                                  {Number.isFinite(Number(row[field]))
+                                    ? Number(row[field]).toFixed(2)
+                                    : "--"}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </div>
               </div>

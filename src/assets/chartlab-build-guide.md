@@ -9,7 +9,6 @@ This guide focuses on the ChartLab execution model used by the editor:
 - Read market data from `ctx`.
 - Use `ctx.ta` helpers for aligned calculations.
 - Emit visuals with `plot`, `fill`, `hline`, `barcolor`, and related helpers.
-- Emit trade markers with `signal(...)`.
 
 ## Minimal Script
 
@@ -300,35 +299,6 @@ def run(ctx):
     barcolor(bear, "#ff0062")
 ```
 
-## Signals
-
-Signals create chart markers and can also feed strategy-style workflows.
-
-```python
-from chartlab import indicator, plot, signal
-
-@indicator(name="Cross Signals", pane="overlay")
-def run(ctx):
-    fast = ctx.ta.ema(ctx.close, length=9)
-    slow = ctx.ta.ema(ctx.close, length=21)
-
-    plot(fast, title="Fast", color="#22c55e", width=2)
-    plot(slow, title="Slow", color="#f59e0b", width=2)
-
-    buy = ctx.ta.crossover(fast, slow)
-    sell = ctx.ta.crossunder(fast, slow)
-
-    signal(buy, side="BUY", label="", price=ctx.close)
-    signal(sell, side="SELL", label="", price=ctx.close)
-```
-
-Signal notes:
-
-- `condition` should be a candle-aligned boolean series.
-- `side` usually uses `BUY`, `SELL`, or another uppercase label you want to display.
-- `label=""` keeps markers visually cleaner when you do not want extra text.
-- `price=ctx.close` helps place the marker on the current bar price.
-
 ## Input Controls
 
 Inputs let the frontend expose configurable strategy settings.
@@ -405,15 +375,15 @@ A practical build pattern is:
 
 - Read source series from `ctx`.
 - Compute a trend filter.
-- Compute entry trigger logic.
+- Compute trigger logic.
 - Plot the important visual series.
 - Add fills or levels for readability.
-- Emit signals only where the final condition is true.
+- Keep event conditions aligned to the final setup.
 
 Example:
 
 ```python
-from chartlab import indicator, plot, fill, signal
+from chartlab import indicator, plot, fill
 
 @indicator(name="Trend + Trigger", pane="overlay")
 def run(ctx):
@@ -429,9 +399,6 @@ def run(ctx):
 
     long_entry = (ctx.close > trend) & ctx.ta.crossover(trigger, pullback)
     short_entry = (ctx.close < trend) & ctx.ta.crossunder(trigger, pullback)
-
-    signal(long_entry, side="BUY", label="", price=ctx.close)
-    signal(short_entry, side="SELL", label="", price=ctx.close)
 ```
 
 ## Safe Imports
@@ -464,7 +431,6 @@ def run(ctx):
 - Use `ctx.ta` before writing manual rolling logic.
 - Use clear plot titles because they appear in the legend.
 - Use separate panes for oscillators and volume-style studies.
-- Keep signal labels minimal when the chart already shows direction.
 - Test one visual layer at a time when a complex script does not render as expected.
 
 ## Common Mistakes
@@ -474,7 +440,6 @@ def run(ctx):
 - Comparing against moving-average values before checking for `None`.
 - Calling a TA helper with unsupported argument names.
 - Plotting volume or oscillator values on `overlay` when a separate pane is better.
-- Emitting too many signals because the condition stays true for many candles instead of only the crossover candle.
 
 ## Debug Workflow
 
@@ -483,13 +448,12 @@ When a script does not behave correctly:
 - Start with one `plot(...)` using `ctx.close`.
 - Add one calculation at a time.
 - Plot intermediate values before final conditions.
-- Convert continuous conditions into event conditions using `crossover` or `crossunder` if markers are too dense.
-- Add `price=ctx.close` to signals if you want marker placement to be explicit.
+- Convert continuous conditions into event conditions using `crossover` or `crossunder` if your logic is too dense.
 
 ## Copyable Starter
 
 ```python
-from chartlab import indicator, plot, signal, fill, hline
+from chartlab import indicator, plot, fill, hline
 
 @indicator(name="New Strategy", pane="overlay")
 def run(ctx):
@@ -511,7 +475,4 @@ def run(ctx):
 
     buy = ctx.ta.crossover(fast, slow) & (strength > 50)
     sell = ctx.ta.crossunder(fast, slow) & (strength < 50)
-
-    signal(buy, side="BUY", label="", price=ctx.close)
-    signal(sell, side="SELL", label="", price=ctx.close)
 ```

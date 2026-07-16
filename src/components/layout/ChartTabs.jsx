@@ -12,6 +12,7 @@ const ChartTabs = ({
   setActiveTab,
   onCodeClick,
   onStrategyClick,
+  onBacktestClick,
   onGoToDate,
   isFullscreen,
   onToggleFullscreen,
@@ -89,7 +90,7 @@ const ChartTabs = ({
     },
   };
 
-  const tabs = ["Chart", "Overview", "Option Chain", "OI Analytics"];
+  const tabs = ["Chart", "Backtest", "Overview", "Option Chain", "OI Analytics"];
 
   return (
     <div className="chart-tabs-container">
@@ -311,6 +312,16 @@ const ChartTabs = ({
         <button className="chart-goto-btn" title="Go to" onClick={() => setShowGoToDate(true)}>
           <TbCalendarShare size={14} />
           GO TO
+        </button>
+        <button
+          title="Open Backtest"
+          onClick={() => {
+            if (onBacktestClick) onBacktestClick();
+            else setActiveTab("Backtest");
+          }}
+          className="chart-strategy-btn"
+        >
+          <SiVitest size={14} /> BACKTEST
         </button>
         <button
           title="Run Strategy"
