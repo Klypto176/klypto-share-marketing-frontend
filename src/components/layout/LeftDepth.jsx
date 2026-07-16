@@ -235,9 +235,9 @@ const LeftDepth = ({ onClose, predictResults, setSelectedCurrency, isPredicting,
             textTransform: "capitalize",
             whiteSpace: "nowrap"
           }}>
-            Status: {predictionStatus.phase || predictionStatus.status || "Running"}
+            Status: {predictionStatus.phase || predictionStatus.status }
           </span>
-          {(predictionStatus.trades_found !== undefined) && (
+          {
             <span style={{
               fontSize: "0.75rem",
               fontWeight: "600",
@@ -248,9 +248,9 @@ const LeftDepth = ({ onClose, predictResults, setSelectedCurrency, isPredicting,
               border: "1px solid rgba(59, 130, 246, 0.3)",
               whiteSpace: "nowrap"
             }}>
-              Trades: {predictionStatus.trades_found}
+              Trades: {predictionStatus.trades_found ?? 0}
             </span>
-          )}
+          }
         </div>
       )}
     </div>

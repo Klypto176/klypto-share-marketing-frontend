@@ -1129,7 +1129,15 @@ export default function Candlestick() {
           } else {
             utcTime = Math.floor(new Date(utcStr).getTime() / 1000);
           }
-          const chartTime = Number(utcTime) + 19800; // IST_OFFSET
+          
+          const intervalSeconds = (() => {
+            const val = parseInt(timeframeValue || "5");
+            if (String(timeframeValue).includes("h")) return val * 3600;
+            if (String(timeframeValue).includes("d")) return val * 86400;
+            return val * 60;
+          })();
+          
+          const chartTime = Number(utcTime) + 19800 + intervalSeconds; // IST_OFFSET + shift to trade entry candle
 
           // Only plot marker if the signal is for the CURRENTLY selected stock
           const isCurrentStock =
@@ -2072,10 +2080,17 @@ json.dumps(result)
         }
       }
 
+      const intervalSeconds = (() => {
+        const val = parseInt(timeframeValue || "5");
+        if (String(timeframeValue).includes("h")) return val * 3600;
+        if (String(timeframeValue).includes("d")) return val * 86400;
+        return val * 60;
+      })();
+
       const markers = response?.markers
         .map((marker) => ({
           // marker.datetimeUTC is in seconds (UTC) — align with candle times (which use IST_OFFSET)
-          time: Number(marker.datetimeUTC) + IST_OFFSET,
+          time: Number(marker.datetimeUTC) + IST_OFFSET + intervalSeconds,
           position: marker.type === "BUY" ? "belowBar" : "aboveBar",
           color: marker.type === "BUY" ? "#22ab94" : "#ef4444",
           shape: marker.type === "BUY" ? "arrowUp" : "arrowDown",
