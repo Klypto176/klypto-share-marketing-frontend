@@ -94,7 +94,22 @@ const LeftDepth = ({ onClose, predictResults, setSelectedCurrency, isPredicting,
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <span>Strategy Results</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span>Strategy Results</span> 
+          {predictResults && predictResults.length > 0 && (
+            <span style={{
+              fontSize: "0.7rem",
+              fontWeight: "600",
+              padding: "2px 8px",
+              borderRadius: "12px",
+              backgroundColor: "rgba(59, 130, 246, 0.15)",
+              color: "#3b82f6",
+              border: "1px solid rgba(59, 130, 246, 0.3)"
+            }}>
+              {predictResults.length}
+            </span>
+          )}
+        </div>
         <FiX style={{ cursor: "pointer" }} onClick={onClose} />
       </div>
 
@@ -192,12 +207,52 @@ const LeftDepth = ({ onClose, predictResults, setSelectedCurrency, isPredicting,
               </div>
             );
           })
-        ) : (
+        ) : (predictionStatus?.status === 'running' || predictionStatus?.phase === 'predicting' || predictionStatus?.phase === 'starting' || predictionStatus?.status === 'starting') ? null : (
           <div style={{ textAlign: "center", marginTop: "20px", color: "var(--text-secondary)", fontSize: "0.85rem" }}>
             No results available.
           </div>
         )}
       </div>
+      
+      {predictionStatus && (
+        <div style={{
+          display: "flex",
+          justifyContent: "space-between",
+          padding: "12px 16px",
+          borderTop: "1px solid var(--border-color)",
+          background: "var(--bg-secondary)",
+          alignItems: "center",
+          gap: "8px"
+        }}>
+          <span style={{
+            fontSize: "0.75rem",
+            fontWeight: "600",
+            padding: "4px 10px",
+            borderRadius: "6px",
+            backgroundColor: (predictionStatus.phase === "complete" || predictionStatus.status === "done") ? "rgba(34, 197, 94, 0.15)" : "rgba(234, 179, 8, 0.15)",
+            color: (predictionStatus.phase === "complete" || predictionStatus.status === "done") ? "#22c55e" : "#eab308",
+            border: `1px solid ${(predictionStatus.phase === "complete" || predictionStatus.status === "done") ? "rgba(34, 197, 94, 0.3)" : "rgba(234, 179, 8, 0.3)"}`,
+            textTransform: "capitalize",
+            whiteSpace: "nowrap"
+          }}>
+            Status: {predictionStatus.phase || predictionStatus.status || "Running"}
+          </span>
+          {(predictionStatus.trades_found !== undefined) && (
+            <span style={{
+              fontSize: "0.75rem",
+              fontWeight: "600",
+              padding: "4px 10px",
+              borderRadius: "6px",
+              backgroundColor: "rgba(59, 130, 246, 0.15)",
+              color: "#3b82f6",
+              border: "1px solid rgba(59, 130, 246, 0.3)",
+              whiteSpace: "nowrap"
+            }}>
+              Trades: {predictionStatus.trades_found}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 };

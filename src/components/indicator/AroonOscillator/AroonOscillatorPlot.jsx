@@ -39,14 +39,14 @@ export default function AroonOscillatorPlot({
       bottomFillColor1: style?.oscillatorFill?.palette?.topFillColor2,
       bottomFillColor2: style?.oscillatorFill?.palette?.topFillColor2,
 
-      lineWidth: style?.oscillator?.width || 2,
-      lineStyle: style?.oscillator?.lineStyle ?? 0,
+      lineWidth: Number(style?.oscillator?.width || 2),
+      lineStyle: Number(style?.oscillator?.lineStyle ?? 0),
     });
 
     const formattedData = data
       .filter((d) => d && d.time != null && (d.aroonOsc != null || d.value != null))
       .map((d) => ({
-        time: Number(d.time) + 19800,
+        time: Number(d.time),
         value: Number(d.aroonOsc ?? d.value),
       }));
 
@@ -96,8 +96,8 @@ export default function AroonOscillatorPlot({
       visible: style?.oscillator?.visible ?? true,
 
       // ✅ LINE STYLE FIX
-      lineWidth: style?.oscillator?.width,
-      lineStyle: style?.oscillator?.lineStyle,
+      lineWidth: style?.oscillator?.width !== undefined ? Number(style.oscillator.width) : undefined,
+      lineStyle: style?.oscillator?.lineStyle !== undefined ? Number(style.oscillator.lineStyle) : undefined,
 
       // ✅ COLOR FIX
       topLineColor: style?.oscillator?.palette?.up,

@@ -2768,29 +2768,37 @@ json.dumps(result)
       if (style?.visible === false) return null;
       let color = style?.color;
 
-      const group = indicatorSeriesRef.current?.[id];
-      if (group) {
-        if (typeof group.options === "function") {
-          const opts = group.options();
-          color = opts.color || opts.lineColor || opts.topColor || color;
-        } else {
-          const seriesKey = Object.keys(group).find(
-            (k) => typeof group[k]?.options === "function",
-          );
-          if (seriesKey) {
-            const opts = group[seriesKey].options();
-            color = opts.color || opts.lineColor || opts.topColor || color;
-          }
-        }
-      }
-      color = toFullOpacity(color || "#333");
-
       const val =
         value != null
           ? typeof value === "object"
             ? Object.values(value)[0]
             : value
           : null;
+
+      const group = indicatorSeriesRef.current?.[id];
+      if (group) {
+        if (typeof group.options === "function") {
+          const opts = group.options();
+          color = opts.color || opts.lineColor || opts.topColor || opts.topLineColor || color;
+          if (opts.topLineColor && opts.bottomLineColor && val != null) {
+            const baseVal = opts.baseValue?.price ?? 0;
+            color = Number(val) < baseVal ? opts.bottomLineColor : opts.topLineColor;
+          }
+        } else {
+          const seriesKey = Object.keys(group).find(
+            (k) => typeof group[k]?.options === "function",
+          );
+          if (seriesKey) {
+            const opts = group[seriesKey].options();
+            color = opts.color || opts.lineColor || opts.topColor || opts.topLineColor || color;
+            if (opts.topLineColor && opts.bottomLineColor && val != null) {
+              const baseVal = opts.baseValue?.price ?? 0;
+              color = Number(val) < baseVal ? opts.bottomLineColor : opts.topLineColor;
+            }
+          }
+        }
+      }
+      color = toFullOpacity(color || "#333");
       return (
         <span
           id={`indicator-val-${id}-main`}
@@ -2809,17 +2817,22 @@ json.dumps(result)
 
     if (keysToShow) {
       const hiddenKeys = [
-        // "upper",
-        // "middle",
+        "upperRSI",
+        "middleRSI",
+        "lowerRSI",
         "middleBand",
         "lowerBand",
         "upperBand",
         "zero",
         "bgFill",
+        "bg",
         "zeroLine",
         "bandBackground",
         "overboughtFill",
         "oversoldFill",
+        "lowerLevel",
+        "upperLevel",
+        "center"
       ];
 
       return keysToShow
@@ -2850,7 +2863,11 @@ json.dumps(result)
           const group = indicatorSeriesRef.current?.[id];
           if (group && group[key] && typeof group[key].options === "function") {
             const opts = group[key].options();
-            color = opts.color || opts.lineColor || opts.topColor || color;
+            color = opts.color || opts.lineColor || opts.topColor || opts.topLineColor || color;
+            if (opts.topLineColor && opts.bottomLineColor && val != null) {
+              const baseVal = opts.baseValue?.price ?? 0;
+              color = Number(val) < baseVal ? opts.bottomLineColor : opts.topLineColor;
+            }
           }
 
           color = toFullOpacity(color || "#333");
@@ -4616,7 +4633,7 @@ json.dumps(result)
           height: isFullscreen ? "100vh" : "calc(100vh - 60px)",
           display: "flex",
           flexDirection: "column",
-          overflowY: "auto",
+          overflow: "hidden",
           ...(isFullscreen
             ? {
                 position: "fixed",
@@ -4636,7 +4653,7 @@ json.dumps(result)
             flexDirection: "column",
             width: "100%",
             flex: 1,
-            minHeight: "fit-content",
+            minHeight: 0,
           }}
         >
           <div
@@ -4645,7 +4662,7 @@ json.dumps(result)
               flexDirection: "row",
               width: "100%",
               flex: 1,
-              minHeight: "fit-content",
+              minHeight: 0,
             }}
           >
             <style>{`
@@ -4777,7 +4794,7 @@ json.dumps(result)
                 borderRight: "1px solid var(--border-color)",
                 display: "flex",
                 flexDirection: "column",
-                minHeight: "100%",
+                minHeight: 0,
                 transition: "border-color 0.3s ease",
               }}
             >
@@ -4861,6 +4878,7 @@ json.dumps(result)
                       minWidth: 0,
                       overflow: "hidden",
                       position: "relative",
+                      minHeight: 0,
                     }}
                   >
                     {/* main chart */}
@@ -4873,7 +4891,7 @@ json.dumps(result)
                         overflow: "hidden",
                         display: "flex",
                         flexDirection: "column",
-                        minHeight: 450,
+                        minHeight: 0,
                         cursor: activeTool ? "crosshair" : "default",
                       }}
                       onClick={() => setGoToMarker(null)}

@@ -679,17 +679,17 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instance
       const rows = [
         { key: "rsi", label: "RSI", type: "line" },
         {
-          key: "upper",
+          key: "upperRSI",
           label: "RSI Upper Band",
           value: 70,
         },
         {
-          key: "middle",
+          key: "middleRSI",
           label: "RSI Middle Band",
           value: 50,
         },
         {
-          key: "lower",
+          key: "lowerRSI",
           label: "RSI Lower Band",
           value: 30,
         },

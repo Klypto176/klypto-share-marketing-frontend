@@ -166,7 +166,7 @@ export let indicatorConfigDefault = {
   RSI: {
     length: 14,
     source: "close",
-    maType: "none",
+    maType: "SMA",
     maLength: 14,
     bbStdDev: 2,
   },
@@ -459,13 +459,11 @@ export let indicatorStyleDefault = {
       topFillColor1: "rgba(38,166,106,0.1)",
       topFillColor2: "rgba(38,166,106,0.2)",
     },
-
     osFill: {
       visible: true,
       bottomFillColor1: "rgba(239,83,80,0.1)",
       bottomFillColor2: "rgba(239,83,80,0.4)",
     },
-
     bbFill: {
       visible: true,
       topFillColor1: "rgba(76,175,80,0.2)",

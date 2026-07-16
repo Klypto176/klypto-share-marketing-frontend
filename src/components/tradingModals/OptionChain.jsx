@@ -21,10 +21,12 @@ const OptionChain = ({ selectedCurrency, onSymbolChange, onBack }) => {
 
   // Sync selectedSymbol with selectedCurrency from the chart/watchlist
   useEffect(() => {
-    if (selectedCurrency?.name) {
-      setSelectedSymbol(selectedCurrency.name);
+    const incomingSymbol = selectedCurrency?.name || selectedCurrency?.symbol;
+    if (incomingSymbol && incomingSymbol !== selectedSymbol) {
+      setSelectedSymbol(incomingSymbol);
+      setSelectedContract(null);
     }
-  }, [selectedCurrency]);
+  }, [selectedCurrency, selectedSymbol]);
 
   // ── Chart state ──
   const [spotPrice, setSpotPrice] = useState(null);
@@ -139,14 +141,18 @@ const OptionChain = ({ selectedCurrency, onSymbolChange, onBack }) => {
         setSelectedContract((prev) => {
           if (!prev) {
             const currentSym = (selectedSymbolRef.current || "").toLowerCase();
-            let first = response.data.find(c => (c.symbol || "").toLowerCase() === currentSym);
+            let first = response.data.find(c => {
+              const sym = (c.symbol || c.name || "").toLowerCase();
+              return sym === currentSym;
+            });
             
             if (!first) {
               first = response.data[0]; // fallback if the requested symbol isn't in the list
             }
             
             if (first) {
-              setSelectedSymbol(first.symbol);
+              const newSym = first.symbol || first.name;
+              setSelectedSymbol(newSym);
               setActiveExpiry(first.expiry ?? first.expiry_date);
               // Do NOT setSymbolSearch here, so the default filter behavior applies
               return first;
@@ -574,7 +580,7 @@ const OptionChain = ({ selectedCurrency, onSymbolChange, onBack }) => {
                 border: "1px solid var(--border-color)",
                 borderRadius: 6,
                 zIndex: 100,
-                minWidth: 400,
+                width: "100%",
                 boxShadow: "0 4px 16px rgba(0,0,0,0.6)",
                 overflow: "hidden",
               }}
