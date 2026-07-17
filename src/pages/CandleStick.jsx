@@ -996,9 +996,6 @@ export default function Candlestick() {
       let strategyName =
         activeStrategyRecord?.name?.trim() || draftStrategyName?.trim() || "";
 
-        return strategyName;
-      }
-
       if (strategyName) {
         return strategyName;
       }
@@ -2097,33 +2094,21 @@ export default function Candlestick() {
           series.applyOptions({ visible: nextVisible });
         } catch (error) {
           console.warn("Unable to toggle strategy series visibility:", error);
+        }
+      });
+
+      if (customScriptMarkersRef.current) {
+        try {
+          customScriptMarkersRef.current.setMarkers(
+            visible ? lastDeployedMarkersRef.current || [] : [],
+          );
+        } catch (error) {
+          console.warn("Unable to toggle strategy markers visibility:", error);
+        }
+      }
     },
-    [areStrategyVisualsVisible],
+    [],
   );
-
-  const applyStrategyVisualVisibility = useCallback((visible) => {
-    const seriesList = Array.isArray(customScriptSeriesRef.current)
-      ? customScriptSeriesRef.current
-      : [];
-
-    seriesList.forEach((series) => {
-      try {
-        series.applyOptions({ visible });
-      } catch (error) {
-        console.warn("Unable to toggle strategy series visibility:", error);
-      }
-    });
-
-    if (customScriptMarkersRef.current) {
-      try {
-        customScriptMarkersRef.current.setMarkers(
-          visible ? lastDeployedMarkersRef.current || [] : [],
-        );
-      } catch (error) {
-        console.warn("Unable to toggle strategy markers visibility:", error);
-      }
-    }
-  }, []);
 
   const handleToggleStrategyVisuals = useCallback(() => {
     setAreStrategyVisualsVisible((prev) => {
@@ -5015,6 +5000,7 @@ json.dumps(result)
         return false;
       }
       lastHistoricalRequestRef.current = { key: requestKey, at: now };
+      const requestId = `hist-${now}-${Math.random().toString(36).slice(2, 8)}`;
       const historicalPayload = {
         ...historicalPayloadBase,
         pendingToDate: options.pendingToDate || null,
@@ -5022,7 +5008,7 @@ json.dumps(result)
         symbol: selectedCurrency?.name,
         timeframe: timeframeValue,
         requestId,
-      });
+      };
       if ((options.mergeMode || "replace") === "replace") {
         latestReplaceRequestIdRef.current = requestId;
       }
