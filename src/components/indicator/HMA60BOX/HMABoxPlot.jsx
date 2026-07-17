@@ -89,7 +89,7 @@ export default function HMABoxPlot({
     // Background Histogram
     // =========================
     if (result.data.bgColors && result.data.bgColors.length > 0) {
-      const bgSeries = addSeries(`${id}_bg`, HistogramSeries, {
+      const bgSeries = addSeries(id, HistogramSeries, {
         lastValueVisible: false,
         priceLineVisible: false,
         baseLineVisible: false,
@@ -113,7 +113,7 @@ export default function HMABoxPlot({
         // Fallback for older versions if needed
       }
       
-      groupedSeries.bgSeries = bgSeries;
+      groupedSeries._bgSeries = bgSeries;
     }
 
     indicatorSeriesRef.current[id] = groupedSeries;

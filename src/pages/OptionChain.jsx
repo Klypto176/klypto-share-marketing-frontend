@@ -889,13 +889,21 @@ const OptionChain = () => {
                   value={expiryFilter}
                   onChange={(e) => {
                     const val = e.target.value;
-                    const expiryTime = parseDDMMYYYY(val);
-                    const selectedDateTime = parseYYYYMMDD(filterDate);
-                    if (expiryTime > 0 && selectedDateTime > 0 && expiryTime < selectedDateTime) {
-                      toast.error('Expiry cannot be less than the selected date', { theme: 'dark' });
-                      return;
-                    }
                     setExpiryFilter(val);
+                    
+                    if (val) {
+                      const [d, m, y] = val.split("-");
+                      const dateObj = new Date(`${y}-${m}-${d}`);
+                      if (!isNaN(dateObj.getTime())) {
+                        const year = dateObj.getFullYear();
+                        const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                        const day = String(dateObj.getDate()).padStart(2, '0');
+                        const formattedDate = `${year}-${month}-${day}`;
+                        setFilterDate(formattedDate);
+                        setAppliedFilterDate(formattedDate);
+                      }
+                    }
+                    
                     setCurrentPage(1);
                   }}
                   className="oc-select"

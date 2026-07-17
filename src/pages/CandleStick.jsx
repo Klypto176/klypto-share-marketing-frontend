@@ -2459,7 +2459,14 @@ json.dumps(result)
     // Protect Lightweight Charts from crashing when indicators pass null/NaN values
     const originalSetData = series.setData.bind(series);
     series.setData = (data) => {
-      if (!Array.isArray(data)) return originalSetData(data);
+      if (!Array.isArray(data)) {
+        try {
+          return originalSetData(data);
+        } catch (e) {
+          if (!e.message?.includes("Object is disposed")) throw e;
+          return;
+        }
+      }
 
       const hasValidTime = (time) => {
         if (time === undefined || time === null || time === "") return false;
@@ -2577,7 +2584,11 @@ json.dumps(result)
 
     charts.forEach((chart) => {
       if (!chart || chart === sourceChart) return;
-      chart.timeScale().setVisibleLogicalRange(logicalRange);
+      try {
+        chart.timeScale().setVisibleLogicalRange(logicalRange);
+      } catch (e) {
+        if (!e.message?.includes("Object is disposed")) throw e;
+      }
     });
     syncingRef.current = false;
   }
@@ -2706,7 +2717,11 @@ json.dumps(result)
           (item) => item.series !== series,
         );
       }
-      originalRemoveSeries(series);
+      try {
+        originalRemoveSeries(series);
+      } catch (e) {
+        if (!e.message?.includes("Object is disposed")) throw e;
+      }
     };
 
     chartRef.current = chart;
@@ -2847,7 +2862,8 @@ json.dumps(result)
         "oversoldFill",
         "lowerLevel",
         "upperLevel",
-        "center"
+        "center",
+        "oscillatorFill"
       ];
 
       return keysToShow
@@ -4144,6 +4160,7 @@ json.dumps(result)
           "oversoldFill",
           "bandBackground",
           "bgFill",
+          "zeroLine",
         ];
 
         Object.entries(seriesGroup).forEach(([lineName, series]) => {
@@ -4191,16 +4208,42 @@ json.dumps(result)
                 instType === "CCI"
                   ? (style?.lowerBand?.value ?? -100)
                   : (style?.lower?.value ?? 30);
+            } else if (lineName === "zeroLine") {
+              value = style?.zeroLine?.value ?? 0;
             }
           } else {
-            // For single-line indicators when lineName doesn't exactly match
-            value = lastPoint.value ?? lastPoint[indicatorType.toLowerCase()];
+            // Check if it's explicitly configured as a static reference line
+            const lineStyleCfg =
+              indicatorStyleRef.current?.[instId]?.[lineName] ||
+              indicatorStyleRef.current?.[instType]?.[lineName];
+            
+            if (lineStyleCfg?.value !== undefined) {
+              value = lineStyleCfg.value;
+            } else {
+              // For single-line indicators when lineName doesn't exactly match
+              value = lastPoint.value ?? lastPoint[indicatorType.toLowerCase()];
+            }
           }
 
           if (value == null || !Number.isFinite(Number(value))) return;
 
           try {
-            series.update({ time: pointTime, value: Number(value) });
+            const updateObj = { time: pointTime, value: Number(value) };
+            if (lineName === "histogram") {
+              const isRising = Number(value) >= 0;
+              updateObj.color = lastPoint.histogramColor
+                || lastPoint.color
+                || (isRising ? "rgba(0,255,127,0.6)" : "rgba(255,0,0,0.6)");
+            } else if (lineName === "directionalScore" && instType === "HEALTHY_BOX") {
+              let hColor = "rgba(128,128,128,1)";
+              if (lastPoint.healthy || lastPoint.healthySignal) {
+                hColor = (lastPoint.bull || lastPoint.bullSignal)
+                  ? "rgba(0,255,0,1)"
+                  : "rgba(255,0,0,1)";
+              }
+              updateObj.color = hColor;
+            }
+            series.update(updateObj);
 
             // Update associated data array used for canvas drawings (clouds/bands)
             const dataArrayKey = `${lineName}Data`;
@@ -4700,7 +4743,7 @@ json.dumps(result)
                 }
                 .buy-sell-btn {
                   padding: 4px 8px !important;
-                  font-size: 0.85rem !important;
+                  font-size: 0.55rem !important;
                 }
               }
             `}</style>

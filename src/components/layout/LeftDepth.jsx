@@ -235,7 +235,7 @@ const LeftDepth = ({ onClose, predictResults, setSelectedCurrency, isPredicting,
             textTransform: "capitalize",
             whiteSpace: "nowrap"
           }}>
-            Status: {predictionStatus.phase || predictionStatus.status }
+            Status: {predictionStatus.status || predictionStatus.phase }
           </span>
           {
             <span style={{

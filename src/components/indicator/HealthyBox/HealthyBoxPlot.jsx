@@ -31,7 +31,7 @@ export default function HealthyBoxPlot({
     //===================================
 
     const directionalScoreSeries = addSeries(id, HistogramSeries, {
-      color: style?.directionalScore?.color || "rgba(255,165,0,1)",
+      color: style?.directionalScore?.color,
       visible: style?.directionalScore?.visible ?? true,
       priceLineVisible: false,
       lastValueVisible: true,
@@ -88,9 +88,11 @@ export default function HealthyBoxPlot({
       { key: "strongBearLine", value: -80, defaultColor: "rgba(244,67,54,1)" }
     ];
 
-    if (result.data.directionalScore) {
+    const timeRefData = Object.values(result.data).find(arr => Array.isArray(arr) && arr.length > 0) || [];
+
+    if (timeRefData.length > 0) {
       refLevels.forEach(level => {
-        const lineData = result.data.directionalScore.map((x) => ({
+        const lineData = timeRefData.map((x) => ({
           time: x.time,
           value: level.value,
         }));

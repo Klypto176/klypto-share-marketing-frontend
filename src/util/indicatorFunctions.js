@@ -1725,6 +1725,7 @@ export let indicatorStyleDefault = {
       color: "rgba(128,128,128,1)",
       width: 1,
       visible: true,
+      value: 0,
     },
   },
   HEALTHY_BOX: {

@@ -2009,6 +2009,7 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instance
           key: "zeroLine",
           label: "Zero Line",
           type: "line",
+          showValue: true,
         },
       ];
 
