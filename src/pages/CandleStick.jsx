@@ -4530,7 +4530,12 @@ json.dumps(result)
           user_id: userId,
           current_file_path: "strategy.py",
           current_editor_code: editorCode,
-          open_files: ["strategy.py"],
+          open_files: [
+            {
+              path: "strategy.py",
+              content: editorCode || "",
+            },
+          ],
           project_summary:
             "ChartLab strategy workspace for chart-driven code generation and iteration.",
           timeframe: timeframeValue,
