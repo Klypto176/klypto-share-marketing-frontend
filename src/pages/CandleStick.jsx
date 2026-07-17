@@ -54,6 +54,7 @@ import useAlerts from "../util/useAlerts";
 import CodeEditorPanel, {
   DEFAULT_EDITOR_CODE,
 } from "../components/layout/CodeEditorPanel";
+import StrategyAgentPanel from "../components/layout/StrategyAgentPanel";
 import OIAnalytics from "../components/tradingModals/OIAnalytics";
 import Swal from "sweetalert2";
 import apiService from "../services/apiServices";
@@ -86,6 +87,12 @@ const getTodayDateString = () => new Date().toISOString().split("T")[0];
 const SANDBOX_DEPLOYMENT_CODE = "SANDBOX_EXECUTION";
 const CHART_TIME_OFFSET_SECONDS = 19800;
 const SANDBOX_OVERLAY_KEY = "__sandbox_overlay__";
+const createAgentMessage = (role, content, extras = {}) => ({
+  id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  role,
+  content,
+  ...extras,
+});
 
 const buildStrategyAgentPrompt = (editorCode, symbol, timeframe) => `
 Convert the current strategy editor content into runnable ChartLab-compatible Python for sandbox execution.
@@ -383,6 +390,10 @@ export default function Candlestick() {
   const [predictionStatus, setPredictionStatus] = useState(null);
   const [isPredicting, setIsPredicting] = useState(false);
   const [isDepthOpen, setIsDepthOpen] = useState(false);
+  const [isAgentPanelOpen, setIsAgentPanelOpen] = useState(false);
+  const [agentMessages, setAgentMessages] = useState([]);
+  const [agentDraft, setAgentDraft] = useState("");
+  const [isAgentLoading, setIsAgentLoading] = useState(false);
   const [predictResultData, setPredictResultData] = useState([]);
   const [detailsList, setDetailsList] = useState([]);
   const [activeTab, setActiveTab] = useState("Chart");
@@ -4344,6 +4355,105 @@ json.dumps(result)
     return emptySymbol;
   };
 
+  const handleToggleAgentPanel = useCallback(() => {
+    setIsAgentPanelOpen((prev) => {
+      const nextOpen = !prev;
+      if (nextOpen) {
+        setIsCodeEditorOpen(false);
+      }
+      return nextOpen;
+    });
+  }, []);
+
+  const handleApplyAgentCode = useCallback((message) => {
+    if (!message?.code) return;
+    setEditorCode(message.code);
+    setIsStrategyDirty(true);
+    setIsDeployed(false);
+    setIsAgentPanelOpen(false);
+    setIsCodeEditorOpen(true);
+    toast.success("Agent code applied to the editor.");
+  }, []);
+
+  const handleClearAgentChat = useCallback(() => {
+    setAgentMessages([]);
+    setAgentDraft("");
+  }, []);
+
+  const handleSendAgentMessage = useCallback(
+    async (promptText) => {
+      const prompt = String(promptText || "").trim();
+      if (!prompt || isAgentLoading) return;
+
+      const currentUser = getUser();
+      const userId = currentUser?.id || currentUser?._id || "123";
+
+      setAgentMessages((prev) => [
+        ...prev,
+        createAgentMessage("user", prompt),
+      ]);
+      setAgentDraft("");
+      setIsAgentLoading(true);
+
+      try {
+        const response = await generateStrategyAgent({
+          prompt,
+          session_id: strategyAgentSessionIdRef.current,
+          user_id: userId,
+          current_file_path: "strategy.py",
+          current_editor_code: editorCode,
+          open_files: ["strategy.py"],
+          project_summary:
+            "ChartLab strategy workspace for chart-driven code generation and iteration.",
+          timeframe: timeframeValue,
+          market: selectedCurrency?.symbol || selectedCurrency?.name,
+          constraints: [
+            "Be concise and actionable.",
+            "When returning code, keep it runnable in ChartLab Python.",
+            "Mention strategy assumptions when they materially affect the result.",
+          ],
+        });
+
+        if (response?.session_id) {
+          strategyAgentSessionIdRef.current = response.session_id;
+        }
+
+        const replyText =
+          response?.reply ||
+          response?.message ||
+          "The strategy agent did not return a response.";
+        const generatedCode =
+          typeof response?.code === "string" && response.code.trim()
+            ? response.code.trim()
+            : "";
+
+        setAgentMessages((prev) => [
+          ...prev,
+          createAgentMessage("assistant", replyText, {
+            code: generatedCode || undefined,
+            replaceEditorCode: response?.replace_editor_code === true,
+          }),
+        ]);
+      } catch (error) {
+        console.error("Strategy agent chat failed:", error);
+        const errorMessage =
+          error?.response?.data?.detail ||
+          error?.response?.data?.message ||
+          error?.message ||
+          "Unable to reach the strategy agent right now.";
+
+        setAgentMessages((prev) => [
+          ...prev,
+          createAgentMessage("assistant", errorMessage),
+        ]);
+        toast.error("Strategy agent request failed.");
+      } finally {
+        setIsAgentLoading(false);
+      }
+    },
+    [editorCode, isAgentLoading, selectedCurrency, timeframeValue],
+  );
+
   const renderSandboxLegend = (group) => {
     if (!group || !Array.isArray(group.items) || group.items.length === 0) {
       return null;
@@ -6358,7 +6468,16 @@ json.dumps(result)
               <ChartTabs
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
-                onCodeClick={() => setIsCodeEditorOpen((prev) => !prev)}
+                onCodeClick={() => {
+                  setIsCodeEditorOpen((prev) => {
+                    const nextOpen = !prev;
+                    if (nextOpen) {
+                      setIsAgentPanelOpen(false);
+                    }
+                    return nextOpen;
+                  });
+                }}
+                onAgentClick={handleToggleAgentPanel}
                 onBacktestClick={() => setActiveTab("Backtest")}
                 onStrategyClick={handleStrategyClick}
                 onGoToDate={handleGoToDate}
@@ -7241,6 +7360,19 @@ json.dumps(result)
                       canUpdate={Boolean(activeStrategyRecord?.id) && isStrategyDirty}
                       canShowUpdate={Boolean(activeStrategyRecord?.id)}
                       loadedStrategyName={activeStrategyRecord?.name || ""}
+                    />
+                  )}
+
+                  {isAgentPanelOpen && (
+                    <StrategyAgentPanel
+                      onClose={() => setIsAgentPanelOpen(false)}
+                      messages={agentMessages}
+                      draft={agentDraft}
+                      onDraftChange={setAgentDraft}
+                      onSend={handleSendAgentMessage}
+                      isLoading={isAgentLoading}
+                      onClear={handleClearAgentChat}
+                      onApplyCode={handleApplyAgentCode}
                     />
                   )}
                 </div>
