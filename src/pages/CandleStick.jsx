@@ -13,7 +13,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { LuCirclePlus, LuCircleMinus } from "react-icons/lu";
 import { RiResetRightLine } from "react-icons/ri";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import ChartHeader from "../components/tradingModals/ChartHeader";
 import Navbar from "../components/layout/Navbar";
 import LeftWatchlist from "../components/layout/LeftWatchlist";
@@ -54,6 +54,7 @@ import useAlerts from "../util/useAlerts";
 import CodeEditorPanel, {
   DEFAULT_EDITOR_CODE,
 } from "../components/layout/CodeEditorPanel";
+import StrategyAgentPanel from "../components/layout/StrategyAgentPanel";
 import OIAnalytics from "../components/tradingModals/OIAnalytics";
 import Swal from "sweetalert2";
 import apiService from "../services/apiServices";
@@ -84,6 +85,14 @@ const getInitialLookbackDate = (timeframe) => {
 
 const getTodayDateString = () => new Date().toISOString().split("T")[0];
 const SANDBOX_DEPLOYMENT_CODE = "SANDBOX_EXECUTION";
+const CHART_TIME_OFFSET_SECONDS = 19800;
+const SANDBOX_OVERLAY_KEY = "__sandbox_overlay__";
+const createAgentMessage = (role, content, extras = {}) => ({
+  id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  role,
+  content,
+  ...extras,
+});
 
 const buildStrategyAgentPrompt = (editorCode, symbol, timeframe) =>
   `
@@ -100,6 +109,15 @@ Requirements:
 Current editor code:
 ${editorCode}
 `.trim();
+
+const isDirectChartLabScript = (code) => {
+  const text = String(code || "");
+  return (
+    /from\s+chartlab\s+import/i.test(text) &&
+    /@indicator\s*\(/i.test(text) &&
+    /def\s+run\s*\(\s*ctx\s*\)\s*:/i.test(text)
+  );
+};
 
 const normalizeChartTime = (rawTime) => {
   if (rawTime === null || rawTime === undefined || rawTime === "") {
@@ -132,11 +150,40 @@ const toSeriesValue = (point) => {
       ? point.value
       : null;
 
-  if (time === null || value === null) {
+  if (time === null) {
     return null;
   }
 
-  return { time, value };
+  const chartTime = time + CHART_TIME_OFFSET_SECONDS;
+  if (value === null) {
+    return { time: chartTime };
+  }
+
+  return { time: chartTime, value };
+};
+
+const toChartTimestamp = (rawTime) => {
+  const time = normalizeChartTime(rawTime);
+  return time === null ? null : time + CHART_TIME_OFFSET_SECONDS;
+};
+
+const getSandboxLegendDomId = (paneKey, itemId) => {
+  const safePane = String(paneKey || SANDBOX_OVERLAY_KEY).replace(
+    /[^a-zA-Z0-9_-]+/g,
+    "_",
+  );
+  const safeItem = String(itemId || "plot").replace(/[^a-zA-Z0-9_-]+/g, "_");
+  return `sandbox-legend-${safePane}-${safeItem}`;
+};
+
+const resolveSandboxBarColor = (colorByTime, candleTime) => {
+  if (!(colorByTime instanceof Map) || candleTime === null) return null;
+  return (
+    colorByTime.get(candleTime) ??
+    colorByTime.get(candleTime - CHART_TIME_OFFSET_SECONDS) ??
+    colorByTime.get(candleTime + CHART_TIME_OFFSET_SECONDS) ??
+    null
+  );
 };
 
 const mergeHistoricalSeries = (existing, incoming, mode = "replace") => {
@@ -158,6 +205,94 @@ const getBackfillChunkDays = (timeframe) => {
   return 365;
 };
 
+const formatBacktestDateTime = (chartTime) => {
+  if (!Number.isFinite(chartTime)) return "--";
+
+  return new Date((chartTime - CHART_TIME_OFFSET_SECONDS) * 1000).toLocaleString(
+    "en-IN",
+    {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    },
+  );
+};
+
+const getSignalBacktestOhlc = (signal, matchedCandle) => {
+  const signalResponse = signal?.response || {};
+
+  const pickValue = (primary, fallback) => {
+    const value = primary ?? fallback;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
+
+  return {
+    open: pickValue(matchedCandle?.open, signalResponse.candle_open),
+    high: pickValue(matchedCandle?.high, signalResponse.candle_high),
+    low: pickValue(matchedCandle?.low, signalResponse.candle_low),
+    close: pickValue(matchedCandle?.close, signalResponse.candle_close),
+  };
+};
+
+const normalizeApiBacktestRows = (tables, fallbackSymbol, fallbackTimeframe) => {
+  if (!Array.isArray(tables) || tables.length === 0) return [];
+
+  const targetTable =
+    tables.find((table) => table?.name === "signal_events") ||
+    tables.find((table) => table?.title === "Signal Events") ||
+    tables.find((table) => {
+      const columns = Array.isArray(table?.columns) ? table.columns : [];
+      return (
+        columns.includes("datetime") &&
+        columns.includes("open") &&
+        columns.includes("high") &&
+        columns.includes("low") &&
+        columns.includes("close")
+      );
+    });
+
+  if (!targetTable || !Array.isArray(targetTable.rows)) return [];
+
+  return targetTable.rows
+    .map((row, index) => {
+      const rawTime = normalizeChartTime(row?.time);
+      const chartTime =
+        rawTime === null ? null : rawTime + CHART_TIME_OFFSET_SECONDS;
+      const signalType = String(
+        row?.signal || row?.side || row?.label || "SIGNAL",
+      ).toUpperCase();
+
+      return {
+        id: `${chartTime || row?.datetime || "row"}-${signalType}-${index}`,
+        signalType,
+        label: row?.label || signalType,
+        symbol: row?.symbol || fallbackSymbol || "--",
+        timeframe: row?.timeframe || fallbackTimeframe || "--",
+        dateTime:
+          row?.datetime ||
+          (Number.isFinite(chartTime) ? formatBacktestDateTime(chartTime) : "--"),
+        time: chartTime,
+        open: Number.isFinite(Number(row?.open)) ? Number(row.open) : null,
+        high: Number.isFinite(Number(row?.high)) ? Number(row.high) : null,
+        low: Number.isFinite(Number(row?.low)) ? Number(row.low) : null,
+        close: Number.isFinite(Number(row?.close)) ? Number(row.close) : null,
+      };
+    })
+    .filter(
+      (row) =>
+        row.dateTime !== "--" ||
+        Number.isFinite(row.open) ||
+        Number.isFinite(row.high) ||
+        Number.isFinite(row.low) ||
+        Number.isFinite(row.close),
+    );
+};
+
 export default function Candlestick() {
   const chartRef = useRef();
   const containerRef = useRef();
@@ -177,6 +312,11 @@ export default function Candlestick() {
   const chartIndicatorHandlerRef = useRef(null);
   const customScriptSeriesRef = useRef(null);
   const customScriptMarkersRef = useRef(null);
+  const customScriptPriceLinesRef = useRef([]);
+  const customScriptFillLayersRef = useRef([]);
+  const customScriptPaneKeysRef = useRef([]);
+  const customScriptBarColorsAppliedRef = useRef(false);
+  const customScriptBarColorMapRef = useRef(null);
   const lastDeployedMarkersRef = useRef(null);
   const scannerIntervalRef = useRef(null);
   const pyodideRef = useRef(null);
@@ -196,6 +336,30 @@ export default function Candlestick() {
   const lastAutoBackfillFromRef = useRef(null);
   const lastAutoForwardToRef = useRef(null);
   const [isDeployed, setIsDeployed] = useState(false);
+
+  const applySandboxBarColorsToData = useCallback(
+    (candles, kind = "candlestick") => {
+      if (!Array.isArray(candles) || candles.length === 0) return candles;
+      const colorByTime = customScriptBarColorMapRef.current;
+      if (!(colorByTime instanceof Map) || colorByTime.size === 0) {
+        return kind === "heikinashi" ? convertToHeikinAshi(candles) : candles;
+      }
+
+      const baseCandles =
+        kind === "heikinashi" ? convertToHeikinAshi(candles) : candles;
+
+      return baseCandles.map((candle) => {
+        const candleTime = normalizeChartTime(candle?.time);
+        const overrideColor = resolveSandboxBarColor(colorByTime, candleTime);
+        if (!overrideColor) return candle;
+        return {
+          ...candle,
+          color: overrideColor,
+        };
+      });
+    },
+    [],
+  );
 
   const normalize = (s) => s?.replace(/\s+/g, " ").trim().toUpperCase();
   const isSameSymbolName = (s1, s2) => {
@@ -227,6 +391,10 @@ export default function Candlestick() {
   const [predictionStatus, setPredictionStatus] = useState(null);
   const [isPredicting, setIsPredicting] = useState(false);
   const [isDepthOpen, setIsDepthOpen] = useState(false);
+  const [isAgentPanelOpen, setIsAgentPanelOpen] = useState(false);
+  const [agentMessages, setAgentMessages] = useState([]);
+  const [agentDraft, setAgentDraft] = useState("");
+  const [isAgentLoading, setIsAgentLoading] = useState(false);
   const [predictResultData, setPredictResultData] = useState([]);
   const [detailsList, setDetailsList] = useState([]);
   const [activeTab, setActiveTab] = useState("Chart");
@@ -276,16 +444,11 @@ export default function Candlestick() {
   });
 
   const handleSetFromDate = (newDate) => {
-    const minDate = new Date("2024-10-01");
     let d = new Date(newDate);
     if (isNaN(d.getTime())) {
       d = new Date();
     }
-    if (d < minDate) {
-      setFromDate("2024-10-01");
-    } else {
-      setFromDate(d.toISOString().split("T")[0]);
-    }
+    setFromDate(d.toISOString().split("T")[0]);
   };
   const [toDate, setToDate] = useState(() => {
     const today = getTodayDateString();
@@ -325,9 +488,25 @@ export default function Candlestick() {
   const [isStrategyDirty, setIsStrategyDirty] = useState(false);
   const [areStrategyVisualsVisible, setAreStrategyVisualsVisible] =
     useState(true);
+  const areStrategyVisualsVisibleRef = useRef(areStrategyVisualsVisible);
   const [scannerProgressData, setScannerProgressData] = useState(null);
   const [dashboardSignals, setDashboardSignals] = useState([]);
   const [deployedStrategyCode, setDeployedStrategyCode] = useState(null);
+  const [sandboxLegendGroups, setSandboxLegendGroups] = useState({});
+  const [draftStrategyName, setDraftStrategyName] = useState("");
+  const [apiBacktestRows, setApiBacktestRows] = useState([]);
+  const [backtestRows, setBacktestRows] = useState([]);
+  const [candleDataVersion, setCandleDataVersion] = useState(0);
+  const sandboxLegendGroupsRef = useRef({});
+  const previousTimeframeRef = useRef(timeframeValue);
+  const skipNextTimeframeAutoDeployRef = useRef(false);
+  const lastPaginationAutoDeployKeyRef = useRef(null);
+  const previousDateRangeRef = useRef({ fromDate, toDate });
+  const lastDateRangeAutoDeployKeyRef = useRef(null);
+
+  useEffect(() => {
+    areStrategyVisualsVisibleRef.current = areStrategyVisualsVisible;
+  }, [areStrategyVisualsVisible]);
 
   const handleStrategyClick = () => {
     setIsPredicting(true);
@@ -456,25 +635,104 @@ export default function Candlestick() {
   }, []);
 
   const handleClearCode = useCallback(() => {
+    const removedSeries = new Set();
     if (customScriptSeriesRef.current && chartRef.current) {
       if (Array.isArray(customScriptSeriesRef.current)) {
-        customScriptSeriesRef.current.forEach((series) => {
+        customScriptSeriesRef.current.forEach((entry) => {
+          const series = entry?.series || entry;
+          if (series) {
+            removedSeries.add(series);
+          }
           try {
             chartRef.current.removeSeries(series);
           } catch (e) {}
         });
       } else {
+        removedSeries.add(customScriptSeriesRef.current);
         try {
           chartRef.current.removeSeries(customScriptSeriesRef.current);
         } catch (e) {}
       }
       customScriptSeriesRef.current = null;
     }
+    if (customScriptPriceLinesRef.current?.length) {
+      customScriptPriceLinesRef.current.forEach(({ series, priceLine }) => {
+        try {
+          series?.removePriceLine?.(priceLine);
+        } catch (e) {}
+      });
+      customScriptPriceLinesRef.current = [];
+    }
+    if (customScriptFillLayersRef.current?.length) {
+      customScriptFillLayersRef.current.forEach((layer) => {
+        try {
+          layer?.unsubscribe?.();
+        } catch (e) {}
+        try {
+          layer?.canvas?.remove?.();
+        } catch (e) {}
+      });
+      customScriptFillLayersRef.current = [];
+    }
     if (customScriptMarkersRef.current) {
       try {
         customScriptMarkersRef.current.setMarkers([]);
       } catch (e) {}
     }
+    if (customScriptPaneKeysRef.current?.length && chartRef.current) {
+      const paneIndices = customScriptPaneKeysRef.current
+        .map((paneKey) => paneIndexRef.current[paneKey])
+        .filter((paneIndex) => Number.isFinite(paneIndex) && paneIndex > 0)
+        .sort((a, b) => b - a);
+
+      paneIndices.forEach((paneIndex) => {
+        const dummy = dummySeriesRef.current[paneIndex];
+        if (dummy) {
+          try {
+            chartRef.current.removeSeries(dummy);
+          } catch (e) {}
+          delete dummySeriesRef.current[paneIndex];
+        }
+
+        try {
+          if (typeof chartRef.current.removePane === "function") {
+            chartRef.current.removePane(paneIndex);
+          }
+        } catch (e) {}
+      });
+
+      customScriptPaneKeysRef.current.forEach((paneKey) => {
+        delete paneIndexRef.current[paneKey];
+        delete panesRef.current[paneKey];
+      });
+      customScriptPaneKeysRef.current = [];
+    }
+    if (removedSeries.size > 0 && allCreatedSeriesRef.current) {
+      allCreatedSeriesRef.current = allCreatedSeriesRef.current.filter(
+        (entry) => !removedSeries.has(entry?.series),
+      );
+    }
+
+    if (
+      customScriptBarColorsAppliedRef.current &&
+      seriesRef.current &&
+      Array.isArray(candlesRef.current) &&
+      candlesRef.current.length > 0
+    ) {
+      try {
+        const chartKind = seriesRef.current.customChartType || chartType;
+        if (chartKind === "heikinashi") {
+          seriesRef.current.setData(convertToHeikinAshi(candlesRef.current));
+        } else if (
+          chartKind === "candlestick" ||
+          chartKind === "hollowcandles"
+        ) {
+          seriesRef.current.setData(candlesRef.current);
+        }
+      } catch (e) {}
+    }
+    customScriptBarColorsAppliedRef.current = false;
+    customScriptBarColorMapRef.current = null;
     lastDeployedMarkersRef.current = null;
 
     if (scannerIntervalRef.current) {
@@ -486,11 +744,12 @@ export default function Candlestick() {
     setDashboardSignals([]);
     setDeployedStrategyCode(null);
     setIsDeployed(false);
-    setAreStrategyVisualsVisible(true);
-  }, []);
+    sandboxLegendGroupsRef.current = {};
+    setSandboxLegendGroups({});
+  }, [chartType]);
 
   const handleSaveStrategy = useCallback(
-    async (code) => {
+    async (code, options = {}) => {
       if (!code || !code.trim()) {
         Swal.fire({
           icon: "warning",
@@ -504,9 +763,33 @@ export default function Candlestick() {
 
       try {
         setIsSavingStrategy(true);
-        const symbolName =
-          selectedCurrency?.name || selectedCurrency?.symbol || "Strategy";
-        const strategyName = `${symbolName} ${timeframeValue} Notebook Strategy`;
+        const symbolName = selectedCurrency?.name || selectedCurrency?.symbol || "Strategy";
+        const existingStrategyName =
+          draftStrategyName?.trim() || activeStrategyRecord?.name?.trim() || "";
+        let strategyName =
+          existingStrategyName ||
+          `${symbolName} ${timeframeValue} Notebook Strategy`;
+
+        if (options?.requireStrategyName && !existingStrategyName) {
+          const { value } = await Swal.fire({
+            title: "Strategy Name Required",
+            input: "text",
+            inputLabel: "Enter a name for this strategy",
+            inputPlaceholder: `${symbolName} ${timeframeValue} Strategy`,
+            inputValidator: (value) =>
+              value?.trim() ? undefined : "Strategy name is required.",
+            showCancelButton: true,
+            background: "var(--bg-secondary)",
+            color: "var(--text-primary)",
+          });
+
+          if (!value?.trim()) {
+            return;
+          }
+
+          strategyName = value.trim();
+          setDraftStrategyName(strategyName);
+        }
         const currentUser = getUser();
         const resolvedUserId =
           currentUser?.id || currentUser?._id || currentUser?.userId || "";
@@ -579,7 +862,15 @@ export default function Candlestick() {
         setIsSavingStrategy(false);
       }
     },
-    [fromDate, isDeployed, selectedCurrency, timeframeValue, toDate],
+    [
+      activeStrategyRecord?.name,
+      draftStrategyName,
+      fromDate,
+      isDeployed,
+      selectedCurrency,
+      timeframeValue,
+      toDate,
+    ],
   );
 
   const handleUpdateStrategy = useCallback(
@@ -700,68 +991,1112 @@ export default function Candlestick() {
     ],
   );
 
-  const renderSandboxPlots = useCallback(
-    (chartContract) => {
-      if (!chartRef.current) return;
+  const ensureStrategyName = useCallback(
+    async ({ requireStrategyName } = {}) => {
+      let strategyName =
+        activeStrategyRecord?.name?.trim() || draftStrategyName?.trim() || "";
 
-      const createdSeries = [];
-      const chartPane = String(chartContract?.pane || "overlay").toLowerCase();
-      const useMainPane =
-        chartPane === "overlay" ||
-        chartPane === "main" ||
-        chartPane === "price";
-      const paneIndex = useMainPane
-        ? 0
-        : Math.max(
-            0,
-            ...Object.values(paneIndexRef.current)
-              .map((value) => Number(value))
-              .filter((value) => Number.isFinite(value) && value > 0),
-          ) + 1;
+        return strategyName;
+      }
 
+      if (strategyName) {
+        return strategyName;
+      }
+
+      const symbolName = selectedCurrency?.name || selectedCurrency?.symbol || "Strategy";
+      const { value } = await Swal.fire({
+        title: "Strategy Name Required",
+        input: "text",
+        inputLabel: "Enter a name for this strategy",
+        inputPlaceholder: `${symbolName} ${timeframeValue} Strategy`,
+        inputValidator: (value) =>
+          value?.trim() ? undefined : "Strategy name is required.",
+        showCancelButton: true,
+        background: "var(--bg-secondary)",
+        color: "var(--text-primary)",
+      });
+
+      if (!value?.trim()) {
+        return null;
+      }
+
+      strategyName = value.trim();
+      setDraftStrategyName(strategyName);
+      return strategyName;
+    },
+    [activeStrategyRecord?.name, draftStrategyName, selectedCurrency, timeframeValue],
+  );
+
+  const renderSandboxPlots = useCallback((chartContract) => {
+    if (!chartRef.current) return;
+
+    const createdSeries = [];
+    const createdPriceLines = [];
+    const createdFillLayers = [];
+    const paneSeriesMap = new Map();
+    const sandboxPaneKeys = new Set();
+    const legendGroups = {};
+    const legendGroupsMeta = {};
+    const isStrategyVisualVisible = (baseVisible = true) =>
+      baseVisible !== false && areStrategyVisualsVisibleRef.current !== false;
+
+    const normalizeSandboxPane = (value) =>
+      String(value || chartContract?.pane || "overlay")
+        .trim()
+        .toLowerCase();
+
+    const getSandboxPaneKey = (value) => {
+      const paneName = normalizeSandboxPane(value);
+      if (["overlay", "main", "price", ""].includes(paneName)) {
+        return null;
+      }
+      return `__sandbox_pane__${paneName}`;
+    };
+
+    const toLineStyleValue = (value) => {
+      const normalized = String(value || "solid").toLowerCase();
+      if (normalized === "dotted") return 1;
+      if (normalized === "dashed") return 2;
+      return 0;
+    };
+
+    const getSeriesType = (plotType) => {
       const seriesTypeMap = {
         line: LineSeries,
         histogram: HistogramSeries,
-        bar: BarSeries,
+        bar: HistogramSeries,
         area: AreaSeries,
         step: LineSeries,
         scatter: LineSeries,
+        candle: CandlestickSeries,
+      };
+      return seriesTypeMap[String(plotType || "line").toLowerCase()] || LineSeries;
+    };
+
+    const getIndexedStyleString = (value, index, fallback = null) => {
+      if (Array.isArray(value)) {
+        const direct = value[index];
+        if (typeof direct === "string" && direct.trim()) return direct;
+        const first = value.find((item) => typeof item === "string" && item.trim());
+        return first || fallback;
+      }
+
+      if (typeof value === "string" && value.trim()) {
+        return value;
+      }
+
+      return fallback;
+    };
+
+    const getIndexedPlotColor = (plot, index, fallbackColor = null) => {
+      const lineColor = getIndexedStyleString(
+        plot?.style?.lineColor,
+        index,
+        null,
+      );
+      if (lineColor) return lineColor;
+
+      return getIndexedStyleString(plot?.style?.color, index, fallbackColor);
+    };
+
+    const getSeriesOptionColor = (value, fallback) =>
+      getIndexedStyleString(value, 0, fallback);
+
+    const getSeriesOptions = (plot) => {
+      const plotType = String(plot?.type || "line").toLowerCase();
+      const lineStyle = toLineStyleValue(plot?.style?.lineStyle);
+      const baseVisible = plot?.style?.visible !== false;
+      const visible = isStrategyVisualVisible(baseVisible);
+      const baseOptions = {
+        visible,
+        priceLineVisible: false,
+        lastValueVisible: false,
       };
 
-      const plots = Array.isArray(chartContract?.plots)
-        ? chartContract.plots
-        : [];
-
-      plots.forEach((plot) => {
-        const plotType = String(plot?.type || "line").toLowerCase();
-        const seriesType = seriesTypeMap[plotType] || LineSeries;
-        const seriesOptions = {
-          color: plot?.style?.color || "#2962ff",
+      if (plotType === "histogram") {
+        return {
+          ...baseOptions,
+          color: getIndexedPlotColor(plot, 0, "#2962ff"),
           lineWidth: Number(plot?.style?.width) || 2,
-          visible: plot?.style?.visible !== false && areStrategyVisualsVisible,
-          lineVisible: plotType !== "scatter",
-          pointMarkersVisible: plotType === "scatter",
-          priceLineVisible: false,
-          lastValueVisible: false,
+          base: Number.isFinite(Number(plot?.style?.base))
+            ? Number(plot.style.base)
+            : 0,
         };
+      }
 
-        const series = chartRef.current.addSeries(
-          seriesType,
-          seriesOptions,
-          paneIndex,
-        );
-        const seriesData = Array.isArray(plot?.data)
-          ? plot.data.map(toSeriesValue).filter(Boolean)
-          : [];
+      if (plotType === "area") {
+        const color = getSeriesOptionColor(plot?.style?.color, "#2962ff");
+        const lineColor = getSeriesOptionColor(plot?.style?.lineColor, color);
+        return {
+          ...baseOptions,
+          lineColor,
+          topColor:
+            getSeriesOptionColor(plot?.style?.topColor, null) ||
+            `${color}${color.length === 7 ? "33" : ""}`,
+          bottomColor:
+            getSeriesOptionColor(plot?.style?.bottomColor, null) ||
+            `${color}${color.length === 7 ? "05" : ""}`,
+          lineWidth: Number(plot?.style?.width) || 2,
+          lineStyle,
+          crosshairMarkerVisible: plot?.style?.crosshairMarkerVisible !== false,
+        };
+      }
 
-        if (seriesData.length > 0) {
-          series.setData(seriesData);
+      if (plotType === "bar") {
+        return {
+          ...baseOptions,
+          color: getIndexedPlotColor(plot, 0, "#2962ff"),
+          lineWidth: Number(plot?.style?.width) || 2,
+          base: Number.isFinite(Number(plot?.style?.base))
+            ? Number(plot.style.base)
+            : 0,
+        };
+      }
+
+      if (plotType === "candle") {
+        const upColor = getSeriesOptionColor(plot?.style?.upColor, "#22c55e");
+        const downColor = getSeriesOptionColor(plot?.style?.downColor, "#ef4444");
+        return {
+          ...baseOptions,
+          upColor,
+          downColor,
+          wickUpColor: getSeriesOptionColor(plot?.style?.wickUpColor, upColor),
+          wickDownColor: getSeriesOptionColor(
+            plot?.style?.wickDownColor,
+            downColor,
+          ),
+          borderUpColor: getSeriesOptionColor(plot?.style?.borderUpColor, upColor),
+          borderDownColor: getSeriesOptionColor(
+            plot?.style?.borderDownColor,
+            downColor,
+          ),
+          borderVisible: plot?.style?.borderVisible ?? true,
+        };
+      }
+
+      return {
+        ...baseOptions,
+        color: getIndexedPlotColor(plot, 0, "#2962ff"),
+        lineWidth: Number(plot?.style?.width) || 2,
+        lineStyle,
+        lineVisible: plotType !== "scatter",
+        pointMarkersVisible: plotType === "scatter",
+        crosshairMarkerVisible: plotType === "scatter",
+        lineType: plotType === "step" ? 1 : 0,
+      };
+    };
+
+    const getSeriesData = (plot) => {
+      if (!Array.isArray(plot?.data)) return [];
+
+      const plotType = String(plot?.type || "line").toLowerCase();
+      if (plotType === "candle") {
+        return plot.data
+          .map((point) => {
+            const time = toChartTimestamp(point?.time);
+            const open = Number(point?.open);
+            const high = Number(point?.high);
+            const low = Number(point?.low);
+            const close = Number(point?.close);
+
+            if (
+              time === null ||
+              !Number.isFinite(open) ||
+              !Number.isFinite(high) ||
+              !Number.isFinite(low) ||
+              !Number.isFinite(close)
+            ) {
+              return null;
+            }
+
+            return {
+              time,
+              open,
+              high,
+              low,
+              close,
+              ...(point?.color ? { color: point.color } : {}),
+              ...(point?.borderColor ? { borderColor: point.borderColor } : {}),
+              ...(point?.wickColor ? { wickColor: point.wickColor } : {}),
+            };
+          })
+          .filter(Boolean);
+      }
+
+      return plot.data
+        .map((point, index) => {
+          const normalized = toSeriesValue(point);
+          if (!normalized) return null;
+          if (!("value" in normalized)) return normalized;
+          const dynamicColor = getIndexedPlotColor(plot, index);
+          if (plotType === "area") {
+            const lineColor =
+              point?.lineColor ||
+              getIndexedStyleString(
+                plot?.style?.lineColor,
+                index,
+                dynamicColor,
+              );
+            const topColor =
+              point?.topColor ||
+              getIndexedStyleString(plot?.style?.topColor, index, null);
+            const bottomColor =
+              point?.bottomColor ||
+              getIndexedStyleString(plot?.style?.bottomColor, index, null);
+
+            return {
+              ...normalized,
+              ...(lineColor ? { lineColor } : {}),
+              ...(topColor ? { topColor } : {}),
+              ...(bottomColor ? { bottomColor } : {}),
+            };
+          }
+
+          return {
+            ...normalized,
+            ...(point?.color || point?.lineColor
+              ? { color: point.color || point.lineColor }
+              : dynamicColor
+                ? { color: dynamicColor }
+                : {}),
+          };
+        })
+        .filter(Boolean);
+    };
+
+    const plots = Array.isArray(chartContract?.plots) ? chartContract.plots : [];
+    const plotEntriesById = new Map();
+
+    const getLastNumericValue = (seriesData, plotType) => {
+      if (!Array.isArray(seriesData) || seriesData.length === 0) return null;
+
+      for (let i = seriesData.length - 1; i >= 0; i -= 1) {
+        const point = seriesData[i];
+        if (!point || typeof point !== "object") continue;
+
+        if (plotType === "candle") {
+          if (Number.isFinite(Number(point.close))) {
+            return Number(point.close);
+          }
+          continue;
         }
 
-        createdSeries.push(series);
+        if (Number.isFinite(Number(point.value))) {
+          return Number(point.value);
+        }
+      }
+
+      return null;
+    };
+
+    plots.forEach((plot) => {
+      const paneKey = getSandboxPaneKey(plot?.pane);
+      if (paneKey) {
+        sandboxPaneKeys.add(paneKey);
+      }
+
+      const series = addSeries(
+        paneKey || "__sandbox_overlay__",
+        getSeriesType(plot?.type),
+        getSeriesOptions(plot),
+        paneKey,
+      );
+      const seriesData = getSeriesData(plot);
+
+      if (series && seriesData.length > 0) {
+        series.setData(seriesData);
+      }
+
+      if (!series) return;
+
+      createdSeries.push({
+        id: plot?.id || plot?.title || `sandbox_plot_${createdSeries.length + 1}`,
+        paneKey,
+        series,
+        data: seriesData,
+        baseVisible: plot?.style?.visible !== false,
       });
 
-      customScriptSeriesRef.current = createdSeries;
+      const plotEntry = {
+        id: plot?.id || plot?.title || `sandbox_plot_${createdSeries.length}`,
+        paneKey,
+        plotType: String(plot?.type || "line").toLowerCase(),
+        series,
+        data: seriesData,
+        baseVisible: plot?.style?.visible !== false,
+      };
+      if (plot?.id) {
+        plotEntriesById.set(plot.id, plotEntry);
+      }
+      if (plot?.title && !plotEntriesById.has(plot.title)) {
+        plotEntriesById.set(plot.title, plotEntry);
+      }
+
+      const paneSeriesKey = paneKey || SANDBOX_OVERLAY_KEY;
+      if (!paneSeriesMap.has(paneSeriesKey)) {
+        paneSeriesMap.set(paneSeriesKey, []);
+      }
+      paneSeriesMap.get(paneSeriesKey).push(series);
+
+      const legendKey = paneKey || SANDBOX_OVERLAY_KEY;
+      if (!legendGroups[legendKey]) {
+        legendGroups[legendKey] = {
+          paneKey,
+          title: chartContract?.name || "Sandbox Indicator",
+          items: [],
+        };
+        legendGroupsMeta[legendKey] = {
+          paneKey,
+          title: chartContract?.name || "Sandbox Indicator",
+          items: [],
+        };
+      }
+
+      const legendItem = {
+        id: plot?.id || plot?.title || `sandbox_plot_${createdSeries.length}`,
+        label: plot?.title || plot?.id || "Plot",
+        color:
+          seriesData[seriesData.length - 1]?.color ||
+          seriesData[seriesData.length - 1]?.lineColor ||
+          getIndexedPlotColor(
+            plot,
+            Math.max(seriesData.length - 1, 0),
+            getSeriesOptionColor(plot?.style?.topColor, null) ||
+              getSeriesOptionColor(plot?.style?.upColor, "#3b82f6"),
+          ),
+        value: getLastNumericValue(
+          seriesData,
+          String(plot?.type || "line").toLowerCase(),
+        ),
+      };
+
+      legendGroups[legendKey].items.push(legendItem);
+      legendGroupsMeta[legendKey].items.push({
+        ...legendItem,
+        series,
+        plotType: String(plot?.type || "line").toLowerCase(),
+      });
+    });
+
+    const drawings = Array.isArray(chartContract?.drawings)
+      ? chartContract.drawings
+      : [];
+    drawings.forEach((drawing) => {
+      const drawingType = String(drawing?.type || "line").toLowerCase();
+      if (!["line", "line_segment", "segment", "polyline"].includes(drawingType)) {
+        return;
+      }
+
+      const points = Array.isArray(drawing?.points) ? drawing.points : [];
+      const seriesData = points
+        .map((point) => {
+          const time = toChartTimestamp(point?.time);
+          const value = Number(point?.value ?? point?.price);
+          if (time === null || !Number.isFinite(value)) return null;
+          return { time, value };
+        })
+        .filter(Boolean);
+
+      if (seriesData.length < 2) return;
+
+      const paneKey = getSandboxPaneKey(drawing?.pane);
+      if (paneKey) {
+        sandboxPaneKeys.add(paneKey);
+      }
+
+      const style = drawing?.style || {};
+      const baseVisible = style.visible !== false;
+      const visible = isStrategyVisualVisible(baseVisible);
+      const series = addSeries(
+        paneKey || "__sandbox_overlay__",
+        LineSeries,
+        {
+          visible,
+          color: getSeriesOptionColor(style.color, "#22c55e"),
+          lineWidth: Number(style.width) || 2,
+          lineStyle: toLineStyleValue(style.lineStyle),
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        },
+        paneKey,
+      );
+
+      if (!series) return;
+
+      try {
+        series.setData(seriesData);
+      } catch (error) {
+        console.warn("[Sandbox] Drawing setData failed:", error);
+        return;
+      }
+
+      const drawingId =
+        drawing?.id || drawing?.title || `sandbox_drawing_${createdSeries.length + 1}`;
+      createdSeries.push({
+        id: drawingId,
+        paneKey,
+        series,
+        data: seriesData,
+        baseVisible,
+        isDrawing: true,
+      });
+
+      const paneSeriesKey = paneKey || SANDBOX_OVERLAY_KEY;
+      if (!paneSeriesMap.has(paneSeriesKey)) {
+        paneSeriesMap.set(paneSeriesKey, []);
+      }
+      paneSeriesMap.get(paneSeriesKey).push(series);
+
+      if (style.showInLegend === true) {
+        const legendKey = paneKey || SANDBOX_OVERLAY_KEY;
+        if (!legendGroups[legendKey]) {
+          legendGroups[legendKey] = {
+            paneKey,
+            title: chartContract?.name || "Sandbox Indicator",
+            items: [],
+          };
+          legendGroupsMeta[legendKey] = {
+            paneKey,
+            title: chartContract?.name || "Sandbox Indicator",
+            items: [],
+          };
+        }
+
+        const legendItem = {
+          id: drawingId,
+          label: drawing?.title || drawingId,
+          color: getSeriesOptionColor(style.color, "#22c55e"),
+          value: getLastNumericValue(seriesData, "line"),
+        };
+        legendGroups[legendKey].items.push(legendItem);
+        legendGroupsMeta[legendKey].items.push({
+          ...legendItem,
+          series,
+          plotType: "line",
+        });
+      }
+    });
+
+    const getPaneElement = (paneKey) =>
+      paneKey
+        ? panesRef.current?.[paneKey]?.div ||
+          panesRef.current?.[paneKey]?.pane?.getHTMLElement?.()
+        : containerRef.current;
+
+    const getPrimarySeriesForPane = (paneKey) =>
+      paneSeriesMap.get(paneKey || SANDBOX_OVERLAY_KEY)?.[0] ||
+      (paneKey ? null : seriesRef.current);
+
+    const addCanvasLayer = (paneKey, drawLayer, zIndex = 2, baseVisible = true) => {
+      const paneElement = getPaneElement(paneKey);
+      const hostElement = containerRef.current;
+      if (!paneElement || !hostElement || typeof drawLayer !== "function") {
+        return;
+      }
+
+      if (getComputedStyle(hostElement).position === "static") {
+        hostElement.style.position = "relative";
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.style.position = "absolute";
+      canvas.style.left = "0";
+      canvas.style.top = "0";
+      canvas.style.pointerEvents = "none";
+      canvas.style.zIndex = String(zIndex);
+      canvas.style.display = isStrategyVisualVisible(baseVisible)
+        ? "block"
+        : "none";
+      hostElement.appendChild(canvas);
+
+      const draw = () => {
+        const hostRect = hostElement.getBoundingClientRect();
+        const paneRect = paneElement.getBoundingClientRect();
+        const left = paneRect.left - hostRect.left;
+        const top = paneRect.top - hostRect.top;
+        const width = paneRect.width;
+        const height = paneRect.height;
+        if (!width || !height) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        canvas.style.left = `${left}px`;
+        canvas.style.top = `${top}px`;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.scale(dpr, dpr);
+
+        drawLayer({ ctx, width, height, paneKey });
+      };
+
+      const redraw = () => draw();
+      chartRef.current.timeScale().subscribeVisibleTimeRangeChange(redraw);
+      chartRef.current.subscribeCrosshairMove(redraw);
+
+      let resizeObserver = null;
+      if (typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(() => draw());
+        resizeObserver.observe(hostElement);
+        if (paneElement !== hostElement) {
+          resizeObserver.observe(paneElement);
+        }
+      }
+
+      requestAnimationFrame(draw);
+      setTimeout(draw, 0);
+
+      createdFillLayers.push({
+        canvas,
+        baseVisible,
+        unsubscribe: () => {
+          chartRef.current?.timeScale()?.unsubscribeVisibleTimeRangeChange?.(
+            redraw,
+          );
+          chartRef.current?.unsubscribeCrosshairMove?.(redraw);
+          resizeObserver?.disconnect?.();
+        },
+      });
+    };
+
+    const groupByPane = (items) => {
+      const grouped = new Map();
+      items.forEach((item) => {
+        const paneKey = getSandboxPaneKey(item?.pane);
+        const key = paneKey || SANDBOX_OVERLAY_KEY;
+        if (!grouped.has(key)) {
+          grouped.set(key, { paneKey, items: [] });
+        }
+        grouped.get(key).items.push(item);
+      });
+      return grouped;
+    };
+
+    const getNumberValue = (...values) => {
+      for (const value of values) {
+        const numeric = Number(value);
+        if (Number.isFinite(numeric)) return numeric;
+      }
+      return null;
+    };
+
+    const bgColors = Array.isArray(chartContract?.bgColors)
+      ? chartContract.bgColors
+      : [];
+    groupByPane(bgColors).forEach(({ paneKey, items }) => {
+      addCanvasLayer(
+        paneKey,
+        ({ ctx, width, height }) => {
+          const halfInterval = Math.max(
+            1,
+            Math.floor((TIMEFRAME_TO_SECONDS[timeframeValue] || 300) / 2),
+          );
+          items.forEach((item) => {
+            const time = toChartTimestamp(item?.time);
+            const color = getIndexedStyleString(item?.color, 0, null);
+            if (time === null || !color) return;
+
+            const x = chartRef.current.timeScale().timeToCoordinate(time);
+            let left = chartRef.current
+              .timeScale()
+              .timeToCoordinate(time - halfInterval);
+            let right = chartRef.current
+              .timeScale()
+              .timeToCoordinate(time + halfInterval);
+
+            if (x == null) return;
+            if (left == null || right == null || left === right) {
+              left = x - 3;
+              right = x + 3;
+            }
+
+            const bandLeft = Math.max(0, Math.min(left, right));
+            const bandWidth = Math.min(width - bandLeft, Math.abs(right - left));
+            if (bandWidth <= 0) return;
+            ctx.fillStyle = color;
+            ctx.fillRect(bandLeft, 0, bandWidth, height);
+          });
+        },
+        1,
+      );
+    });
+
+    const fills = Array.isArray(chartContract?.fills) ? chartContract.fills : [];
+    fills.forEach((fillConfig) => {
+      const fromEntry = plotEntriesById.get(fillConfig?.from);
+      if (!fromEntry?.series || !Array.isArray(fromEntry?.data) || fromEntry.data.length === 0) {
+        return;
+      }
+
+      const toEntry =
+        typeof fillConfig?.to === "string" ? plotEntriesById.get(fillConfig.to) : null;
+      const paneKey = fromEntry.paneKey || toEntry?.paneKey || null;
+
+      if (toEntry?.paneKey !== undefined && fromEntry.paneKey !== toEntry?.paneKey) {
+        return;
+      }
+
+      const baseVisible =
+        fillConfig?.visible !== false &&
+        fromEntry?.baseVisible !== false &&
+        toEntry?.baseVisible !== false;
+      const paneElement =
+        paneKey
+          ? panesRef.current?.[paneKey]?.div ||
+            panesRef.current?.[paneKey]?.pane?.getHTMLElement?.()
+          : containerRef.current;
+      const hostElement = containerRef.current;
+
+      if (!paneElement || !hostElement) {
+        return;
+      }
+
+      if (getComputedStyle(hostElement).position === "static") {
+        hostElement.style.position = "relative";
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.style.position = "absolute";
+      canvas.style.left = "0";
+      canvas.style.top = "0";
+      canvas.style.pointerEvents = "none";
+      canvas.style.zIndex = "2";
+      canvas.style.display = isStrategyVisualVisible(baseVisible)
+        ? "block"
+        : "none";
+      hostElement.appendChild(canvas);
+
+      const drawFill = () => {
+        const hostRect = hostElement.getBoundingClientRect();
+        const paneRect = paneElement.getBoundingClientRect();
+        const left = paneRect.left - hostRect.left;
+        const top = paneRect.top - hostRect.top;
+        const width = paneRect.width;
+        const height = paneRect.height;
+        if (!width || !height) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        canvas.style.left = `${left}px`;
+        canvas.style.top = `${top}px`;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.scale(dpr, dpr);
+
+        const topData = fromEntry.data || [];
+        const bottomData = Array.isArray(toEntry?.data) ? toEntry.data : [];
+        if (!topData.length) return;
+
+        const topPoints = topData
+          .map((point) => {
+            if (!Number.isFinite(Number(point?.value))) return null;
+            const x = chartRef.current.timeScale().timeToCoordinate(point.time);
+            const y = fromEntry.series.priceToCoordinate(point.value);
+            if (x == null || y == null) return null;
+            return { x, y };
+          })
+          .filter(Boolean);
+
+        if (topPoints.length < 2) {
+          return;
+        }
+
+        const bottomPoints = toEntry?.series
+          ? bottomData
+              .map((point) => {
+                if (!Number.isFinite(Number(point?.value))) return null;
+                const x = chartRef.current.timeScale().timeToCoordinate(point.time);
+                const y = toEntry.series.priceToCoordinate(point.value);
+                if (x == null || y == null) return null;
+                return { x, y };
+              })
+              .filter(Boolean)
+          : [];
+
+        ctx.save();
+        ctx.rect(0, 0, width, height);
+        ctx.clip();
+        ctx.beginPath();
+
+        ctx.moveTo(topPoints[0].x, topPoints[0].y);
+        topPoints.slice(1).forEach((point) => {
+          ctx.lineTo(point.x, point.y);
+        });
+
+        if (toEntry?.series && bottomPoints.length > 0) {
+          for (let i = bottomPoints.length - 1; i >= 0; i -= 1) {
+            const point = bottomPoints[i];
+            ctx.lineTo(point.x, point.y);
+          }
+        } else if (Number.isFinite(Number(fillConfig?.toValue))) {
+          const toValue = Number(fillConfig.toValue);
+          for (let i = topPoints.length - 1; i >= 0; i -= 1) {
+            const point = topPoints[i];
+            const y = fromEntry.series.priceToCoordinate(toValue);
+            if (y == null) continue;
+            ctx.lineTo(point.x, y);
+          }
+        } else {
+          ctx.restore();
+          return;
+        }
+
+        ctx.closePath();
+
+        if (fillConfig?.colorTop || fillConfig?.colorBottom) {
+          const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+          gradient.addColorStop(0, fillConfig.colorTop || fillConfig.color || "rgba(34,197,94,0.18)");
+          gradient.addColorStop(1, fillConfig.colorBottom || fillConfig.colorTop || fillConfig.color || "rgba(245,158,11,0.10)");
+          ctx.fillStyle = gradient;
+        } else {
+          ctx.fillStyle = fillConfig?.color || "rgba(34,197,94,0.18)";
+        }
+
+        ctx.fill();
+        ctx.restore();
+      };
+
+      const redraw = () => drawFill();
+      chartRef.current.timeScale().subscribeVisibleTimeRangeChange(redraw);
+      chartRef.current.subscribeCrosshairMove(redraw);
+
+      let resizeObserver = null;
+      if (typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(() => drawFill());
+        resizeObserver.observe(hostElement);
+        if (paneElement !== hostElement) {
+          resizeObserver.observe(paneElement);
+        }
+      }
+
+      requestAnimationFrame(drawFill);
+      setTimeout(drawFill, 0);
+
+      createdFillLayers.push({
+        canvas,
+        baseVisible,
+        unsubscribe: () => {
+          chartRef.current?.timeScale()?.unsubscribeVisibleTimeRangeChange?.(redraw);
+          chartRef.current?.unsubscribeCrosshairMove?.(redraw);
+          resizeObserver?.disconnect?.();
+        },
+      });
+    });
+
+    const zones = Array.isArray(chartContract?.zones) ? chartContract.zones : [];
+    groupByPane(zones).forEach(({ paneKey, items }) => {
+      const series = getPrimarySeriesForPane(paneKey);
+      if (!series) return;
+
+      addCanvasLayer(
+        paneKey,
+        ({ ctx, width }) => {
+          items.forEach((zoneItem) => {
+            const color =
+              getIndexedStyleString(
+                zoneItem?.color || zoneItem?.fillColor,
+                0,
+                "rgba(59,130,246,0.12)",
+              ) || "rgba(59,130,246,0.12)";
+
+            if (
+              Array.isArray(zoneItem?.upper) &&
+              Array.isArray(zoneItem?.lower)
+            ) {
+              const upperPoints = zoneItem.upper
+                .map((point) => {
+                  const time = toChartTimestamp(point?.time);
+                  const value = getNumberValue(point?.value);
+                  if (time === null || value === null) return null;
+                  const x = chartRef.current.timeScale().timeToCoordinate(time);
+                  const y = series.priceToCoordinate(value);
+                  if (x == null || y == null) return null;
+                  return { x, y };
+                })
+                .filter(Boolean);
+              const lowerPoints = zoneItem.lower
+                .map((point) => {
+                  const time = toChartTimestamp(point?.time);
+                  const value = getNumberValue(point?.value);
+                  if (time === null || value === null) return null;
+                  const x = chartRef.current.timeScale().timeToCoordinate(time);
+                  const y = series.priceToCoordinate(value);
+                  if (x == null || y == null) return null;
+                  return { x, y };
+                })
+                .filter(Boolean);
+
+              if (upperPoints.length < 2 || lowerPoints.length < 2) return;
+
+              ctx.beginPath();
+              ctx.moveTo(upperPoints[0].x, upperPoints[0].y);
+              upperPoints.slice(1).forEach((point) => ctx.lineTo(point.x, point.y));
+              for (let i = lowerPoints.length - 1; i >= 0; i -= 1) {
+                ctx.lineTo(lowerPoints[i].x, lowerPoints[i].y);
+              }
+              ctx.closePath();
+              ctx.fillStyle = color;
+              ctx.fill();
+              return;
+            }
+
+            const fromValue = getNumberValue(
+              zoneItem?.from,
+              zoneItem?.fromValue,
+              zoneItem?.bottom,
+            );
+            const toValue = getNumberValue(
+              zoneItem?.to,
+              zoneItem?.toValue,
+              zoneItem?.top,
+            );
+            if (fromValue === null || toValue === null) return;
+
+            const y1 = series.priceToCoordinate(fromValue);
+            const y2 = series.priceToCoordinate(toValue);
+            if (y1 == null || y2 == null) return;
+
+            const top = Math.min(y1, y2);
+            const height = Math.abs(y2 - y1);
+            ctx.fillStyle = color;
+            ctx.fillRect(0, top, width, Math.max(1, height));
+          });
+        },
+        2,
+      );
+    });
+
+    const boxes = Array.isArray(chartContract?.boxes) ? chartContract.boxes : [];
+    groupByPane(boxes).forEach(({ paneKey, items }) => {
+      const series = getPrimarySeriesForPane(paneKey);
+      if (!series) return;
+
+      addCanvasLayer(
+        paneKey,
+        ({ ctx }) => {
+          items.forEach((boxItem) => {
+            const start = toChartTimestamp(boxItem?.start ?? boxItem?.from);
+            const end = toChartTimestamp(boxItem?.end ?? boxItem?.to);
+            const topValue = getNumberValue(boxItem?.top, boxItem?.high);
+            const bottomValue = getNumberValue(boxItem?.bottom, boxItem?.low);
+            if (
+              start === null ||
+              end === null ||
+              topValue === null ||
+              bottomValue === null
+            ) {
+              return;
+            }
+
+            const x1 = chartRef.current.timeScale().timeToCoordinate(start);
+            const x2 = chartRef.current.timeScale().timeToCoordinate(end);
+            const y1 = series.priceToCoordinate(topValue);
+            const y2 = series.priceToCoordinate(bottomValue);
+            if (x1 == null || x2 == null || y1 == null || y2 == null) return;
+
+            const left = Math.min(x1, x2);
+            const top = Math.min(y1, y2);
+            const width = Math.abs(x2 - x1);
+            const height = Math.abs(y2 - y1);
+            const fillColor = getIndexedStyleString(
+              boxItem?.fillColor || boxItem?.color,
+              0,
+              "rgba(59,130,246,0.10)",
+            );
+            const borderColor = getIndexedStyleString(
+              boxItem?.borderColor || boxItem?.color,
+              0,
+              "rgba(59,130,246,0.65)",
+            );
+
+            ctx.fillStyle = fillColor;
+            ctx.fillRect(left, top, Math.max(1, width), Math.max(1, height));
+            ctx.strokeStyle = borderColor;
+            ctx.lineWidth = Number(boxItem?.lineWidth) || 1;
+            ctx.strokeRect(left, top, Math.max(1, width), Math.max(1, height));
+          });
+        },
+        3,
+      );
+    });
+
+    const labels = Array.isArray(chartContract?.labels)
+      ? chartContract.labels
+      : [];
+    groupByPane(labels).forEach(({ paneKey, items }) => {
+      const series = getPrimarySeriesForPane(paneKey);
+      if (!series) return;
+
+      addCanvasLayer(
+        paneKey,
+        ({ ctx, width, height }) => {
+          ctx.font = "12px sans-serif";
+          ctx.textBaseline = "middle";
+          items.forEach((labelItem) => {
+            const time = toChartTimestamp(labelItem?.time);
+            const value = getNumberValue(
+              labelItem?.value,
+              labelItem?.price,
+              labelItem?.y,
+            );
+            const text = String(labelItem?.text || labelItem?.label || "").trim();
+            if (time === null || value === null || !text) return;
+
+            const x = chartRef.current.timeScale().timeToCoordinate(time);
+            const y = series.priceToCoordinate(value);
+            if (x == null || y == null) return;
+
+            const color = getIndexedStyleString(
+              labelItem?.color || labelItem?.textColor,
+              0,
+              "#e5e7eb",
+            );
+            const backgroundColor = getIndexedStyleString(
+              labelItem?.backgroundColor || labelItem?.bgColor,
+              0,
+              "rgba(15,23,42,0.78)",
+            );
+            const offset =
+              String(labelItem?.position || "").toLowerCase() === "abovebar"
+                ? -14
+                : String(labelItem?.position || "").toLowerCase() ===
+                    "belowbar"
+                  ? 14
+                  : 0;
+            const textWidth = ctx.measureText(text).width;
+            const boxWidth = textWidth + 8;
+            const boxHeight = 18;
+            const left = Math.max(0, Math.min(width - boxWidth, x - boxWidth / 2));
+            const top = Math.max(
+              0,
+              Math.min(height - boxHeight, y + offset - boxHeight / 2),
+            );
+
+            ctx.fillStyle = backgroundColor;
+            ctx.fillRect(left, top, boxWidth, boxHeight);
+            ctx.fillStyle = color;
+            ctx.fillText(text, left + 4, top + boxHeight / 2);
+          });
+        },
+        4,
+      );
+    });
+
+    const barColors = Array.isArray(chartContract?.barColors)
+      ? chartContract.barColors
+      : [];
+    if (
+      barColors.length > 0 &&
+      seriesRef.current &&
+      Array.isArray(candlesRef.current) &&
+      candlesRef.current.length > 0
+    ) {
+      const colorByTime = new Map();
+      barColors.forEach((item) => {
+        const time = normalizeChartTime(item?.time);
+        if (time === null || !item?.color) return;
+        colorByTime.set(time, item.color);
+        colorByTime.set(time + CHART_TIME_OFFSET_SECONDS, item.color);
+      });
+      customScriptBarColorMapRef.current = colorByTime;
+
+      try {
+        const chartKind = seriesRef.current.customChartType || chartType;
+        if (chartKind === "candlestick" || chartKind === "hollowcandles") {
+          seriesRef.current.setData(
+            applySandboxBarColorsToData(candlesRef.current, chartKind),
+          );
+          customScriptBarColorsAppliedRef.current = true;
+        } else if (chartKind === "heikinashi") {
+          seriesRef.current.setData(
+            applySandboxBarColorsToData(candlesRef.current, chartKind),
+          );
+          customScriptBarColorsAppliedRef.current = true;
+        }
+      } catch (error) {
+        console.warn("Unable to apply sandbox bar colors:", error);
+      }
+    } else {
+      customScriptBarColorsAppliedRef.current = false;
+      customScriptBarColorMapRef.current = null;
+    }
+
+    const levelPaneKey =
+      getSandboxPaneKey(chartContract?.pane) || "__sandbox_overlay__";
+    const levelSeries =
+      paneSeriesMap.get(levelPaneKey)?.[0] ||
+      paneSeriesMap.values().next().value?.[0];
+
+    if (levelSeries?.createPriceLine) {
+      const levels = Array.isArray(chartContract?.levels)
+        ? chartContract.levels
+        : [];
+      levels.forEach((level) => {
+        const price = Number(level?.value);
+        if (!Number.isFinite(price)) return;
+
+        const baseVisible = level?.visible !== false;
+        const baseAxisLabelVisible = level?.axisLabelVisible ?? true;
+        try {
+          const priceLine = levelSeries.createPriceLine({
+            price,
+            color: level?.color || "#94a3b8",
+            lineWidth: Number(level?.lineWidth) || 1,
+            lineStyle: toLineStyleValue(level?.lineStyle || "dashed"),
+            title: level?.label || "",
+            axisLabelVisible:
+              baseAxisLabelVisible && isStrategyVisualVisible(baseVisible),
+            lineVisible: isStrategyVisualVisible(baseVisible),
+          });
+          createdPriceLines.push({
+            series: levelSeries,
+            priceLine,
+            baseVisible,
+            baseAxisLabelVisible,
+          });
+        } catch (error) {
+          console.warn("Unable to create sandbox price line:", error);
+        }
+      });
+    }
+
+    customScriptSeriesRef.current = createdSeries;
+    customScriptPriceLinesRef.current = createdPriceLines;
+    customScriptFillLayersRef.current = createdFillLayers;
+    customScriptPaneKeysRef.current = Array.from(sandboxPaneKeys);
+    sandboxLegendGroupsRef.current = legendGroupsMeta;
+    setSandboxLegendGroups(legendGroups);
+  }, [
+    applySandboxBarColorsToData,
+    chartType,
+    timeframeValue,
+  ]);
+
+  const applyStrategyVisualVisibility = useCallback(
+    (visible) => {
+      const seriesList = Array.isArray(customScriptSeriesRef.current)
+        ? customScriptSeriesRef.current
+        : [];
+
+      seriesList.forEach((entry) => {
+        const series = entry?.series || entry;
+        const nextVisible = visible && entry?.baseVisible !== false;
+        try {
+          series.applyOptions({ visible: nextVisible });
+        } catch (error) {
+          console.warn("Unable to toggle strategy series visibility:", error);
     },
     [areStrategyVisualsVisible],
   );
@@ -793,6 +2128,7 @@ export default function Candlestick() {
   const handleToggleStrategyVisuals = useCallback(() => {
     setAreStrategyVisualsVisible((prev) => {
       const next = !prev;
+      areStrategyVisualsVisibleRef.current = next;
       applyStrategyVisualVisibility(next);
       return next;
     });
@@ -1174,17 +2510,19 @@ export default function Candlestick() {
     }
 
     lastDeployedMarkersRef.current = markersToSet;
+    const shouldShowStrategyVisuals =
+      areStrategyVisualsVisibleRef.current !== false;
 
     if (markersToSet?.length > 0 && seriesRef.current) {
       if (!customScriptMarkersRef.current) {
         customScriptMarkersRef.current = createSeriesMarkers(
           seriesRef.current,
-          areStrategyVisualsVisible ? markersToSet : [],
+          shouldShowStrategyVisuals ? markersToSet : [],
         );
         seriesRef.current.attachPrimitive(customScriptMarkersRef.current);
       } else {
         customScriptMarkersRef.current.setMarkers(
-          areStrategyVisualsVisible ? markersToSet : [],
+          shouldShowStrategyVisuals ? markersToSet : [],
         );
       }
     } else if (customScriptMarkersRef.current) {
@@ -1203,6 +2541,11 @@ export default function Candlestick() {
     async (code, runtimeContext = {}) => {
       if (!chartRef.current) return;
 
+      const resolvedStrategyName = await ensureStrategyName(runtimeContext);
+      if (runtimeContext?.requireStrategyName && !resolvedStrategyName) {
+        return;
+      }
+
       const effectiveSymbol =
         runtimeContext?.symbol ||
         selectedCurrency?.name ||
@@ -1216,7 +2559,8 @@ export default function Candlestick() {
         selectedCurrency?.segment;
       const effectiveTimeframe = runtimeContext?.timeframe || timeframeValue;
       const effectiveFromDate = runtimeContext?.fromDate || fromDate;
-      const effectiveToDate = runtimeContext?.toDate || toDate;
+      const requestedToDate = runtimeContext?.toDate || toDate;
+      const effectiveToDate = requestedToDate || getTodayDateString();
 
       // 1. Clear previous
       handleClearCode();
@@ -1439,55 +2783,63 @@ json.dumps(result)
           return;
         }
 
-        const generated = await generateStrategyAgent({
-          prompt: buildStrategyAgentPrompt(
-            code,
-            effectiveLookupSymbol || effectiveSymbol,
-            effectiveTimeframe,
-          ),
-          session_id: strategyAgentSessionIdRef.current,
-          user_id: userId,
-          current_file_path: "strategy.py",
-          current_editor_code: code,
-          project_summary:
-            "ChartLab Python strategy editor. Convert editor strategies into runnable sandbox code and preserve signal behavior.",
-          timeframe: effectiveTimeframe,
-          market: effectiveLookupSymbol || effectiveSymbol,
-          constraints: [
-            "Return only executable Python code.",
-            "Use ChartLab-compatible Python.",
-            "Emit BUY/SELL markers with signal(...) when possible.",
-          ],
-        });
+        const shouldBypassStrategyAgent = isDirectChartLabScript(code);
+        let generationReply = "";
+        let runnableCode = code.trim();
 
-        if (generated?.session_id) {
-          strategyAgentSessionIdRef.current = generated.session_id;
-        }
-
-        const canReplaceEditor =
-          generated?.replace_editor_code === true &&
-          typeof generated?.code === "string" &&
-          generated.code.trim().length > 0 &&
-          generated?.meta?.code_validation_passed === true &&
-          generated?.meta?.security_validation_passed === true;
-
-        if (!canReplaceEditor) {
-          Swal.fire({
-            icon: "warning",
-            title: generated?.title || "Strategy Generation Failed",
-            text:
-              generated?.reply ||
-              "The strategy agent could not produce runnable code from the editor content.",
-            background: "var(--bg-secondary)",
-            color: "var(--text-primary)",
+        if (!shouldBypassStrategyAgent) {
+          const generated = await generateStrategyAgent({
+            prompt: buildStrategyAgentPrompt(
+              code,
+              effectiveLookupSymbol || effectiveSymbol,
+              effectiveTimeframe,
+            ),
+            session_id: strategyAgentSessionIdRef.current,
+            user_id: userId,
+            current_file_path: "strategy.py",
+            current_editor_code: code,
+            project_summary:
+              "ChartLab Python strategy editor. Convert editor strategies into runnable sandbox code and preserve signal behavior.",
+            timeframe: effectiveTimeframe,
+            market: effectiveLookupSymbol || effectiveSymbol,
+            constraints: [
+              "Return only executable Python code.",
+              "Use ChartLab-compatible Python.",
+              "Emit BUY/SELL markers with signal(...) when possible.",
+            ],
           });
-          setIsDeploying(false);
-          toast.dismiss("compiling");
-          return;
-        }
 
-        const runnableCode = generated.code.trim();
-        setEditorCode(runnableCode);
+          if (generated?.session_id) {
+            strategyAgentSessionIdRef.current = generated.session_id;
+          }
+
+          generationReply = generated?.reply || "";
+
+          const canReplaceEditor =
+            generated?.replace_editor_code === true &&
+            typeof generated?.code === "string" &&
+            generated.code.trim().length > 0 &&
+            generated?.meta?.code_validation_passed === true &&
+            generated?.meta?.security_validation_passed === true;
+
+          if (!canReplaceEditor) {
+            Swal.fire({
+              icon: "warning",
+              title: generated?.title || "Strategy Generation Failed",
+              text:
+                generated?.reply ||
+                "The strategy agent could not produce runnable code from the editor content.",
+              background: "var(--bg-secondary)",
+              color: "var(--text-primary)",
+            });
+            setIsDeploying(false);
+            toast.dismiss("compiling");
+            return;
+          }
+
+          runnableCode = generated.code.trim();
+          setEditorCode(runnableCode);
+        }
 
         const sandboxResponse = await executeIndicatorSandbox({
           sessionId: sandboxSessionIdRef.current,
@@ -1525,7 +2877,7 @@ json.dumps(result)
             text:
               fetchError ||
               firstError?.message ||
-              generated?.reply ||
+              generationReply ||
               "The strategy code could not be executed in the sandbox.",
             background: "var(--bg-secondary)",
             color: "var(--text-primary)",
@@ -1539,6 +2891,11 @@ json.dumps(result)
           sandboxResponse?.result?.chart?.signals ||
           sandboxResponse?.result?.signals ||
           [];
+        const apiRows = normalizeApiBacktestRows(
+          sandboxResponse?.tables,
+          effectiveLookupSymbol || effectiveSymbol,
+          effectiveTimeframe,
+        );
 
         const normalizedSignals = chartSignals
           .map((signal) => {
@@ -1558,6 +2915,7 @@ json.dumps(result)
           .filter(Boolean);
 
         renderSandboxPlots(sandboxResponse?.result?.chart);
+        setApiBacktestRows(apiRows);
         setDashboardSignals(normalizedSignals);
         setCustomSignals(normalizedSignals);
         setDeployedStrategyCode(SANDBOX_DEPLOYMENT_CODE);
@@ -1588,6 +2946,7 @@ json.dumps(result)
     },
     [
       handleClearCode,
+      ensureStrategyName,
       fromDate,
       isMarketOpen,
       renderSandboxPlots,
@@ -1611,6 +2970,7 @@ json.dumps(result)
       setIsStrategyDirty(false);
       setAreStrategyVisualsVisible(true);
       if (savedTimeframe) {
+        skipNextTimeframeAutoDeployRef.current = true;
         setTimeframeValue(savedTimeframe);
       }
       setIsCodeEditorOpen(false);
@@ -1676,6 +3036,99 @@ json.dumps(result)
     const d = getInitialLookbackDate(timeframeValue);
     handleSetFromDate(d.toISOString().split("T")[0]);
   }, [timeframeValue]);
+
+  useEffect(() => {
+    if (previousTimeframeRef.current === timeframeValue) {
+      return;
+    }
+
+    previousTimeframeRef.current = timeframeValue;
+
+    if (skipNextTimeframeAutoDeployRef.current) {
+      skipNextTimeframeAutoDeployRef.current = false;
+      return;
+    }
+
+    if (
+      !isDeployed ||
+      deployedStrategyCode !== SANDBOX_DEPLOYMENT_CODE ||
+      isDeploying ||
+      !editorCode?.trim()
+    ) {
+      return;
+    }
+
+    const nextFromDate = getInitialLookbackDate(timeframeValue);
+    const minDate = new Date("2024-10-01");
+    const effectiveFromDate =
+      nextFromDate < minDate
+        ? "2024-10-01"
+        : nextFromDate.toISOString().split("T")[0];
+
+    handleDeployCode(editorCode, {
+      timeframe: timeframeValue,
+      fromDate: effectiveFromDate,
+      toDate,
+    });
+  }, [
+    deployedStrategyCode,
+    editorCode,
+    handleDeployCode,
+    isDeployed,
+    isDeploying,
+    timeframeValue,
+    toDate,
+  ]);
+
+  useEffect(() => {
+    const previousRange = previousDateRangeRef.current;
+    const rangeChanged =
+      previousRange?.fromDate !== fromDate || previousRange?.toDate !== toDate;
+
+    previousDateRangeRef.current = { fromDate, toDate };
+
+    if (!rangeChanged) {
+      return;
+    }
+
+    if (
+      !isDeployed ||
+      deployedStrategyCode !== SANDBOX_DEPLOYMENT_CODE ||
+      isDeploying ||
+      !editorCode?.trim()
+    ) {
+      return;
+    }
+
+    const dateDeployKey = [
+      selectedCurrency?.symbol || selectedCurrency?.name || "",
+      timeframeValue,
+      fromDate,
+      toDate,
+    ].join("|");
+
+    if (lastDateRangeAutoDeployKeyRef.current === dateDeployKey) {
+      return;
+    }
+
+    lastDateRangeAutoDeployKeyRef.current = dateDeployKey;
+
+    handleDeployCode(editorCode, {
+      timeframe: timeframeValue,
+      fromDate,
+      toDate,
+    });
+  }, [
+    deployedStrategyCode,
+    editorCode,
+    fromDate,
+    handleDeployCode,
+    isDeployed,
+    isDeploying,
+    selectedCurrency,
+    timeframeValue,
+    toDate,
+  ]);
 
   const addStockToDetails = (stock) => {
     if (detailsList.find((s) => s.symbol === stock.symbol)) return;
@@ -1950,6 +3403,145 @@ json.dumps(result)
       setIsWatchlistOpen(true);
     }
   }, [activeTab]);
+
+  const resolveBacktestSignalTime = useCallback((signal) => {
+    if (!signal) return null;
+
+    if (signal.unix_timestamp !== undefined && signal.unix_timestamp !== null) {
+      const unixTime = normalizeChartTime(signal.unix_timestamp);
+      return unixTime === null ? null : unixTime + CHART_TIME_OFFSET_SECONDS;
+    }
+
+    const sourceTime =
+      signal.timestamp ||
+      signal.createdAt ||
+      signal.updatedAt ||
+      signal.tick?.datetime ||
+      signal.response?.entry_time ||
+      signal.time;
+
+    return toChartTimestamp(sourceTime);
+  }, []);
+
+  const backtestSourceSignals = useMemo(() => {
+    if (Array.isArray(customSignals) && customSignals.length > 0) {
+      return customSignals;
+    }
+
+    if (Array.isArray(dashboardSignals) && dashboardSignals.length > 0) {
+      return dashboardSignals;
+    }
+
+    return [];
+  }, [customSignals, dashboardSignals]);
+
+  const resolvedBacktestRows = useMemo(() => {
+    return apiBacktestRows.length > 0 ? apiBacktestRows : backtestRows;
+  }, [apiBacktestRows, backtestRows]);
+
+  useEffect(() => {
+    const chartCandles = Array.isArray(candlesRef.current)
+      ? candlesRef.current
+      : [];
+
+    if (!backtestSourceSignals.length) {
+      setBacktestRows([]);
+      return;
+    }
+
+    const selectedName = selectedCurrency?.name;
+    const selectedSymbol = selectedCurrency?.symbol;
+    const timeframeSeconds = Math.max(
+      1,
+      TIMEFRAME_TO_SECONDS[timeframeValue] ?? 60,
+    );
+    const filteredSignals = backtestSourceSignals.filter((signal) => {
+        if (!signal?.symbol) return true;
+
+        return (
+          isSameSymbolName(signal.symbol, selectedName) ||
+          isSameSymbolName(signal.symbol, selectedSymbol)
+        );
+      });
+    const signalsToUse =
+      filteredSignals.length > 0 ? filteredSignals : backtestSourceSignals;
+
+    const rows = signalsToUse
+      .map((signal, index) => {
+        const chartTime = resolveBacktestSignalTime(signal);
+        if (!Number.isFinite(chartTime)) return null;
+
+        let matchedCandle = null;
+
+        if (chartCandles.length > 0) {
+          matchedCandle =
+            chartCandles.find((candle) => candle?.time === chartTime) || null;
+        }
+
+        if (!matchedCandle && chartCandles.length > 0) {
+          let smallestDiff = Infinity;
+
+          for (const candle of chartCandles) {
+            const candleTime = Number(candle?.time);
+            if (!Number.isFinite(candleTime)) continue;
+
+            const diff = Math.abs(candleTime - chartTime);
+            if (diff <= timeframeSeconds && diff < smallestDiff) {
+              matchedCandle = candle;
+              smallestDiff = diff;
+            }
+          }
+        }
+
+        const signalType = String(
+          signal.signalType || signal.response?.type || signal.side || "BUY",
+        ).toUpperCase();
+        const sourceTime =
+          matchedCandle?.time ||
+          chartTime ||
+          toChartTimestamp(signal.response?.entry_time) ||
+          toChartTimestamp(signal.timestamp);
+        const ohlc = getSignalBacktestOhlc(signal, matchedCandle);
+
+        if (
+          !matchedCandle &&
+          !Number.isFinite(ohlc.open) &&
+          !Number.isFinite(ohlc.high) &&
+          !Number.isFinite(ohlc.low) &&
+          !Number.isFinite(ohlc.close)
+        ) {
+          return null;
+        }
+
+        return {
+          id: `${sourceTime}-${signalType}-${index}`,
+          signalType,
+          label:
+            signal.label ||
+            signal.response?.label ||
+            signal.response?.type ||
+            signalType,
+          symbol: signal.symbol || selectedName || selectedSymbol || "--",
+          timeframe: timeframeValue,
+          dateTime: formatBacktestDateTime(sourceTime),
+          time: sourceTime,
+          open: ohlc.open,
+          high: ohlc.high,
+          low: ohlc.low,
+          close: ohlc.close,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.time - b.time);
+
+    setBacktestRows(rows);
+  }, [
+    backtestSourceSignals,
+    candleDataVersion,
+    selectedCurrency,
+    timeframeValue,
+    resolveBacktestSignalTime,
+  ]);
 
   const [indicatorConfigs, setIndicatorConfigs] = useState(() => {
     try {
@@ -2269,6 +3861,20 @@ json.dumps(result)
 
   const getPaneIndex = (indicator) => {
     const rootId = indicator;
+
+    if (String(rootId || "").startsWith("__sandbox_pane__")) {
+      if (paneIndexRef.current[rootId] !== undefined) {
+        return paneIndexRef.current[rootId];
+      }
+
+      const currentIndices = Object.values(paneIndexRef.current);
+      const maxIndex =
+        currentIndices.length > 0 ? Math.max(...currentIndices) : 0;
+
+      const nextPane = maxIndex + 1;
+      paneIndexRef.current[rootId] = nextPane;
+      return nextPane;
+    }
 
     const baseType = getBaseTypeFromId(rootId);
     // overlay indicators → always main pane
@@ -2892,6 +4498,146 @@ json.dumps(result)
     return emptySymbol;
   };
 
+  const handleToggleAgentPanel = useCallback(() => {
+    setIsAgentPanelOpen((prev) => {
+      const nextOpen = !prev;
+      if (nextOpen) {
+        setIsCodeEditorOpen(false);
+      }
+      return nextOpen;
+    });
+  }, []);
+
+  const handleApplyAgentCode = useCallback((message) => {
+    if (!message?.code) return;
+    setEditorCode(message.code);
+    setIsStrategyDirty(true);
+    setIsDeployed(false);
+    setIsAgentPanelOpen(false);
+    setIsCodeEditorOpen(true);
+    toast.success("Agent code applied to the editor.");
+  }, []);
+
+  const handleClearAgentChat = useCallback(() => {
+    setAgentMessages([]);
+    setAgentDraft("");
+  }, []);
+
+  const handleSendAgentMessage = useCallback(
+    async (promptText) => {
+      const prompt = String(promptText || "").trim();
+      if (!prompt || isAgentLoading) return;
+
+      const currentUser = getUser();
+      const userId = currentUser?.id || currentUser?._id || "123";
+
+      setAgentMessages((prev) => [
+        ...prev,
+        createAgentMessage("user", prompt),
+      ]);
+      setAgentDraft("");
+      setIsAgentLoading(true);
+
+      try {
+        const response = await generateStrategyAgent({
+          prompt,
+          session_id: strategyAgentSessionIdRef.current,
+          user_id: userId,
+          current_file_path: "strategy.py",
+          current_editor_code: editorCode,
+          open_files: ["strategy.py"],
+          project_summary:
+            "ChartLab strategy workspace for chart-driven code generation and iteration.",
+          timeframe: timeframeValue,
+          market: selectedCurrency?.symbol || selectedCurrency?.name,
+          constraints: [
+            "Be concise and actionable.",
+            "When returning code, keep it runnable in ChartLab Python.",
+            "Mention strategy assumptions when they materially affect the result.",
+          ],
+        });
+
+        if (response?.session_id) {
+          strategyAgentSessionIdRef.current = response.session_id;
+        }
+
+        const replyText =
+          response?.reply ||
+          response?.message ||
+          "The strategy agent did not return a response.";
+        const generatedCode =
+          typeof response?.code === "string" && response.code.trim()
+            ? response.code.trim()
+            : "";
+
+        setAgentMessages((prev) => [
+          ...prev,
+          createAgentMessage("assistant", replyText, {
+            code: generatedCode || undefined,
+            replaceEditorCode: response?.replace_editor_code === true,
+          }),
+        ]);
+      } catch (error) {
+        console.error("Strategy agent chat failed:", error);
+        const errorMessage =
+          error?.response?.data?.detail ||
+          error?.response?.data?.message ||
+          error?.message ||
+          "Unable to reach the strategy agent right now.";
+
+        setAgentMessages((prev) => [
+          ...prev,
+          createAgentMessage("assistant", errorMessage),
+        ]);
+        toast.error("Strategy agent request failed.");
+      } finally {
+        setIsAgentLoading(false);
+      }
+    },
+    [editorCode, isAgentLoading, selectedCurrency, timeframeValue],
+  );
+
+  const renderSandboxLegend = (group) => {
+    if (!group || !Array.isArray(group.items) || group.items.length === 0) {
+      return null;
+    }
+
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+          fontSize: 13,
+          fontWeight: 500,
+          color: "var(--text-primary)",
+          padding: "2px 6px",
+          borderRadius: 4,
+          background: "rgba(0, 0, 0, 0.14)",
+          backdropFilter: "blur(2px)",
+        }}
+      >
+        <span style={{ color: "var(--text-secondary)" }}>{group.title}</span>
+        {group.items.map((item) => (
+          <span
+            key={item.id}
+            id={getSandboxLegendDomId(group.paneKey, item.id)}
+            style={{
+              color: item.color || "#3b82f6",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {item.label}:{" "}
+            {item.value != null && Number.isFinite(Number(item.value))
+              ? Number(item.value).toFixed(2)
+              : "--"}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
   const renderIndicators = () => {
     return selectedIndicator?.map((ind) => {
       const { id, type } = ind;
@@ -2994,6 +4740,52 @@ json.dumps(result)
 
   // SYNC CROSSHAIR
   const lastIndicatorUpdateRef = useRef(0);
+
+  const updateSandboxLegendValues = useCallback((param) => {
+    const legendGroups = sandboxLegendGroupsRef.current || {};
+
+    Object.values(legendGroups).forEach((group) => {
+      if (!group?.items?.length) return;
+
+      group.items.forEach((item) => {
+        const el = document.getElementById(
+          getSandboxLegendDomId(group.paneKey, item.id),
+        );
+        if (!el) return;
+
+        let nextValue = item.value;
+        let nextColor = item.color;
+        const hovered = param?.seriesData?.get?.(item.series);
+
+        if (hovered !== undefined) {
+          if (typeof hovered === "number") {
+            nextValue = hovered;
+          } else if (hovered && typeof hovered === "object") {
+            if (Number.isFinite(Number(hovered.value))) {
+              nextValue = Number(hovered.value);
+            } else if (Number.isFinite(Number(hovered.close))) {
+              nextValue = Number(hovered.close);
+            }
+            nextColor =
+              hovered.color ||
+              hovered.lineColor ||
+              hovered.topColor ||
+              hovered.borderColor ||
+              nextColor;
+          }
+        }
+
+        el.textContent = `${item.label}: ${
+          nextValue != null && Number.isFinite(Number(nextValue))
+            ? Number(nextValue).toFixed(2)
+            : "--"
+        }`;
+        if (nextColor) {
+          el.style.color = nextColor;
+        }
+      });
+    });
+  }, []);
 
   const updateIndicatorValues = (param) => {
     const now = Date.now();
@@ -3128,6 +4920,7 @@ json.dumps(result)
             });
           }
         });
+        updateSandboxLegendValues(null);
         return;
       }
 
@@ -3162,15 +4955,12 @@ json.dumps(result)
       }
       // update indicators
       updateIndicatorValues(param);
+      updateSandboxLegendValues(param);
     };
 
     chart.subscribeCrosshairMove(handler);
-    return () => {
-      try {
-        chart.unsubscribeCrosshairMove(handler);
-      } catch (e) {}
-    };
-  }, []);
+    return () => chart.unsubscribeCrosshairMove(handler);
+  }, [updateSandboxLegendValues]);
 
   const { fetchIndicatorData } = useChartFunctions({
     indicatorSeriesRef,
@@ -3225,17 +5015,8 @@ json.dumps(result)
         return false;
       }
       lastHistoricalRequestRef.current = { key: requestKey, at: now };
-      const requestId = `hist_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const historicalPayload = {
         ...historicalPayloadBase,
-        requestId,
-      };
-      historicalMergeModeRef.current = options.mergeMode || "replace";
-      pendingHistoricalFromDateRef.current = options.pendingFromDate || null;
-      pendingHistoricalToDateRef.current = options.pendingToDate || null;
-      historicalRequestOptionsRef.current.set(requestId, {
-        mergeMode: options.mergeMode || "replace",
-        pendingFromDate: options.pendingFromDate || null,
         pendingToDate: options.pendingToDate || null,
         preserveVisibleRange: options.preserveVisibleRange || null,
         symbol: selectedCurrency?.name,
@@ -3279,22 +5060,29 @@ json.dumps(result)
       !chartRef.current ||
       !selectedCurrency ||
       !timeframeValue ||
-      historyBackfillInFlightRef.current
+      historyBackfillInFlightRef.current ||
+      !Array.isArray(candlesRef.current) ||
+      candlesRef.current.length === 0
     ) {
       return false;
     }
 
     const visibleRange = chartRef.current.timeScale().getVisibleLogicalRange();
-    const currentFrom = new Date(fromDate);
+    const firstLoadedCandle = candlesRef.current[0];
+    const firstLoadedTime = Number(firstLoadedCandle?.time);
+    const currentFrom = Number.isFinite(firstLoadedTime)
+      ? new Date((firstLoadedTime - IST_OFFSET) * 1000)
+      : new Date(fromDate);
     if (Number.isNaN(currentFrom.getTime())) return false;
 
     const chunkDays = getBackfillChunkDays(timeframeValue);
     const newFrom = new Date(currentFrom);
     newFrom.setDate(newFrom.getDate() - chunkDays);
     const newFromDate = newFrom.toISOString().split("T")[0];
+    const currentFromDate = currentFrom.toISOString().split("T")[0];
 
     if (
-      newFromDate === fromDate ||
+      newFromDate === currentFromDate ||
       lastAutoBackfillFromRef.current === newFromDate
     ) {
       return false;
@@ -3308,7 +5096,7 @@ json.dumps(result)
       true,
       {
         fromDate: newFromDate,
-        toDate: fromDate,
+        toDate: currentFromDate,
       },
       {
         mergeMode: "prepend",
@@ -3325,13 +5113,19 @@ json.dumps(result)
       !chartRef.current ||
       !selectedCurrency ||
       !timeframeValue ||
-      historyBackfillInFlightRef.current
+      historyBackfillInFlightRef.current ||
+      !Array.isArray(candlesRef.current) ||
+      candlesRef.current.length === 0
     ) {
       return false;
     }
 
     const visibleRange = chartRef.current.timeScale().getVisibleLogicalRange();
-    const currentTo = new Date(toDate);
+    const lastLoadedCandle = candlesRef.current[candlesRef.current.length - 1];
+    const lastLoadedTime = Number(lastLoadedCandle?.time);
+    const currentTo = Number.isFinite(lastLoadedTime)
+      ? new Date((lastLoadedTime - IST_OFFSET) * 1000)
+      : new Date(toDate);
     if (Number.isNaN(currentTo.getTime())) return false;
 
     const today = new Date();
@@ -3358,7 +5152,7 @@ json.dumps(result)
     return requestHistoricalData(
       true,
       {
-        fromDate: toDate,
+        fromDate: currentToStr,
         toDate: newToDate,
       },
       {
@@ -3474,7 +5268,7 @@ json.dumps(result)
   }, []);
 
   // ── Central Socket Hook ──
-  const { emit, once, connect, connected, id, off } = useSocket({
+  const { emit, once, connected, off, socket: dataSocket } = useSocket({
     disableOverviewLiveTickFallback: true,
     handleConnect: () => {
       console.log("✅ SOCKET CONNECTED", true);
@@ -3601,6 +5395,7 @@ json.dumps(result)
       const previousLength = candlesRef.current?.length || 0;
       const addedPoints = Math.max(0, mergedData.length - previousLength);
       candlesRef.current = mergedData;
+      setCandleDataVersion((prev) => prev + 1);
       historicalMergeModeRef.current = "replace";
       historyBackfillInFlightRef.current = false;
 
@@ -3805,7 +5600,11 @@ json.dumps(result)
             seriesRef.current.customChartType = "heikinashi";
           }
           try {
-            seriesRef.current.setData(convertToHeikinAshi(mergedData));
+            seriesRef.current.setData(
+              customScriptBarColorsAppliedRef.current
+                ? applySandboxBarColorsToData(mergedData, "heikinashi")
+                : convertToHeikinAshi(mergedData),
+            );
           } catch (e) {
             console.error("HA setData error:", e);
           }
@@ -3819,7 +5618,11 @@ json.dumps(result)
             seriesRef.current.customChartType = "hollowcandles";
           }
           try {
-            seriesRef.current.setData(mergedData);
+            seriesRef.current.setData(
+              customScriptBarColorsAppliedRef.current
+                ? applySandboxBarColorsToData(mergedData, "hollowcandles")
+                : mergedData,
+            );
           } catch (e) {
             console.error("Hollow setData error:", e);
           }
@@ -3833,7 +5636,11 @@ json.dumps(result)
             seriesRef.current.customChartType = chartType;
           }
           try {
-            seriesRef.current.setData(mergedData);
+            seriesRef.current.setData(
+              customScriptBarColorsAppliedRef.current
+                ? applySandboxBarColorsToData(mergedData, "candlestick")
+                : mergedData,
+            );
           } catch (e) {
             console.error("Default setData error:", e);
           }
@@ -3849,15 +5656,17 @@ json.dumps(result)
         lastDeployedMarkersRef.current?.length > 0 &&
         seriesRef.current
       ) {
+        const shouldShowStrategyVisuals =
+          areStrategyVisualsVisibleRef.current !== false;
         if (!customScriptMarkersRef.current) {
           customScriptMarkersRef.current = createSeriesMarkers(
             seriesRef.current,
-            areStrategyVisualsVisible ? lastDeployedMarkersRef.current : [],
+            shouldShowStrategyVisuals ? lastDeployedMarkersRef.current : [],
           );
           seriesRef.current.attachPrimitive(customScriptMarkersRef.current);
         } else {
           customScriptMarkersRef.current.setMarkers(
-            areStrategyVisualsVisible ? lastDeployedMarkersRef.current : [],
+            shouldShowStrategyVisuals ? lastDeployedMarkersRef.current : [],
           );
         }
       }
@@ -3905,6 +5714,41 @@ json.dumps(result)
             fetchFrom,
             fetchTo,
           );
+        }
+
+        const effectiveFetchFrom =
+          requestMeta?.pendingFromDate ||
+          pendingHistoricalFromDateRef.current ||
+          fromDate;
+        const effectiveFetchTo =
+          requestMeta?.pendingToDate ||
+          pendingHistoricalToDateRef.current ||
+          toDate;
+
+        if (
+          (mergeMode === "prepend" || mergeMode === "append") &&
+          isDeployed &&
+          deployedStrategyCode === SANDBOX_DEPLOYMENT_CODE &&
+          !isDeploying &&
+          editorCode?.trim()
+        ) {
+          const paginationDeployKey = [
+            mergeMode,
+            effectiveFetchFrom,
+            effectiveFetchTo,
+            timeframeValue,
+            selectedCurrency?.symbol || selectedCurrency?.name || "",
+            mergedData.length,
+          ].join("|");
+
+          if (lastPaginationAutoDeployKeyRef.current !== paginationDeployKey) {
+            lastPaginationAutoDeployKeyRef.current = paginationDeployKey;
+            handleDeployCode(editorCode, {
+              fromDate: effectiveFetchFrom,
+              toDate: effectiveFetchTo,
+              timeframe: timeframeValue,
+            });
+          }
         }
 
         setMainChartLoading(false);
@@ -4049,6 +5893,7 @@ json.dumps(result)
         if (existingIndex >= 0) candlesRef.current[existingIndex] = updatedBar;
         else candlesRef.current.push(updatedBar);
         candlesRef.current.sort((a, b) => a.time - b.time);
+        setCandleDataVersion((prev) => prev + 1);
         currentCandleRef.current =
           candlesRef.current[candlesRef.current.length - 1] || updatedBar;
         lastCandleTimeRef.current = normalizedTime;
@@ -4228,8 +6073,15 @@ json.dumps(result)
   // Keep emitRef and socketRef up to date
   useEffect(() => {
     emitRef.current = emit;
-    socketRef.current = { emit, once, off, connected };
-  }, [emit, once, off, connected]);
+    socketRef.current = {
+      emit,
+      once,
+      off,
+      connected,
+      socket: dataSocket,
+      indicatorSocket: getStrategySocket(),
+    };
+  }, [connected, dataSocket, emit, off, once]);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -4245,9 +6097,21 @@ json.dumps(result)
         return;
       }
 
-      if (range.from <= 25) {
+      const barsInfo =
+        seriesRef.current &&
+        typeof seriesRef.current.barsInLogicalRange === "function"
+          ? seriesRef.current.barsInLogicalRange(range)
+          : null;
+      const shouldLoadOlder = barsInfo
+        ? barsInfo.barsBefore < 50
+        : range.from <= 25;
+      const shouldLoadNewer = barsInfo
+        ? barsInfo.barsAfter < 50
+        : range.to >= candlesRef.current.length - 25;
+
+      if (shouldLoadOlder) {
         requestOlderHistoricalChunk();
-      } else if (range.to >= candlesRef.current.length - 25) {
+      } else if (shouldLoadNewer) {
         requestNewerHistoricalChunk();
       }
     };
@@ -4801,7 +6665,17 @@ json.dumps(result)
               <ChartTabs
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
-                onCodeClick={() => setIsCodeEditorOpen((prev) => !prev)}
+                onCodeClick={() => {
+                  setIsCodeEditorOpen((prev) => {
+                    const nextOpen = !prev;
+                    if (nextOpen) {
+                      setIsAgentPanelOpen(false);
+                    }
+                    return nextOpen;
+                  });
+                }}
+                onAgentClick={handleToggleAgentPanel}
+                onBacktestClick={() => setActiveTab("Backtest")}
                 onStrategyClick={handleStrategyClick}
                 onGoToDate={handleGoToDate}
                 isFullscreen={isFullscreen}
@@ -5495,6 +7369,60 @@ json.dumps(result)
                         </>
                       )}
 
+                      {areStrategyVisualsVisible &&
+                        sandboxLegendGroups?.__sandbox_overlay__?.items
+                          ?.length > 0 && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: 62,
+                              left: 8,
+                              zIndex: 55,
+                              pointerEvents: "none",
+                            }}
+                          >
+                            {renderSandboxLegend(
+                              sandboxLegendGroups.__sandbox_overlay__,
+                            )}
+                          </div>
+                        )}
+
+                      {areStrategyVisualsVisible &&
+                        Object.values(sandboxLegendGroups)
+                          .filter(
+                            (group) =>
+                              group?.paneKey &&
+                              group.paneKey !== null &&
+                              group.items?.length > 0,
+                          )
+                          .map((group) => {
+                            const paneDiv =
+                              panesRef.current[group.paneKey]?.pane?.getHTMLElement();
+
+                            if (!paneDiv) return null;
+                            const portalTarget =
+                              paneDiv.tagName?.toLowerCase() === "tr"
+                                ? paneDiv.querySelector("td") || paneDiv
+                                : paneDiv;
+
+                            portalTarget.style.position = "relative";
+
+                            return createPortal(
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  top: 5,
+                                  left: 8,
+                                  zIndex: 55,
+                                  pointerEvents: "none",
+                                }}
+                              >
+                                {renderSandboxLegend(group)}
+                              </div>,
+                              portalTarget,
+                            );
+                          })}
+
                       {/* -----------------OLD INDICATOR BAR (COMMENTED)------------------- */}
 
                       {/* {selectedIndicator?.map((indicator, index) => {
@@ -5635,11 +7563,250 @@ json.dumps(result)
                       isDeploying={isDeploying}
                       isSaving={isSavingStrategy}
                       isUpdating={isUpdatingStrategy}
-                      canUpdate={
-                        Boolean(activeStrategyRecord?.id) && isStrategyDirty
-                      }
+                      canUpdate={Boolean(activeStrategyRecord?.id) && isStrategyDirty}
+                      canShowUpdate={Boolean(activeStrategyRecord?.id)}
                       loadedStrategyName={activeStrategyRecord?.name || ""}
                     />
+                  )}
+
+                  {isAgentPanelOpen && (
+                    <StrategyAgentPanel
+                      onClose={() => setIsAgentPanelOpen(false)}
+                      messages={agentMessages}
+                      draft={agentDraft}
+                      onDraftChange={setAgentDraft}
+                      onSend={handleSendAgentMessage}
+                      isLoading={isAgentLoading}
+                      onClear={handleClearAgentChat}
+                      onApplyCode={handleApplyAgentCode}
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  borderLeft: isWatchlistOpen
+                    ? "1px solid var(--border-color)"
+                    : "none",
+                  borderRight: "1px solid var(--border-color)",
+                  display: activeTab === "Backtest" ? "flex" : "none",
+                  flexDirection: "column",
+                  minHeight: "100%",
+                  background: "var(--bg-primary)",
+                }}
+              >
+                <div
+                  style={{
+                    padding: "18px 20px 12px",
+                    borderBottom: "1px solid var(--border-color)",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "10px",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: "1rem",
+                        fontWeight: 700,
+                        color: "var(--text-primary)",
+                      }}
+                    >
+                      Backtest Data
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "0.85rem",
+                        color: "var(--text-secondary)",
+                        marginTop: "4px",
+                      }}
+                    >
+                      Signal timestamps matched to chart candles for OHLC-based backtesting.
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "0.82rem",
+                        color: "var(--text-secondary)",
+                        padding: "6px 10px",
+                        border: "1px solid var(--border-color)",
+                        borderRadius: "999px",
+                      }}
+                    >
+                      Rows: {resolvedBacktestRows.length}
+                    </div>
+                    <button
+                      onClick={() => setActiveTab("Chart")}
+                      style={{
+                        padding: "8px 14px",
+                        borderRadius: "8px",
+                        border: "1px solid var(--border-color)",
+                        background: "var(--bg-secondary)",
+                        color: "var(--text-primary)",
+                        cursor: "pointer",
+                        fontSize: "0.85rem",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    flex: 1,
+                    overflow: "auto",
+                    padding: "16px 20px 20px",
+                  }}
+                >
+                  {resolvedBacktestRows.length === 0 ? (
+                    <div
+                      style={{
+                        minHeight: "220px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "var(--text-secondary)",
+                        border: "1px dashed var(--border-color)",
+                        borderRadius: "12px",
+                        background: "var(--bg-secondary)",
+                        padding: "24px",
+                        textAlign: "center",
+                      }}
+                    >
+                      No backtest rows yet. Run or deploy a strategy so matching candles can be captured here.
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        overflowX: "auto",
+                        border: "1px solid var(--border-color)",
+                        borderRadius: "12px",
+                        background: "var(--bg-secondary)",
+                      }}
+                    >
+                      <table
+                        style={{
+                          width: "100%",
+                          borderCollapse: "collapse",
+                          minWidth: "920px",
+                        }}
+                      >
+                        <thead>
+                          <tr style={{ background: "rgba(255,255,255,0.03)" }}>
+                            {[
+                              "Signal",
+                              "Event",
+                              "Date & Time",
+                              "Symbol",
+                              "Timeframe",
+                              "Open",
+                              "High",
+                              "Low",
+                              "Close",
+                            ].map((heading) => (
+                              <th
+                                key={heading}
+                                style={{
+                                  textAlign: "left",
+                                  padding: "12px 14px",
+                                  fontSize: "0.8rem",
+                                  letterSpacing: "0.04em",
+                                  color: "var(--text-secondary)",
+                                  borderBottom: "1px solid var(--border-color)",
+                                }}
+                              >
+                                {heading}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {resolvedBacktestRows.map((row) => (
+                            <tr key={row.id}>
+                              <td
+                                style={{
+                                  padding: "12px 14px",
+                                  borderBottom: "1px solid var(--border-color)",
+                                  color:
+                                    row.signalType === "SELL" ||
+                                    row.signalType === "PUT"
+                                      ? "#ef4444"
+                                      : "#22c55e",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {row.signalType}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "12px 14px",
+                                  borderBottom: "1px solid var(--border-color)",
+                                  color: "var(--text-primary)",
+                                }}
+                              >
+                                {row.label || "--"}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "12px 14px",
+                                  borderBottom: "1px solid var(--border-color)",
+                                  color: "var(--text-primary)",
+                                }}
+                              >
+                                {row.dateTime}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "12px 14px",
+                                  borderBottom: "1px solid var(--border-color)",
+                                  color: "var(--text-primary)",
+                                }}
+                              >
+                                {row.symbol}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "12px 14px",
+                                  borderBottom: "1px solid var(--border-color)",
+                                  color: "var(--text-primary)",
+                                }}
+                              >
+                                {row.timeframe}
+                              </td>
+                              {["open", "high", "low", "close"].map((field) => (
+                                <td
+                                  key={field}
+                                  style={{
+                                    padding: "12px 14px",
+                                    borderBottom: "1px solid var(--border-color)",
+                                    color: "var(--text-primary)",
+                                    fontVariantNumeric: "tabular-nums",
+                                  }}
+                                >
+                                  {Number.isFinite(Number(row[field]))
+                                    ? Number(row[field]).toFixed(2)
+                                    : "--"}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </div>
               </div>

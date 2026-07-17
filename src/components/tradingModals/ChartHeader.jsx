@@ -153,17 +153,23 @@ export default function ChartHeader({
 
   useEffect(() => {
     const handleKeyDown = (e) => {
+      const activeElement = document.activeElement;
+      const isTypingInFormField =
+        activeElement?.tagName === "INPUT" ||
+        activeElement?.tagName === "TEXTAREA" ||
+        activeElement?.isContentEditable;
+      const isInsideCodeEditor =
+        activeElement?.closest?.(".code-editor-panel") ||
+        activeElement?.closest?.(".monaco-editor") ||
+        activeElement?.classList?.contains("inputarea");
+
       // Check if key is alphabetic and no modifier keys are active
       if (/^[a-zA-Z]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        // Prevent opening if the user is typing in an input or textarea
-        if (
-          document.activeElement.tagName === "INPUT" ||
-          document.activeElement.tagName === "TEXTAREA" ||
-          document.activeElement.isContentEditable
-        ) {
+        // Prevent opening if the user is typing in a field or inside Monaco/code editor.
+        if (isTypingInFormField || isInsideCodeEditor) {
           return;
         }
-        
+
         // Open symbol search modal and pass the pressed key
         e.preventDefault();
         openModal("Symbol Search", undefined, e.key);

@@ -179,6 +179,7 @@ const useSocket = (props = {}) => {
     off: socketManager.socket.off.bind(socketManager.socket),
     connect: socketManager.socket.connect.bind(socketManager.socket),
     disconnect: socketManager.socket.disconnect.bind(socketManager.socket),
+    socket: socketManager.socket,
   }), []);
 
   return { 

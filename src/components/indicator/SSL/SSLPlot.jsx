@@ -114,8 +114,6 @@ export default function SSLPlot({
       const barColor = getBaselineColor(close, upper, lower);
       if (barColor != null) {
         res.color = barColor;
-        res.wickColor = barColor;
-        res.borderColor = barColor;
       }
       return res;
     });

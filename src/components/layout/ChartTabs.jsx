@@ -6,12 +6,15 @@ import GoToDateDialog from "./GoToDateDialog";
 import { TbCalendarShare } from "react-icons/tb";
 import { CgMaximizeAlt } from "react-icons/cg";
 import { MdOutlineFullscreenExit } from "react-icons/md";
+import { FiCpu } from "react-icons/fi";
 
 const ChartTabs = ({
   activeTab,
   setActiveTab,
   onCodeClick,
+  onAgentClick,
   onStrategyClick,
+  onBacktestClick,
   onGoToDate,
   isFullscreen,
   onToggleFullscreen,
@@ -89,7 +92,7 @@ const ChartTabs = ({
     },
   };
 
-  const tabs = ["Chart", "Overview", "Option Chain", "OI Analytics"];
+  const tabs = ["Chart", "Backtest", "Overview", "Option Chain", "OI Analytics"];
 
   return (
     <div className="chart-tabs-container">
@@ -166,6 +169,25 @@ const ChartTabs = ({
         }
         .chart-scalper-btn:hover {
           background-color: rgba(124, 58, 237, 0.1);
+        }
+        .chart-agent-btn {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 12px;
+          background: linear-gradient(135deg, rgba(14, 165, 233, 0.14), rgba(124, 58, 237, 0.16));
+          border: 1px solid rgba(96, 165, 250, 0.55);
+          border-radius: 4px;
+          color: #bfdbfe;
+          font-size: 0.8rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .chart-agent-btn:hover {
+          background: linear-gradient(135deg, rgba(14, 165, 233, 0.22), rgba(124, 58, 237, 0.22));
+          border-color: #93c5fd;
+          color: #eff6ff;
         }
         .chart-strategy-btn {
           display: flex;
@@ -313,11 +335,25 @@ const ChartTabs = ({
           GO TO
         </button>
         <button
+          title="Open Backtest"
+          onClick={() => {
+            if (onBacktestClick) onBacktestClick();
+            else setActiveTab("Backtest");
+          }}
+          className="chart-strategy-btn"
+        >
+          <SiVitest size={14} /> BACKTEST
+        </button>
+        <button
           title="Run Strategy"
           onClick={onStrategyClick}
           className="chart-strategy-btn"
         >
           <SiVitest size={14} /> STRATEGY
+        </button>
+        <button className="chart-agent-btn" onClick={onAgentClick}>
+          <FiCpu size={14} />
+          AGENT
         </button>
         <button className="chart-scalper-btn" onClick={onCodeClick}>
           <FaCode />
