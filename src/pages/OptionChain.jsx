@@ -830,13 +830,14 @@ const OptionChain = () => {
                 styles={{
                   control: (base) => ({
                     ...base,
-                    backgroundColor: "var(--bg-secondary)",
-                    borderColor: "var(--border-color)",
-                    color: "var(--text-primary)",
-                    minHeight: "38px",
+                    backgroundColor: "var(--oc-surface)",
+                    border: "1px solid rgba(255, 255, 255, 0.2)",
+                    borderRadius: "9px",
+                    color: "var(--oc-text)",
+                    minHeight: "42px",
                     boxShadow: "none",
                     "&:hover": {
-                      borderColor: "var(--accent-color)",
+                      borderColor: "rgba(127,119,221,0.5)",
                     },
                   }),
                   singleValue: (base) => ({
@@ -881,9 +882,9 @@ const OptionChain = () => {
               />
             </Col>
 
-            <Col md={2}>
+            <Col md={3}>
               <Form.Group className="mb-0">
-                <div className="oc-rows-label mb-1">Expiry Date</div>
+                <label className="oc-filter-label">Expiry Date</label>
                 <Form.Select
                   value={expiryFilter}
                   onChange={(e) => {
@@ -912,10 +913,13 @@ const OptionChain = () => {
               </Form.Group>
             </Col>
 
-            <Col md={4}>
+            <Col md={3}>
               <label className="oc-filter-label">Date</label>
               <InputGroup>
-                <InputGroup.Text className="oc-input-icon">
+                <InputGroup.Text 
+                  className="oc-input-icon" 
+                  onClick={() => filterDateRef.current?.showPicker && filterDateRef.current.showPicker()}
+                >
                   <FaCalendarAlt size={14} />
                 </InputGroup.Text>
                 <Form.Control
@@ -931,6 +935,8 @@ const OptionChain = () => {
                        return;
                     }
                     setFilterDate(val);
+                    setAppliedFilterDate(val);
+                    setCurrentPage(1);
                   }}
                   className="oc-select oc-date-input"
                 />

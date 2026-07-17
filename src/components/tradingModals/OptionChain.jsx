@@ -5,7 +5,7 @@ import { io } from "socket.io-client";
 import { METADATA_API_URL, SOCKET_URL } from "../../services/websocket/socket";
 import { FiArrowLeft } from "react-icons/fi";
 
-const OptionChain = ({ onSymbolChange, onBack }) => {
+const OptionChain = ({ selectedCurrency, onSymbolChange, onBack }) => {
   const navigate = useNavigate();
 
   // ── Dropdown state ──
@@ -18,6 +18,15 @@ const OptionChain = ({ onSymbolChange, onBack }) => {
   const [symbolSearch, setSymbolSearch] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
+
+  // Sync selectedSymbol with selectedCurrency from the chart/watchlist
+  useEffect(() => {
+    const incomingSymbol = selectedCurrency?.name || selectedCurrency?.symbol;
+    if (incomingSymbol && incomingSymbol !== selectedSymbol) {
+      setSelectedSymbol(incomingSymbol);
+      setSelectedContract(null);
+    }
+  }, [selectedCurrency, selectedSymbol]);
 
   // ── Chart state ──
   const [spotPrice, setSpotPrice] = useState(null);
@@ -49,7 +58,7 @@ const OptionChain = ({ onSymbolChange, onBack }) => {
   // Fetch metadata from REST API
   useEffect(() => {
     const metadataUrl =
-      import.meta.env.VITE_METADATA_API_URL || "http://192.168.1.6:3000";
+      import.meta.env.VITE_METADATA_API_URL;
     axios
       .get(`${metadataUrl}/api/historical-metadata`)
       .then((res) => {
@@ -93,6 +102,11 @@ const OptionChain = ({ onSymbolChange, onBack }) => {
     }
   }, [selectedSymbol, metadata, onSymbolChange]);
 
+  const selectedSymbolRef = useRef(selectedSymbol);
+  useEffect(() => {
+    selectedSymbolRef.current = selectedSymbol;
+  }, [selectedSymbol]);
+
   // Socket setup (one persistent connection)
   useEffect(() => {
     const s = io(SOCKET_URL);
@@ -102,7 +116,7 @@ const OptionChain = ({ onSymbolChange, onBack }) => {
 
     // Listen for live-options-list to update symbol dropdown
     s.on("live-options-list", (response) => {
-      // console.log("[OptionChain] live-options-list received:", response);
+      console.log("[OptionChain] live-options-list received:", response);
       if (Array.isArray(response?.data) && response?.data?.length > 0) {
         setLiveContractsList((prev) => {
           if (prev?.length === 0) return response?.data;
@@ -123,14 +137,26 @@ const OptionChain = ({ onSymbolChange, onBack }) => {
           return Array.from(mergedMap.values());
         });
 
-        // Auto-select first contract if none is selected
+        // Auto-select first contract matching selectedSymbol if none is selected
         setSelectedContract((prev) => {
           if (!prev) {
-            const first = response.data[0];
-            setSelectedSymbol(first.symbol);
-            setActiveExpiry(first.expiry ?? first.expiry_date);
-            setSymbolSearch(first.symbol);
-            return first;
+            const currentSym = (selectedSymbolRef.current || "").toLowerCase();
+            let first = response.data.find(c => {
+              const sym = (c.symbol || c.name || "").toLowerCase();
+              return sym === currentSym;
+            });
+            
+            if (!first) {
+              first = response.data[0]; // fallback if the requested symbol isn't in the list
+            }
+            
+            if (first) {
+              const newSym = first.symbol || first.name;
+              setSelectedSymbol(newSym);
+              setActiveExpiry(first.expiry ?? first.expiry_date);
+              // Do NOT setSymbolSearch here, so the default filter behavior applies
+              return first;
+            }
           }
           return prev;
         });
@@ -413,8 +439,15 @@ const OptionChain = ({ onSymbolChange, onBack }) => {
   };
 
   const filteredContracts = liveContractsList.filter((c) => {
-    const search = (symbolSearch || "").toLowerCase();
     const sym = (c.symbol || "").toLowerCase();
+    
+    // If there is no active search, only show the currently selected symbol's contracts
+    if (!symbolSearch) {
+      return sym === (selectedSymbol || "").toLowerCase();
+    }
+
+    // Otherwise, allow searching through all symbols
+    const search = symbolSearch.toLowerCase();
     const str = (c.strike ?? c.strike_price ?? "").toString();
     const exp = (c.expiry ?? c.expiry_date ?? "").toLowerCase();
 
@@ -547,7 +580,7 @@ const OptionChain = ({ onSymbolChange, onBack }) => {
                 border: "1px solid var(--border-color)",
                 borderRadius: 6,
                 zIndex: 100,
-                minWidth: 400,
+                width: "100%",
                 boxShadow: "0 4px 16px rgba(0,0,0,0.6)",
                 overflow: "hidden",
               }}

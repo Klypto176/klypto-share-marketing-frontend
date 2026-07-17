@@ -94,7 +94,8 @@ const createAgentMessage = (role, content, extras = {}) => ({
   ...extras,
 });
 
-const buildStrategyAgentPrompt = (editorCode, symbol, timeframe) => `
+const buildStrategyAgentPrompt = (editorCode, symbol, timeframe) =>
+  `
 Convert the current strategy editor content into runnable ChartLab-compatible Python for sandbox execution.
 
 Requirements:
@@ -791,10 +792,7 @@ export default function Candlestick() {
         }
         const currentUser = getUser();
         const resolvedUserId =
-          currentUser?.id ||
-          currentUser?._id ||
-          currentUser?.userId ||
-          "";
+          currentUser?.id || currentUser?._id || currentUser?.userId || "";
         const resolvedUserName =
           currentUser?.name ||
           currentUser?.username ||
@@ -824,7 +822,8 @@ export default function Candlestick() {
             symbol: symbolName,
             lookupSymbol: selectedCurrency?.symbol || null,
             token: selectedCurrency?.token || null,
-            exchange: selectedCurrency?.exchange || selectedCurrency?.segment || "NSE",
+            exchange:
+              selectedCurrency?.exchange || selectedCurrency?.segment || "NSE",
             timeframe: timeframeValue,
             fromDate,
             toDate,
@@ -900,13 +899,11 @@ export default function Candlestick() {
 
       try {
         setIsUpdatingStrategy(true);
-        const symbolName = selectedCurrency?.name || selectedCurrency?.symbol || "Strategy";
+        const symbolName =
+          selectedCurrency?.name || selectedCurrency?.symbol || "Strategy";
         const currentUser = getUser();
         const resolvedUserId =
-          currentUser?.id ||
-          currentUser?._id ||
-          currentUser?.userId ||
-          "";
+          currentUser?.id || currentUser?._id || currentUser?.userId || "";
         const resolvedUserName =
           currentUser?.name ||
           currentUser?.username ||
@@ -933,7 +930,8 @@ export default function Candlestick() {
           },
           strategyName,
           name: strategyName,
-          strategy_type: activeStrategyRecord?.strategy_type || "custom_notebook",
+          strategy_type:
+            activeStrategyRecord?.strategy_type || "custom_notebook",
           language: activeStrategyRecord?.language || "python",
           code,
           config: {
@@ -941,7 +939,8 @@ export default function Candlestick() {
             symbol: symbolName,
             lookupSymbol: selectedCurrency?.symbol || null,
             token: selectedCurrency?.token || null,
-            exchange: selectedCurrency?.exchange || selectedCurrency?.segment || "NSE",
+            exchange:
+              selectedCurrency?.exchange || selectedCurrency?.segment || "NSE",
             timeframe: timeframeValue,
             fromDate,
             toDate,
@@ -956,15 +955,16 @@ export default function Candlestick() {
           payload,
         );
 
-        const response = await updateNotebookStrategy(activeStrategyRecord.id, payload);
+        const response = await updateNotebookStrategy(
+          activeStrategyRecord.id,
+          payload,
+        );
         if (response?.data) {
           setActiveStrategyRecord(response.data);
           setIsStrategyDirty(false);
         }
 
-        toast.success(
-          response?.message || "Strategy updated successfully.",
-        );
+        toast.success(response?.message || "Strategy updated successfully.");
       } catch (err) {
         Swal.fire({
           icon: "error",
@@ -981,7 +981,14 @@ export default function Candlestick() {
         setIsUpdatingStrategy(false);
       }
     },
-    [activeStrategyRecord, fromDate, isDeployed, selectedCurrency, timeframeValue, toDate],
+    [
+      activeStrategyRecord,
+      fromDate,
+      isDeployed,
+      selectedCurrency,
+      timeframeValue,
+      toDate,
+    ],
   );
 
   const ensureStrategyName = useCallback(
@@ -989,7 +996,6 @@ export default function Candlestick() {
       let strategyName =
         activeStrategyRecord?.name?.trim() || draftStrategyName?.trim() || "";
 
-      if (!requireStrategyName) {
         return strategyName;
       }
 
@@ -2091,46 +2097,33 @@ export default function Candlestick() {
           series.applyOptions({ visible: nextVisible });
         } catch (error) {
           console.warn("Unable to toggle strategy series visibility:", error);
-        }
-      });
-
-      if (customScriptPriceLinesRef.current?.length) {
-        customScriptPriceLinesRef.current.forEach((entry) => {
-          const nextVisible = visible && entry?.baseVisible !== false;
-          try {
-            entry?.priceLine?.applyOptions?.({
-              lineVisible: nextVisible,
-              axisLabelVisible:
-                nextVisible && entry?.baseAxisLabelVisible !== false,
-            });
-          } catch (error) {
-            console.warn("Unable to toggle strategy price line visibility:", error);
-          }
-        });
-      }
-
-      if (customScriptFillLayersRef.current?.length) {
-        customScriptFillLayersRef.current.forEach((entry) => {
-          const nextVisible = visible && entry?.baseVisible !== false;
-          const canvas = entry?.canvas;
-          if (canvas) {
-            canvas.style.display = nextVisible ? "block" : "none";
-          }
-        });
-      }
-
-      if (customScriptMarkersRef.current) {
-        try {
-          customScriptMarkersRef.current.setMarkers(
-            visible ? lastDeployedMarkersRef.current || [] : [],
-          );
-        } catch (error) {
-          console.warn("Unable to toggle strategy markers visibility:", error);
-        }
-      }
     },
-    [],
+    [areStrategyVisualsVisible],
   );
+
+  const applyStrategyVisualVisibility = useCallback((visible) => {
+    const seriesList = Array.isArray(customScriptSeriesRef.current)
+      ? customScriptSeriesRef.current
+      : [];
+
+    seriesList.forEach((series) => {
+      try {
+        series.applyOptions({ visible });
+      } catch (error) {
+        console.warn("Unable to toggle strategy series visibility:", error);
+      }
+    });
+
+    if (customScriptMarkersRef.current) {
+      try {
+        customScriptMarkersRef.current.setMarkers(
+          visible ? lastDeployedMarkersRef.current || [] : [],
+        );
+      } catch (error) {
+        console.warn("Unable to toggle strategy markers visibility:", error);
+      }
+    }
+  }, []);
 
   const handleToggleStrategyVisuals = useCallback(() => {
     setAreStrategyVisualsVisible((prev) => {
@@ -2537,7 +2530,12 @@ export default function Candlestick() {
     }
 
     setCustomSignals(newSignals);
-  }, [dashboardSignals, isDeployed, selectedCurrency, areStrategyVisualsVisible]);
+  }, [
+    dashboardSignals,
+    isDeployed,
+    selectedCurrency,
+    areStrategyVisualsVisible,
+  ]);
 
   const handleDeployCode = useCallback(
     async (code, runtimeContext = {}) => {
@@ -3182,6 +3180,8 @@ json.dumps(result)
   const lastLiveBarPaintAtRef = useRef(0);
   const seriesReadyRef = useRef(false);
   const selectedIndicatorRef = useRef(selectedIndicator);
+  const chartTypeRef = useRef(chartType);
+  const crosshairActiveRef = useRef(false);
   const ohlcvDisplayRef = useRef(null);
   const actionButtonsRef = useRef(null);
   const strategyMarkersRef = useRef(null); //ref for markers
@@ -3222,6 +3222,128 @@ json.dumps(result)
     } catch {}
   }, []);
 
+  const normalizeSeriesTime = useCallback((value) => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+
+    if (typeof value === "string") {
+      const numericValue = Number(value);
+      if (Number.isFinite(numericValue)) return numericValue;
+
+      const parsedMs = Date.parse(value);
+      if (Number.isFinite(parsedMs)) return Math.floor(parsedMs / 1000);
+      return null;
+    }
+
+    if (
+      value &&
+      typeof value === "object" &&
+      Number.isFinite(value.year) &&
+      Number.isFinite(value.month) &&
+      Number.isFinite(value.day)
+    ) {
+      return Math.floor(
+        Date.UTC(value.year, value.month - 1, value.day) / 1000,
+      );
+    }
+
+    return null;
+  }, []);
+
+  const writeOhlcvDisplay = useCallback((bar) => {
+    if (!bar || !ohlcvDisplayRef.current) return;
+
+    const el = ohlcvDisplayRef.current;
+    const isUp = Number(bar.close) >= Number(bar.open);
+    const color = isUp ? "#22c55e" : "#ef4444";
+    const o = el.querySelector("[data-o]");
+    const h = el.querySelector("[data-h]");
+    const l = el.querySelector("[data-l]");
+    const c = el.querySelector("[data-c]");
+
+    if (o) o.textContent = Number(bar.open).toFixed(2);
+    if (h) h.textContent = Number(bar.high).toFixed(2);
+    if (l) l.textContent = Number(bar.low).toFixed(2);
+    if (c) c.textContent = Number(bar.close).toFixed(2);
+    el.querySelectorAll("[data-val]").forEach((s) => (s.style.color = color));
+  }, []);
+
+  const writeActionButtonPrices = useCallback((bar) => {
+    if (!bar || !actionButtonsRef.current) return;
+
+    const buyPrice = actionButtonsRef.current.querySelector("[data-buy-price]");
+    const sellPrice =
+      actionButtonsRef.current.querySelector("[data-sell-price]");
+    const formattedClose = Number(bar.close).toFixed(2);
+
+    if (buyPrice) buyPrice.textContent = formattedClose;
+    if (sellPrice) sellPrice.textContent = formattedClose;
+  }, []);
+
+  const restoreLiveHeader = useCallback(() => {
+    writeOhlcvDisplay(currentCandleRef.current);
+    writeActionButtonPrices(currentCandleRef.current);
+  }, [writeActionButtonPrices, writeOhlcvDisplay]);
+
+  const buildSeriesDataForChartType = useCallback((data, activeChartType) => {
+    if (!Array.isArray(data)) return [];
+
+    switch (activeChartType) {
+      case "line":
+      case "area":
+      case "baseline":
+        return data.map((d) => ({
+          time: d.time,
+          value: Number(d.close),
+        }));
+      case "histogram":
+        return data.map((d, index, arr) => {
+          const prev = arr[index - 1];
+          const isUp = prev ? Number(d.close) >= Number(prev.close) : true;
+          return {
+            time: d.time,
+            value: Number(d.volume || 0),
+            color: isUp ? "#22c55e" : "#ef4444",
+          };
+        });
+      case "heikinashi":
+        return convertToHeikinAshi(data);
+      default:
+        return data;
+    }
+  }, []);
+
+  const buildLiveSeriesPoint = useCallback((bar, activeChartType) => {
+    if (!bar) return null;
+
+    switch (activeChartType) {
+      case "line":
+      case "area":
+      case "baseline":
+        return {
+          time: bar.time,
+          value: Number(bar.close),
+        };
+      case "histogram": {
+        const candles = candlesRef.current;
+        const index = candles.findIndex((c) => c.time === bar.time);
+        const prev = index > 0 ? candles[index - 1] : null;
+        const isUp = prev ? Number(bar.close) >= Number(prev.close) : true;
+        return {
+          time: bar.time,
+          value: Number(bar.volume || 0),
+          color: isUp ? "#22c55e" : "#ef4444",
+        };
+      }
+      case "heikinashi": {
+        const sourceData = candlesRef.current;
+        const heikinData = convertToHeikinAshi(sourceData);
+        return heikinData[heikinData.length - 1] || null;
+      }
+      default:
+        return bar;
+    }
+  }, []);
+
   useEffect(() => {
     selectedIndicatorRef.current = selectedIndicator;
   }, [selectedIndicator]);
@@ -3229,6 +3351,10 @@ json.dumps(result)
   useEffect(() => {
     selectedCurrencyRef.current = selectedCurrency;
   }, [selectedCurrency]);
+
+  useEffect(() => {
+    chartTypeRef.current = chartType;
+  }, [chartType]);
 
   useEffect(() => {
     historyBackfillInFlightRef.current = false;
@@ -4248,29 +4374,37 @@ json.dumps(result)
       if (style?.visible === false) return null;
       let color = style?.color;
 
-      const group = indicatorSeriesRef.current?.[id];
-      if (group) {
-        if (typeof group.options === "function") {
-          const opts = group.options();
-          color = opts.color || opts.lineColor || opts.topColor || color;
-        } else {
-          const seriesKey = Object.keys(group).find(
-            (k) => typeof group[k]?.options === "function",
-          );
-          if (seriesKey) {
-            const opts = group[seriesKey].options();
-            color = opts.color || opts.lineColor || opts.topColor || color;
-          }
-        }
-      }
-      color = toFullOpacity(color || "#333");
-
       const val =
         value != null
           ? typeof value === "object"
             ? Object.values(value)[0]
             : value
           : null;
+
+      const group = indicatorSeriesRef.current?.[id];
+      if (group) {
+        if (typeof group.options === "function") {
+          const opts = group.options();
+          color = opts.color || opts.lineColor || opts.topColor || opts.topLineColor || color;
+          if (opts.topLineColor && opts.bottomLineColor && val != null) {
+            const baseVal = opts.baseValue?.price ?? 0;
+            color = Number(val) < baseVal ? opts.bottomLineColor : opts.topLineColor;
+          }
+        } else {
+          const seriesKey = Object.keys(group).find(
+            (k) => typeof group[k]?.options === "function",
+          );
+          if (seriesKey) {
+            const opts = group[seriesKey].options();
+            color = opts.color || opts.lineColor || opts.topColor || opts.topLineColor || color;
+            if (opts.topLineColor && opts.bottomLineColor && val != null) {
+              const baseVal = opts.baseValue?.price ?? 0;
+              color = Number(val) < baseVal ? opts.bottomLineColor : opts.topLineColor;
+            }
+          }
+        }
+      }
+      color = toFullOpacity(color || "#333");
       return (
         <span
           id={`indicator-val-${id}-main`}
@@ -4289,17 +4423,22 @@ json.dumps(result)
 
     if (keysToShow) {
       const hiddenKeys = [
-        // "upper",
-        // "middle",
+        "upperRSI",
+        "middleRSI",
+        "lowerRSI",
         "middleBand",
         "lowerBand",
         "upperBand",
         "zero",
         "bgFill",
+        "bg",
         "zeroLine",
         "bandBackground",
         "overboughtFill",
         "oversoldFill",
+        "lowerLevel",
+        "upperLevel",
+        "center"
       ];
 
       return keysToShow
@@ -4330,7 +4469,11 @@ json.dumps(result)
           const group = indicatorSeriesRef.current?.[id];
           if (group && group[key] && typeof group[key].options === "function") {
             const opts = group[key].options();
-            color = opts.color || opts.lineColor || opts.topColor || color;
+            color = opts.color || opts.lineColor || opts.topColor || opts.topLineColor || color;
+            if (opts.topLineColor && opts.bottomLineColor && val != null) {
+              const baseVal = opts.baseValue?.price ?? 0;
+              color = Number(val) < baseVal ? opts.bottomLineColor : opts.topLineColor;
+            }
           }
 
           color = toFullOpacity(color || "#333");
@@ -4706,7 +4849,9 @@ json.dumps(result)
 
       // clear crosshair if invalid
       if (!param?.point || param.time === undefined) {
+        crosshairActiveRef.current = false;
         charts.forEach((c) => c.clearCrosshairPosition?.());
+        restoreLiveHeader();
         // Since we bypassed React state for live indicators, we need to show the last available data if crosshair leaves
         Object.keys(indicatorSeriesRef.current).forEach((indicator) => {
           const mainEl = document.getElementById(
@@ -4778,6 +4923,8 @@ json.dumps(result)
         updateSandboxLegendValues(null);
         return;
       }
+
+      crosshairActiveRef.current = true;
 
       // sync crosshair
       charts.forEach((c) => {
@@ -4868,17 +5015,8 @@ json.dumps(result)
         return false;
       }
       lastHistoricalRequestRef.current = { key: requestKey, at: now };
-      const requestId = `hist_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const historicalPayload = {
         ...historicalPayloadBase,
-        requestId,
-      };
-      historicalMergeModeRef.current = options.mergeMode || "replace";
-      pendingHistoricalFromDateRef.current = options.pendingFromDate || null;
-      pendingHistoricalToDateRef.current = options.pendingToDate || null;
-      historicalRequestOptionsRef.current.set(requestId, {
-        mergeMode: options.mergeMode || "replace",
-        pendingFromDate: options.pendingFromDate || null,
         pendingToDate: options.pendingToDate || null,
         preserveVisibleRange: options.preserveVisibleRange || null,
         symbol: selectedCurrency?.name,
@@ -5063,37 +5201,58 @@ json.dumps(result)
     lastRenderedLiveBarSignatureRef.current = barSignature;
     pendingLiveBarRef.current = null;
 
+    const latestTrackedBar =
+      candlesRef.current?.[candlesRef.current.length - 1] || null;
+    const updatedBarTime = normalizeSeriesTime(updatedBar.time);
+    const latestTrackedBarTime = normalizeSeriesTime(latestTrackedBar?.time);
+    if (
+      Number.isFinite(updatedBarTime) &&
+      Number.isFinite(latestTrackedBarTime) &&
+      updatedBarTime < latestTrackedBarTime
+    ) {
+      return;
+    }
+
+    const activeChartType = chartTypeRef.current;
+    const liveSeriesPoint = buildLiveSeriesPoint(updatedBar, activeChartType);
+    if (!liveSeriesPoint) return;
+
     try {
-      seriesRef.current.update(updatedBar);
+      seriesRef.current.update(liveSeriesPoint);
     } catch (e) {
-      console.warn("[LiveTick] Series update failed:", e.message);
+      if (e.message?.includes("oldest data")) {
+        try {
+          const rebuiltSeriesData = buildSeriesDataForChartType(
+            candlesRef.current,
+            activeChartType,
+          );
+          if (rebuiltSeriesData.length > 0) {
+            seriesRef.current.setData(rebuiltSeriesData);
+          }
+        } catch (rebuildError) {
+          console.warn(
+            "[LiveTick] Series rebuild failed:",
+            rebuildError.message,
+          );
+        }
+      } else {
+        console.warn("[LiveTick] Series update failed:", e.message);
+      }
     }
 
-    if (ohlcvDisplayRef.current) {
-      const el = ohlcvDisplayRef.current;
-      const isUp = updatedBar.close >= updatedBar.open;
-      const color = isUp ? "#22c55e" : "#ef4444";
-      const o = el.querySelector("[data-o]");
-      const h = el.querySelector("[data-h]");
-      const l = el.querySelector("[data-l]");
-      const c = el.querySelector("[data-c]");
-      if (o) o.textContent = Number(updatedBar.open).toFixed(2);
-      if (h) h.textContent = Number(updatedBar.high).toFixed(2);
-      if (l) l.textContent = Number(updatedBar.low).toFixed(2);
-      if (c) c.textContent = Number(updatedBar.close).toFixed(2);
-      if (c) c.style.color = color;
+    if (!crosshairActiveRef.current) {
+      writeOhlcvDisplay(updatedBar);
+      writeActionButtonPrices(updatedBar);
     }
-
-    if (actionButtonsRef.current) {
-      const buyPrice =
-        actionButtonsRef.current.querySelector("[data-buy-price]");
-      const sellPrice =
-        actionButtonsRef.current.querySelector("[data-sell-price]");
-      const formattedClose = Number(updatedBar.close).toFixed(2);
-      if (buyPrice) buyPrice.textContent = formattedClose;
-      if (sellPrice) sellPrice.textContent = formattedClose;
-    }
-  }, [buildLiveBarSignature, setMainChartAutoScale]);
+  }, [
+    buildLiveBarSignature,
+    buildLiveSeriesPoint,
+    buildSeriesDataForChartType,
+    normalizeSeriesTime,
+    setMainChartAutoScale,
+    writeActionButtonPrices,
+    writeOhlcvDisplay,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -5516,31 +5675,8 @@ json.dumps(result)
 
       setTimeout(() => {
         const last = mergedData[mergedData?.length - 1];
-        if (last && ohlcvDisplayRef.current) {
-          const el = ohlcvDisplayRef.current;
-          const isUp = last.close >= last.open;
-          const color = isUp ? "#22c55e" : "#ef4444";
-          const o = el.querySelector("[data-o]");
-          const h = el.querySelector("[data-h]");
-          const l = el.querySelector("[data-l]");
-          const c = el.querySelector("[data-c]");
-          if (o) o.textContent = Number(last.open).toFixed(2);
-          if (h) h.textContent = Number(last.high).toFixed(2);
-          if (l) l.textContent = Number(last.low).toFixed(2);
-          if (c) c.textContent = Number(last.close).toFixed(2);
-          el.querySelectorAll("[data-val]").forEach(
-            (s) => (s.style.color = color),
-          );
-        }
-        if (last && actionButtonsRef.current) {
-          const buyPrice =
-            actionButtonsRef.current.querySelector("[data-buy-price]");
-          const sellPrice =
-            actionButtonsRef.current.querySelector("[data-sell-price]");
-          const formattedClose = Number(last.close).toFixed(2);
-          if (buyPrice) buyPrice.textContent = formattedClose;
-          if (sellPrice) sellPrice.textContent = formattedClose;
-        }
+        writeOhlcvDisplay(last);
+        writeActionButtonPrices(last);
 
         if (mergeMode === "prepend" && requestMeta?.preserveVisibleRange) {
           chartRef.current?.timeScale().setVisibleLogicalRange({
@@ -5576,7 +5712,7 @@ json.dumps(result)
             selectedCurrency,
             timeframeValue,
             fetchFrom,
-            fetchTo
+            fetchTo,
           );
         }
 
@@ -5678,14 +5814,23 @@ json.dumps(result)
         // The actual current price is last_traded_price / ltp
         const ltp = Number(
           liveData?.last_traded_price ??
-          rawData?.ltp ??
-          liveData?.ltp ??
-          liveData?.price
+            rawData?.ltp ??
+            liveData?.ltp ??
+            liveData?.price,
         );
 
-        if (!Number.isFinite(ltp) || ltp <= 0) { console.warn("[LIVE TICK] LTP is invalid, skipping"); return; }
-        if (!Number.isFinite(tickTime)) { console.warn("[LIVE TICK] tickTime is not finite, skipping"); return; }
-        if (!Number.isFinite(normalizedTime) || normalizedTime <= 0) { console.warn("[LIVE TICK] normalizedTime invalid, skipping"); return; }
+        if (!Number.isFinite(ltp) || ltp <= 0) {
+          console.warn("[LIVE TICK] LTP is invalid, skipping");
+          return;
+        }
+        if (!Number.isFinite(tickTime)) {
+          console.warn("[LIVE TICK] tickTime is not finite, skipping");
+          return;
+        }
+        if (!Number.isFinite(normalizedTime) || normalizedTime <= 0) {
+          console.warn("[LIVE TICK] normalizedTime invalid, skipping");
+          return;
+        }
 
         // The volume from liveData.volume is per-tick; use raw.volume (total day volume) as fallback
         const liveVolume = Number(rawData?.volume ?? liveData?.volume ?? 0);
@@ -5734,7 +5879,6 @@ json.dumps(result)
             volume: liveVolume || Number(latestCandle.volume || 0),
           };
         }
-
 
         const nextBarSignature = buildLiveBarSignature(updatedBar);
         if (
@@ -5841,8 +5985,10 @@ json.dumps(result)
           const dynamicValue =
             lastPoint[lineName] ??
             lastPoint[lineName + "Band"] ??
-            (lineName === indicatorType.toLowerCase() ? lastPoint[lineName] : undefined);
-            
+            (lineName === indicatorType.toLowerCase()
+              ? lastPoint[lineName]
+              : undefined);
+
           if (dynamicValue !== undefined && dynamicValue !== null) {
             value = dynamicValue;
           } else if (staticKeys.includes(lineName)) {
@@ -5859,13 +6005,13 @@ json.dumps(result)
             ) {
               value =
                 instType === "CCI"
-                  ? style?.upperBand?.value ?? 100
-                  : style?.upper?.value ?? 70;
+                  ? (style?.upperBand?.value ?? 100)
+                  : (style?.upper?.value ?? 70);
             } else if (lineName === "middle" || lineName === "middleBand") {
               value =
                 instType === "CCI"
-                  ? style?.middleBand?.value ?? 0
-                  : style?.middle?.value ?? 50;
+                  ? (style?.middleBand?.value ?? 0)
+                  : (style?.middle?.value ?? 50);
             } else if (
               lineName === "lower" ||
               lineName === "lowerBand" ||
@@ -5873,14 +6019,12 @@ json.dumps(result)
             ) {
               value =
                 instType === "CCI"
-                  ? style?.lowerBand?.value ?? -100
-                  : style?.lower?.value ?? 30;
+                  ? (style?.lowerBand?.value ?? -100)
+                  : (style?.lower?.value ?? 30);
             }
           } else {
             // For single-line indicators when lineName doesn't exactly match
-            value =
-              lastPoint.value ??
-              lastPoint[indicatorType.toLowerCase()];
+            value = lastPoint.value ?? lastPoint[indicatorType.toLowerCase()];
           }
 
           if (value == null || !Number.isFinite(Number(value))) return;
@@ -5890,7 +6034,10 @@ json.dumps(result)
 
             // Update associated data array used for canvas drawings (clouds/bands)
             const dataArrayKey = `${lineName}Data`;
-            if (seriesGroup[dataArrayKey] && Array.isArray(seriesGroup[dataArrayKey])) {
+            if (
+              seriesGroup[dataArrayKey] &&
+              Array.isArray(seriesGroup[dataArrayKey])
+            ) {
               const arr = seriesGroup[dataArrayKey];
               const last = arr[arr.length - 1];
               if (last && last.time === pointTime) {
@@ -5900,7 +6047,10 @@ json.dumps(result)
               }
             }
           } catch (e) {
-            if (!e.message.includes("oldest data") && !e.message.includes("Object is disposed")) {
+            if (
+              !e.message.includes("oldest data") &&
+              !e.message.includes("Object is disposed")
+            ) {
               console.warn(
                 `Indicator update failed [${indicatorType}][${instId}]:`,
                 e.message,
@@ -5910,7 +6060,10 @@ json.dumps(result)
         });
 
         // Trigger the custom cloud/band drawing function if the indicator has one (e.g., KC, DC, VWAP, BB)
-        if (seriesGroup._drawCloud && typeof seriesGroup._drawCloud === "function") {
+        if (
+          seriesGroup._drawCloud &&
+          typeof seriesGroup._drawCloud === "function"
+        ) {
           seriesGroup._drawCloud();
         }
       });
@@ -5966,7 +6119,9 @@ json.dumps(result)
     const timeScale = chartRef.current.timeScale();
     timeScale.subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
     return () => {
-      timeScale.unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+      try {
+        timeScale.unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+      } catch (e) {}
     };
   }, [
     connected,
@@ -6061,7 +6216,8 @@ json.dumps(result)
       const todayStr = getTodayDateString();
       const d = getInitialLookbackDate(timeframeValue);
       const minDate = new Date("2024-10-01");
-      const initialFrom = d < minDate ? "2024-10-01" : d.toISOString().split("T")[0];
+      const initialFrom =
+        d < minDate ? "2024-10-01" : d.toISOString().split("T")[0];
 
       if (toDate !== todayStr) {
         setMainChartLoading(true);
@@ -6113,21 +6269,26 @@ json.dumps(result)
     // The candles are stored such that their UNIX timestamp directly corresponds
     // to the IST time (e.g., 9:15 IST corresponds to 9:15 UTC in lightweight charts).
     // So we just take the user's input time (which was parsed as local) and get the UTC timestamp.
-    const targetTimeSec = Math.floor(Date.UTC(
-      targetDate.getFullYear(),
-      targetDate.getMonth(),
-      targetDate.getDate(),
-      targetDate.getHours(),
-      targetDate.getMinutes(),
-      targetDate.getSeconds()
-    ) / 1000);
-    const isMidnight = targetDate.getHours() === 0 && targetDate.getMinutes() === 0;
+    const targetTimeSec = Math.floor(
+      Date.UTC(
+        targetDate.getFullYear(),
+        targetDate.getMonth(),
+        targetDate.getDate(),
+        targetDate.getHours(),
+        targetDate.getMinutes(),
+        targetDate.getSeconds(),
+      ) / 1000,
+    );
+    const isMidnight =
+      targetDate.getHours() === 0 && targetDate.getMinutes() === 0;
 
     // Find the closest candle
     let closestIndex = 0;
 
     if (isMidnight) {
-      closestIndex = candlesRef.current.findIndex(c => c.time >= targetTimeSec);
+      closestIndex = candlesRef.current.findIndex(
+        (c) => c.time >= targetTimeSec,
+      );
       if (closestIndex === -1) {
         closestIndex = candlesRef.current.length - 1;
       }
@@ -6150,16 +6311,16 @@ json.dumps(result)
       isMidnight,
       closestIndex,
       closestCandleTime: closestCandle?.time,
-      diff: closestCandle ? Math.abs(closestCandle.time - targetTimeSec) : null
+      diff: closestCandle ? Math.abs(closestCandle.time - targetTimeSec) : null,
     });
 
-    // Calculate logical range to put the candle in the center
+    // Calculate range using actual times to avoid logical index mismatch
     const fromIndex = Math.max(0, closestIndex - 25);
     const toIndex = Math.min(candlesRef.current.length - 1, closestIndex + 25);
 
-    chartRef.current.timeScale().setVisibleLogicalRange({
-      from: fromIndex,
-      to: toIndex,
+    chartRef.current.timeScale().setVisibleRange({
+      from: candlesRef.current[fromIndex].time,
+      to: candlesRef.current[toIndex].time,
     });
 
     // Ignore the immediate scroll events triggered by our own navigation
@@ -6188,31 +6349,63 @@ json.dumps(result)
         xPixel = chartRef.current
           .timeScale()
           .timeToCoordinate(closestCandle.time);
-          
-        if (seriesRef.current && typeof seriesRef.current.priceToCoordinate === "function") {
+
+        if (
+          seriesRef.current &&
+          typeof seriesRef.current.priceToCoordinate === "function"
+        ) {
           yPixel = seriesRef.current.priceToCoordinate(closestCandle.high);
         }
       } catch (e) {
         console.error("[GoTo] Error getting coordinate", e);
       }
 
-      console.log("[GoTo] xPixel:", xPixel, "yPixel:", yPixel, "candle.time:", closestCandle.time);
+      console.log(
+        "[GoTo] xPixel:",
+        xPixel,
+        "yPixel:",
+        yPixel,
+        "candle.time:",
+        closestCandle.time,
+      );
 
       // Build a human-readable label in IST
       // closestCandle.time is already UTC + IST_OFFSET seconds
       const candleLocalMs = (closestCandle.time - IST_OFFSET) * 1000;
       const candleDateIST = new Date(candleLocalMs + 5.5 * 60 * 60 * 1000); // shift to IST
       const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      const dayName  = weekdays[candleDateIST.getUTCDay()];
-      const dd       = String(candleDateIST.getUTCDate()).padStart(2, "0");
-      const mon      = months[candleDateIST.getUTCMonth()];
-      const yr       = candleDateIST.getUTCFullYear();
-      const hh       = String(candleDateIST.getUTCHours()).padStart(2, "0");
-      const mm       = String(candleDateIST.getUTCMinutes()).padStart(2, "0");
+      const months = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+      const dayName = weekdays[candleDateIST.getUTCDay()];
+      const dd = String(candleDateIST.getUTCDate()).padStart(2, "0");
+      const mon = months[candleDateIST.getUTCMonth()];
+      const yr = candleDateIST.getUTCFullYear();
+      const hh = String(candleDateIST.getUTCHours()).padStart(2, "0");
+      const mm = String(candleDateIST.getUTCMinutes()).padStart(2, "0");
       const isIntraday = [
-        "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "60m", "120m", "240m",
+        "1m",
+        "3m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "4h",
+        "60m",
+        "120m",
+        "240m",
       ].includes(timeframeValue);
       const label = isIntraday
         ? `${dayName} ${dd} ${mon} '${String(yr).slice(-2)}\n${hh}:${mm}`
@@ -6250,9 +6443,11 @@ json.dumps(result)
     let animationFrameId;
     const updatePosition = () => {
       try {
-        const newX = chartRef.current.timeScale().timeToCoordinate(goToMarker.time);
+        const newX = chartRef.current
+          .timeScale()
+          .timeToCoordinate(goToMarker.time);
         if (newX !== null) {
-          setGoToMarker(prev => {
+          setGoToMarker((prev) => {
             if (prev && prev.x !== newX) return { ...prev, x: newX };
             return prev;
           });
@@ -6271,7 +6466,7 @@ json.dumps(result)
 
     const handleScroll = () => {
       if (ignoreNextScrollRef.current) return;
-      
+
       if (goToMarkerCleanupRef.current) {
         clearTimeout(goToMarkerCleanupRef.current);
         goToMarkerCleanupRef.current = null;
@@ -6281,7 +6476,9 @@ json.dumps(result)
 
     ts.subscribeVisibleLogicalRangeChange(handleScroll);
     return () => {
-      ts.unsubscribeVisibleLogicalRangeChange(handleScroll);
+      try {
+        ts.unsubscribeVisibleLogicalRangeChange(handleScroll);
+      } catch (e) {}
     };
   }, []);
 
@@ -6300,7 +6497,7 @@ json.dumps(result)
           height: isFullscreen ? "100vh" : "calc(100vh - 60px)",
           display: "flex",
           flexDirection: "column",
-          overflowY: "auto",
+          overflow: "hidden",
           ...(isFullscreen
             ? {
                 position: "fixed",
@@ -6320,7 +6517,7 @@ json.dumps(result)
             flexDirection: "column",
             width: "100%",
             flex: 1,
-            minHeight: "fit-content",
+            minHeight: 0,
           }}
         >
           <div
@@ -6329,7 +6526,7 @@ json.dumps(result)
               flexDirection: "row",
               width: "100%",
               flex: 1,
-              minHeight: "fit-content",
+              minHeight: 0,
             }}
           >
             <style>{`
@@ -6461,7 +6658,7 @@ json.dumps(result)
                 borderRight: "1px solid var(--border-color)",
                 display: "flex",
                 flexDirection: "column",
-                minHeight: "100%",
+                minHeight: 0,
                 transition: "border-color 0.3s ease",
               }}
             >
@@ -6555,6 +6752,7 @@ json.dumps(result)
                       minWidth: 0,
                       overflow: "hidden",
                       position: "relative",
+                      minHeight: 0,
                     }}
                   >
                     {/* main chart */}
@@ -6567,7 +6765,7 @@ json.dumps(result)
                         overflow: "hidden",
                         display: "flex",
                         flexDirection: "column",
-                        minHeight: 450,
+                        minHeight: 0,
                         cursor: activeTool ? "crosshair" : "default",
                       }}
                       onClick={() => setGoToMarker(null)}
@@ -6579,7 +6777,7 @@ json.dumps(result)
                         onDelete={deleteLine}
                         onClose={closeToolbox}
                       />
-                      
+
                       {/* ── Go To Date Tooltip Overlay ── */}
                       {goToMarker && (
                         <div
@@ -6587,54 +6785,62 @@ json.dumps(result)
                             position: "absolute",
                             top: 0,
                             left: goToMarker.x,
-                            height: goToMarker.y != null ? goToMarker.y : "100%",
+                            height:
+                              goToMarker.y != null ? goToMarker.y : "100%",
                             zIndex: 200,
                             pointerEvents: "none",
                           }}
                         >
                           {/* vertical dashed line */}
-                          <div style={{
-                            width: 1,
-                            height: "100%",
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            borderLeft: "1px dashed #999",
-                            opacity: 0.6,
-                            pointerEvents: "none",
-                          }} />
+                          <div
+                            style={{
+                              width: 1,
+                              height: "100%",
+                              position: "absolute",
+                              top: 0,
+                              left: 0,
+                              borderLeft: "1px dashed #999",
+                              opacity: 0.6,
+                              pointerEvents: "none",
+                            }}
+                          />
                           {/* tooltip bubble */}
-                          <div style={{
-                            position: "absolute",
-                            left: 0,
-                            top: goToMarker.y != null ? "auto" : 30,
-                            bottom: goToMarker.y != null ? 10 : "auto",
-                            transform: "translateX(-50%)",
-                            background: "#2a2e39", // dark grey matching TV
-                            borderRadius: 4,
-                            padding: "6px 12px",
-                            color: "#d1d4dc",
-                            fontSize: 13,
-                            fontWeight: 500,
-                            fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-                            whiteSpace: "pre",
-                            textAlign: "center",
-                            boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
-                            lineHeight: 1.4,
-                          }}>
+                          <div
+                            style={{
+                              position: "absolute",
+                              left: 0,
+                              top: goToMarker.y != null ? "auto" : 30,
+                              bottom: goToMarker.y != null ? 10 : "auto",
+                              transform: "translateX(-50%)",
+                              background: "#2a2e39", // dark grey matching TV
+                              borderRadius: 4,
+                              padding: "6px 12px",
+                              color: "#d1d4dc",
+                              fontSize: 13,
+                              fontWeight: 500,
+                              fontFamily:
+                                "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+                              whiteSpace: "pre",
+                              textAlign: "center",
+                              boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                              lineHeight: 1.4,
+                            }}
+                          >
                             {goToMarker.label}
                             {/* tooltip caret/arrow */}
-                            <div style={{
-                              position: "absolute",
-                              bottom: -5,
-                              left: "50%",
-                              transform: "translateX(-50%)",
-                              width: 0,
-                              height: 0,
-                              borderLeft: "5px solid transparent",
-                              borderRight: "5px solid transparent",
-                              borderTop: "5px solid #2a2e39",
-                            }} />
+                            <div
+                              style={{
+                                position: "absolute",
+                                bottom: -5,
+                                left: "50%",
+                                transform: "translateX(-50%)",
+                                width: 0,
+                                height: 0,
+                                borderLeft: "5px solid transparent",
+                                borderRight: "5px solid transparent",
+                                borderTop: "5px solid #2a2e39",
+                              }}
+                            />
                           </div>
                         </div>
                       )}
@@ -7615,7 +7821,7 @@ json.dumps(result)
                   borderRight: "1px solid var(--border-color)",
                   display: activeTab === "Overview" ? "flex" : "none",
                   flexDirection: "column",
-                  minHeight: "100%",
+                  overflow: "hidden",
                 }}
               >
                 <Overview
@@ -7635,11 +7841,14 @@ json.dumps(result)
                   borderRight: "1px solid var(--border-color)",
                   display: activeTab === "Option Chain" ? "flex" : "none",
                   flexDirection: "column",
-                  height: "100%",
+                  overflow: "hidden",
                 }}
               >
                 {activeTab === "Option Chain" && (
-                  <OptionChain onBack={() => setActiveTab("Chart")} />
+                  <OptionChain
+                    selectedCurrency={selectedCurrency}
+                    onBack={() => setActiveTab("Chart")}
+                  />
                 )}
               </div>
 
@@ -7653,7 +7862,7 @@ json.dumps(result)
                   borderRight: "1px solid var(--border-color)",
                   display: activeTab === "OI Analytics" ? "flex" : "none",
                   flexDirection: "column",
-                  height: "100%",
+                  overflow: "hidden",
                 }}
               >
                 {activeTab === "OI Analytics" && (

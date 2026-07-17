@@ -679,17 +679,17 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instance
       const rows = [
         { key: "rsi", label: "RSI", type: "line" },
         {
-          key: "upper",
+          key: "upperRSI",
           label: "RSI Upper Band",
           value: 70,
         },
         {
-          key: "middle",
+          key: "middleRSI",
           label: "RSI Middle Band",
           value: 50,
         },
         {
-          key: "lower",
+          key: "lowerRSI",
           label: "RSI Lower Band",
           value: 30,
         },
@@ -1741,7 +1741,8 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instance
       ];
 
     case "VWAP": {
-      const config = indicatorConfigs?.[instanceId] || indicatorConfigs?.[indicator] || {};
+      const defaults = { band1: { enabled: true }, band2: { enabled: false }, band3: { enabled: false } };
+      const config = { ...defaults, ...(indicatorConfigs?.[instanceId] || indicatorConfigs?.[indicator] || {}) };
 
       const rows = [
         {
@@ -1984,26 +1985,26 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instance
             },
           ],
         },
-        {
-          key: "buySignals",
-          label: "Buy Signals",
-          type: "marker",
-        },
-        {
-          key: "sellSignals",
-          label: "Sell Signals",
-          type: "marker",
-        },
-        {
-          key: "strongBuySignals",
-          label: "Strong Buy Signals",
-          type: "marker",
-        },
-        {
-          key: "strongSellSignals",
-          label: "Strong Sell Signals",
-          type: "marker",
-        },
+        // {
+        //   key: "buySignals",
+        //   label: "Buy Signals",
+        //   type: "marker",
+        // },
+        // {
+        //   key: "sellSignals",
+        //   label: "Sell Signals",
+        //   type: "marker",
+        // },
+        // {
+        //   key: "strongBuySignals",
+        //   label: "Strong Buy Signals",
+        //   type: "marker",
+        // },
+        // {
+        //   key: "strongSellSignals",
+        //   label: "Strong Sell Signals",
+        //   type: "marker",
+        // },
         {
           key: "zeroLine",
           label: "Zero Line",
