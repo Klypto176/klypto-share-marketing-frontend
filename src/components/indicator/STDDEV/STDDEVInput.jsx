@@ -6,10 +6,10 @@ export default function STDDEVInput(
   const rows = Array.isArray(response?.data) ? response.data : [];
 
   const STDDEVData = rows
-    .filter((d) => d.value != null && d.time != null)
+    .filter((d) => (d.stddev != null || d.value != null) && d.time != null)
     .map((d) => ({
       time: Number(d.time) + 19800,
-      value: Number(d.value),
+      value: Number(d.stddev ?? d.value),
     }))
     .sort((a, b) => a.time - b.time);
 

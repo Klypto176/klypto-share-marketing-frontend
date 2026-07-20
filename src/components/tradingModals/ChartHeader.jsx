@@ -14,7 +14,10 @@ import { EditableNumber } from "../indicator/EditTableLabel";
 import { isAuthenticated, logout } from "../../pages/auth/protected";
 import { Navigate, useNavigate } from "react-router-dom";
 import ProfileDropDown from "../auth/profile/ProfileDropDown";
-
+import { CgMaximizeAlt } from "react-icons/cg";
+import { MdOutlineFullscreenExit } from "react-icons/md";
+import { TbCalendarShare } from "react-icons/tb";
+import GoToDateDialog from "../layout/GoToDateDialog";
 const d = {
   bar: {
     display: "flex", alignItems: "center", gap: 12,
@@ -118,9 +121,13 @@ export default function ChartHeader({
   onOpenStrategyEditor,
   areStrategyVisualsVisible,
   hasActiveStrategy,
+  isFullscreen,
+  onToggleFullscreen,
+  onGoToDate,
 }) {
   const navigate = useNavigate();
   const [timeframe, setTimeframe] = useState(60);
+  const [showGoToDate, setShowGoToDate] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const active = chartOptions.find((c) => c.value === chartType);
@@ -341,6 +348,33 @@ export default function ChartHeader({
         )} */}
 
         {/* <ProfileDropDown /> */}
+        
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+          {!isFullscreen && (
+            <button
+              style={d.btn}
+              title="Maximize Chart"
+              onClick={onToggleFullscreen}
+            >
+              <CgMaximizeAlt size={15} />
+            </button>
+          )}
+
+          {isFullscreen && (
+            <button
+              style={{ ...d.btn, backgroundColor: "rgba(239, 68, 68, 0.1)", borderColor: "#ef4444", color: "#ef4444" }}
+              title="Exit Fullscreen (Esc)"
+              onClick={onToggleFullscreen}
+            >
+              <MdOutlineFullscreenExit size={15} />
+              EXIT
+            </button>
+          )}
+
+          <button style={d.btn} title="Go to" onClick={() => setShowGoToDate(true)}>
+            <TbCalendarShare size={14} />
+          </button>
+        </div>
       </div>
 
       <ListingModal
@@ -362,6 +396,15 @@ export default function ChartHeader({
           closeModal();
         }}
       />
+
+      {showGoToDate && (
+        <GoToDateDialog
+          onClose={() => setShowGoToDate(false)}
+          onGoTo={(date) => {
+            if (onGoToDate) onGoToDate(date);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -4867,15 +4867,17 @@ json.dumps(result)
                 transition: "border-color 0.3s ease",
               }}
             >
-              <ChartTabs
-                activeTab={activeTab}
-                setActiveTab={setActiveTab}
-                onCodeClick={() => setIsCodeEditorOpen((prev) => !prev)}
-                onStrategyClick={handleStrategyClick}
-                onGoToDate={handleGoToDate}
-                isFullscreen={isFullscreen}
-                onToggleFullscreen={() => setIsFullscreen((prev) => !prev)}
-              />
+              {!isFullscreen && (
+                <ChartTabs
+                  activeTab={activeTab}
+                  setActiveTab={setActiveTab}
+                  onCodeClick={() => setIsCodeEditorOpen((prev) => !prev)}
+                  onStrategyClick={handleStrategyClick}
+                  onGoToDate={handleGoToDate}
+                  isFullscreen={isFullscreen}
+                  onToggleFullscreen={() => setIsFullscreen((prev) => !prev)}
+                />
+              )}
 
               <div
                 style={{
@@ -4915,6 +4917,9 @@ json.dumps(result)
                     onOpenStrategyEditor={handleOpenStrategyEditor}
                     areStrategyVisualsVisible={areStrategyVisualsVisible}
                     hasActiveStrategy={Boolean(activeStrategyRecord?.id)}
+                    isFullscreen={isFullscreen}
+                    onToggleFullscreen={() => setIsFullscreen((prev) => !prev)}
+                    onGoToDate={handleGoToDate}
                     onOpenScanner={() => {
                       // Open details panel, close watchlist
                       setIsDetailsOpen(true);
