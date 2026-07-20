@@ -1137,7 +1137,7 @@ export default function Candlestick() {
             return val * 60;
           })();
           
-          const chartTime = Number(utcTime) + 19800 + intervalSeconds; // IST_OFFSET + shift to trade entry candle
+          const chartTime = Number(utcTime) + 19800; // IST_OFFSET (Removed intervalSeconds shift to ensure it plots on the exact entry_time candle)
 
           // Only plot marker if the signal is for the CURRENTLY selected stock
           const isCurrentStock =
@@ -2090,7 +2090,7 @@ json.dumps(result)
       const markers = response?.markers
         .map((marker) => ({
           // marker.datetimeUTC is in seconds (UTC) — align with candle times (which use IST_OFFSET)
-          time: Number(marker.datetimeUTC) + IST_OFFSET + intervalSeconds,
+          time: Number(marker.datetimeUTC) + IST_OFFSET,
           position: marker.type === "BUY" ? "belowBar" : "aboveBar",
           color: marker.type === "BUY" ? "#22ab94" : "#ef4444",
           shape: marker.type === "BUY" ? "arrowUp" : "arrowDown",
@@ -3876,7 +3876,6 @@ json.dumps(result)
       // Indicators are fetched simultaneously via the selectedIndicator useEffect.
 
       if (
-        lastDeployedMarkersRef.current &&
         lastDeployedMarkersRef.current?.length > 0 &&
         seriesRef.current
       ) {
@@ -3885,11 +3884,19 @@ json.dumps(result)
             seriesRef.current,
             areStrategyVisualsVisible ? lastDeployedMarkersRef.current : [],
           );
-          seriesRef.current.attachPrimitive(customScriptMarkersRef.current);
+          try {
+            seriesRef.current.attachPrimitive(customScriptMarkersRef.current);
+          } catch(e) {
+            if (!e.message?.includes("Object is disposed")) throw e;
+          }
         } else {
-          customScriptMarkersRef.current.setMarkers(
-            areStrategyVisualsVisible ? lastDeployedMarkersRef.current : [],
-          );
+          try {
+            customScriptMarkersRef.current.setMarkers(
+              areStrategyVisualsVisible ? lastDeployedMarkersRef.current : [],
+            );
+          } catch(e) {
+            if (!e.message?.includes("Object is disposed")) throw e;
+          }
         }
       }
 
@@ -3900,21 +3907,25 @@ json.dumps(result)
         writeOhlcvDisplay(last);
         writeActionButtonPrices(last);
 
-        if (mergeMode === "prepend" && requestMeta?.preserveVisibleRange) {
-          chartRef.current?.timeScale().setVisibleLogicalRange({
-            from: requestMeta.preserveVisibleRange.from + addedPoints,
-            to: requestMeta.preserveVisibleRange.to + addedPoints,
-          });
-        } else if (
-          mergeMode === "append" &&
-          requestMeta?.preserveVisibleRange
-        ) {
-          chartRef.current?.timeScale().setVisibleLogicalRange({
-            from: requestMeta.preserveVisibleRange.from,
-            to: requestMeta.preserveVisibleRange.to,
-          });
-        } else if (mergeMode === "replace") {
-          chartRef.current?.timeScale().fitContent();
+        try {
+          if (mergeMode === "prepend" && requestMeta?.preserveVisibleRange) {
+            chartRef.current?.timeScale().setVisibleLogicalRange({
+              from: requestMeta.preserveVisibleRange.from + addedPoints,
+              to: requestMeta.preserveVisibleRange.to + addedPoints,
+            });
+          } else if (
+            mergeMode === "append" &&
+            requestMeta?.preserveVisibleRange
+          ) {
+            chartRef.current?.timeScale().setVisibleLogicalRange({
+              from: requestMeta.preserveVisibleRange.from,
+              to: requestMeta.preserveVisibleRange.to,
+            });
+          } else if (mergeMode === "replace") {
+            chartRef.current?.timeScale().fitContent();
+          }
+        } catch(e) {
+          if (!e.message?.includes("Object is disposed")) console.error("timeScale error:", e);
         }
 
         if (
@@ -4742,8 +4753,8 @@ json.dumps(result)
                   min-width: 600px !important;
                 }
                 .buy-sell-btn {
-                  padding: 4px 8px !important;
-                  font-size: 0.55rem !important;
+                  padding: 2px 6px !important;
+                  font-size: 14px !important;
                 }
               }
             `}</style>

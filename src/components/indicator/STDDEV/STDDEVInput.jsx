@@ -8,7 +8,7 @@ export default function STDDEVInput(
   const STDDEVData = rows
     .filter((d) => d.value != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.value),
     }))
     .sort((a, b) => a.time - b.time);

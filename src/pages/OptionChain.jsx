@@ -21,6 +21,7 @@ import {
   FaUndo,
   FaChartLine,
   FaLayerGroup,
+  FaClock,
 } from "react-icons/fa";
 import apiService from "../services/apiServices";
 import Select from "react-select";
@@ -527,6 +528,25 @@ const OptionChain = () => {
     return new Date(str).getTime();
   };
 
+  const formatEpochToIST = (epochStr) => {
+    if (!epochStr) return { date: null, time: null };
+    const dateObj = new Date(Number(epochStr) * 1000);
+    const formatter = new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    const parts = formatter.formatToParts(dateObj);
+    const getP = (t) => parts.find(p => p.type === t)?.value;
+    const date = `${getP('year')}-${getP('month')}-${getP('day')}`;
+    const time = `${getP('hour')}:${getP('minute')}`;
+    return { date, time, dateObj };
+  };
+
   const [data, setData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -534,6 +554,8 @@ const OptionChain = () => {
   const [expiryFilter, setExpiryFilter] = useState("");
   const [filterDate, setFilterDate] = useState("2025-01-01");
   const [appliedFilterDate, setAppliedFilterDate] = useState("2025-01-01");
+  const [filterTime, setFilterTime] = useState("09:15");
+  const [appliedFilterTime, setAppliedFilterTime] = useState("09:15");
 
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
   const [currentPage, setCurrentPage] = useState(1);
@@ -607,9 +629,15 @@ const OptionChain = () => {
             stockName: stockFilter,
           });
           let expiries = [];
-          if (Array.isArray(res)) expiries = res;
-          else if (res?.data && Array.isArray(res.data)) expiries = res.data;
+          if (Array.isArray(res)) expiries = [...res];
+          else if (res?.data && Array.isArray(res.data)) expiries = [...res.data];
           
+          expiries.sort((a, b) => {
+            const dateA = a?.expiryDate || a?.date || a;
+            const dateB = b?.expiryDate || b?.date || b;
+            return parseDDMMYYYY(dateA) - parseDDMMYYYY(dateB);
+          });
+
           setUniqueExpiries(expiries);
           
           if (expiries.length > 0) {
@@ -697,6 +725,7 @@ const OptionChain = () => {
       return;
     }
     setAppliedFilterDate(filterDate);
+    setAppliedFilterTime(filterTime);
     setCurrentPage(1);
   };
 
@@ -710,6 +739,8 @@ const OptionChain = () => {
     }
     setFilterDate("2025-01-01");
     setAppliedFilterDate("2025-01-01");
+    setFilterTime("09:15");
+    setAppliedFilterTime("09:15");
     setSortConfig({ key: null, direction: "asc" });
     setCurrentPage(1);
   };
@@ -737,10 +768,30 @@ const OptionChain = () => {
 
   const groupedOptionChain = React.useMemo(() => {
     if (!data || !data.length) return [];
+    
+    let filteredData = data;
+    if (appliedFilterTime) {
+      filteredData = data.filter((item) => {
+        if (item.timestamp_epoch) {
+          const istObj = formatEpochToIST(item.timestamp_epoch);
+          return istObj.time === appliedFilterTime;
+        }
+        if (item.date_ist && item.date_ist.includes(appliedFilterTime)) return true;
+        return false;
+      });
+    }
+
     const strikesMap = {};
-    data.forEach((item) => {
+    filteredData.forEach((item) => {
       const strike = parseFloat(item.strike);
-      const timeKey = item.timestamp_epoch || item.timestamp_ist || item.date_ist || "unknown";
+      let timeKey = item.timestamp_epoch || item.timestamp_ist || item.date_ist || "unknown";
+      
+      // If we have an epoch, convert it so the UI shows human-readable IST Date/Time
+      if (item.timestamp_epoch) {
+        const istObj = formatEpochToIST(item.timestamp_epoch);
+        timeKey = `${istObj.date} ${istObj.time}`;
+      }
+
       const key = `${timeKey}_${strike}`;
       
       if (!strikesMap[key]) {
@@ -805,7 +856,7 @@ const OptionChain = () => {
         {/* Filters */}
         <div className="oc-filter-card">
           <Row className="g-3 align-items-end">
-            <Col md={3}>
+            <Col md={2}>
               <label className="oc-filter-label">Stock Name</label>
               <Select
                 options={[
@@ -882,7 +933,7 @@ const OptionChain = () => {
               />
             </Col>
 
-            <Col md={3}>
+            <Col md={2}>
               <Form.Group className="mb-0">
                 <label className="oc-filter-label">Expiry Date</label>
                 <Form.Select
@@ -921,7 +972,7 @@ const OptionChain = () => {
               </Form.Group>
             </Col>
 
-            <Col md={3}>
+            <Col md={2}>
               <label className="oc-filter-label">Date</label>
               <InputGroup>
                 <InputGroup.Text 
@@ -951,7 +1002,26 @@ const OptionChain = () => {
               </InputGroup>
             </Col>
 
-            <Col md={3}>
+            <Col md={2}>
+              <label className="oc-filter-label">Time</label>
+              <InputGroup>
+                <InputGroup.Text className="oc-input-icon">
+                  <FaClock size={14} />
+                </InputGroup.Text>
+                <Form.Control
+                  type="time"
+                  value={filterTime}
+                  onChange={(e) => {
+                    setFilterTime(e.target.value);
+                    setAppliedFilterTime(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="oc-select oc-date-input"
+                />
+              </InputGroup>
+            </Col>
+
+            <Col md={4}>
               <label className="oc-filter-label">&nbsp;</label>
               <div className="d-flex gap-2">
                 <Button
@@ -1052,7 +1122,7 @@ const OptionChain = () => {
           </div>
           
           <div style={{ padding: "15px", textAlign: "center", fontWeight: "bold", color: "var(--oc-text)" }}>
-            Total Records Displayed: {totalRecords}
+            Total Records Displayed: {groupedOptionChain.length}
           </div>
         </div>
       </div>

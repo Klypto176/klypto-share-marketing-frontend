@@ -12,7 +12,7 @@ export default function CHOPInput(
   const chopData = rows
     .filter((d) => d?.chop != null && d?.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.chop),
     }));
 

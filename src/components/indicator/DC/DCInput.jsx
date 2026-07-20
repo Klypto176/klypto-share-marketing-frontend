@@ -11,7 +11,7 @@ export default function DCInput(
   const upperData = rows
     .filter((d) => d.upper != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.upper),
     }))
     .sort((a, b) => a.time - b.time);
@@ -19,7 +19,7 @@ export default function DCInput(
   const basisData = rows
     .filter((d) => d.basis != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.basis),
     }))
     .sort((a, b) => a.time - b.time);
@@ -27,7 +27,7 @@ export default function DCInput(
   const lowerData = rows
     .filter((d) => d.lower != null && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.lower),
     }))
     .sort((a, b) => a.time - b.time);
