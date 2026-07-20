@@ -580,23 +580,9 @@ export const ListingModal = ({
                         key={index}
                         action
                         onClick={() => {
-                          const newInst = {
-                            id: `${item.slug}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-                            type: item.slug,
-                          };
-                          setSelectedIndicator((prev) => {
-                            const isExisting = prev.some(
-                              (i) => i.type === item.slug,
-                            );
-                            if (isExisting) {
-                              return [
-                                ...prev.filter((i) => i.type !== item.slug),
-                                newInst,
-                              ];
-                            }
-                            return [...prev, newInst];
-                          });
-                          // Modal stays open so user can add more indicators
+                          if (toggleIndicator) {
+                            toggleIndicator(item.slug);
+                          }
                         }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.background =

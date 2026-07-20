@@ -2863,7 +2863,9 @@ json.dumps(result)
         "lowerLevel",
         "upperLevel",
         "center",
-        "oscillatorFill"
+        "oscillatorFill",
+        "bbLowerBand",
+        "bbUperBand",
       ];
 
       return keysToShow
@@ -3310,7 +3312,9 @@ json.dumps(result)
       !chartRef.current ||
       !selectedCurrency ||
       !timeframeValue ||
-      historyBackfillInFlightRef.current
+      historyBackfillInFlightRef.current ||
+      !Array.isArray(candlesRef.current) ||
+      candlesRef.current.length === 0
     ) {
       return false;
     }
@@ -3356,7 +3360,9 @@ json.dumps(result)
       !chartRef.current ||
       !selectedCurrency ||
       !timeframeValue ||
-      historyBackfillInFlightRef.current
+      historyBackfillInFlightRef.current ||
+      !Array.isArray(candlesRef.current) ||
+      candlesRef.current.length === 0
     ) {
       return false;
     }

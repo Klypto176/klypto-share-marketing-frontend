@@ -161,7 +161,7 @@ export default function useChartFunctions({
         batch.map(async (indItem) => {
           const id = typeof indItem === "object" ? indItem.id : indItem;
           const type = typeof indItem === "object" ? indItem.type : indItem;
-          const requestId = `indicator_${currentSessionId}_${id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          const requestId = id;
           try {
             if (onIndicatorLoadingChange) onIndicatorLoadingChange(id, true);
             const result = await fetchDataForIndicators(
@@ -225,7 +225,7 @@ export default function useChartFunctions({
 
     const config = indicatorConfigs?.[id] || indicatorConfigs?.[type] || {};
     const { maType } = config;
-    const rows = getRowsByIndicator(type, maType, indicatorConfigs);
+    const rows = getRowsByIndicator(type, maType, indicatorConfigs, id);
 
     switch (type) {
       case "RSI": {
@@ -986,9 +986,8 @@ async function fetchBatchIndicatorData(
   const requests = selectedIndicator.map(({ id, type }) => ({
     id,
     type,
-    requestId: `indicator_${id}_${Date.now()}_${Math.random()
-      .toString(36)
-      .slice(2, 8)}`,
+    requestId: id,
+    instance_id: id,
     ...(indicatorConfigs?.[id] || indicatorConfigs?.[type] || {}),
   }));
   const normalizeSymbol = (value) =>
@@ -1103,6 +1102,12 @@ async function fetchBatchIndicatorData(
         requests.find(
           (item) =>
             !usedRequestIds.has(item.requestId) &&
+            result?.instance_id &&
+            item.instance_id === result?.instance_id,
+        ) ||
+        requests.find(
+          (item) =>
+            !usedRequestIds.has(item.requestId) &&
             item.requestId === result?.requestId,
         ) ||
         requests.find(
@@ -1194,11 +1199,13 @@ async function fetchDataForIndicators(
         // socketRef.current?.emit("getIndicatorDetails", {
         const payload = {
           requestId,
+          instance_id: requestId,
           symbol: selectedCurrency?.name,
           interval: timeframeValue,
           fromDate: fromDate,
           toDate: toDate,
           type,
+          ...indicatorConfig,
         };
         console.log("Emitting getIndicatorDetails with payload:", payload);
         socketRef.current?.emit("getIndicatorDetails", payload);
