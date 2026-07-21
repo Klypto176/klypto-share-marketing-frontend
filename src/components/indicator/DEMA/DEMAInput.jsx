@@ -17,7 +17,7 @@ export default function DEMAInput(
   const demaData = rows
     .filter((d) => (d?.dema != null || d?.value != null) && d?.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.dema ?? d.value),
     }))
     .sort((a, b) => a.time - b.time);

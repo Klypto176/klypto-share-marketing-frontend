@@ -14,7 +14,10 @@ import { EditableNumber } from "../indicator/EditTableLabel";
 import { isAuthenticated, logout } from "../../pages/auth/protected";
 import { Navigate, useNavigate } from "react-router-dom";
 import ProfileDropDown from "../auth/profile/ProfileDropDown";
-
+import { CgMaximizeAlt } from "react-icons/cg";
+import { MdOutlineFullscreenExit } from "react-icons/md";
+import { TbCalendarShare } from "react-icons/tb";
+import GoToDateDialog from "../layout/GoToDateDialog";
 const d = {
   bar: {
     display: "flex", alignItems: "center", gap: 12,
@@ -118,9 +121,13 @@ export default function ChartHeader({
   onOpenStrategyEditor,
   areStrategyVisualsVisible,
   hasActiveStrategy,
+  isFullscreen,
+  onToggleFullscreen,
+  onGoToDate,
 }) {
   const navigate = useNavigate();
   const [timeframe, setTimeframe] = useState(60);
+  const [showGoToDate, setShowGoToDate] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const active = chartOptions.find((c) => c.value === chartType);
@@ -190,12 +197,21 @@ export default function ChartHeader({
           padding: 4px 16px;
           background: var(--bg-primary);
           border-bottom: 1px solid var(--bg-secondary);
-          flex-wrap: nowrap;
-          overflow-x: auto;
-          -webkit-overflow-scrolling: touch;
+          flex-wrap: wrap;
         }
-        .chart-header-bar::-webkit-scrollbar {
-          display: none;
+
+        .sleek-scroll::-webkit-scrollbar {
+          width: 4px;
+        }
+        .sleek-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .sleek-scroll::-webkit-scrollbar-thumb {
+          background: var(--border-color, #888);
+          border-radius: 4px;
+        }
+        .sleek-scroll::-webkit-scrollbar-thumb:hover {
+          background: var(--text-secondary, #555);
         }
 
         @media (max-width: 768px) {
@@ -221,26 +237,60 @@ export default function ChartHeader({
 
         {/* <div style={d.divider} /> */}
 
-        {/* Timeframe select */}
-        <div title={timeframeValue}>
-          <select
-            value={timeframeValue || "5m"}
-            onChange={(e) => setTimeframeValue(e.target.value)}
-            style={d.select}
-          >
-            {!timeframe && <option value="5m">5 Minute</option>}
-            {timeframe && Object.keys(timeframe)?.length === 0 && <option value="5m">5 Minute</option>}
-            {timeframe && Object.entries(timeframe)?.map(([group, items]) => (
-              <optgroup key={group} label={group?.toUpperCase()} style={{ background: "var(--bg-secondary)" }}>
-                {items?.map((item) => (
-                  <option key={item?.seconds} value={item?.value} style={{ background: "var(--bg-secondary)" }}>
-                    {item?.label}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </div>
+        {/* Timeframe dropdown */}
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button style={{ ...d.btn, width: 70, justifyContent: "space-between" }} title={timeframeValue || "5m"}>
+              <span>{timeframeValue || "5m"}</span>
+              <FiChevronDown size={13} />
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content align="start" className="sleek-scroll" sideOffset={6} style={{ ...d.dropdownContent, minWidth: 130, maxHeight: 400, overflowY: "auto" }}>
+              {(!timeframe || Object.keys(timeframe)?.length === 0) && (
+                <DropdownMenu.Item asChild>
+                  <button
+                    onClick={() => setTimeframeValue("5m")}
+                    style={{
+                      ...d.dropdownItem,
+                      background: timeframeValue === "5m" ? "var(--bg-secondary)" : "transparent",
+                      color: timeframeValue === "5m" ? "var(--accent-color)" : "var(--text-primary)",
+                    }}
+                    onMouseEnter={(e) => { if (timeframeValue !== "5m") e.currentTarget.style.background = "var(--bg-secondary)"; }}
+                    onMouseLeave={(e) => { if (timeframeValue !== "5m") e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <span style={{ flex: 1, textAlign: "left" }}>5 Minute</span>
+                    {timeframeValue === "5m" && <span style={{ color: "var(--accent-color)", fontSize: "0.7rem" }}>✓</span>}
+                  </button>
+                </DropdownMenu.Item>
+              )}
+              {timeframe && Object.entries(timeframe)?.map(([group, items]) => (
+                <div key={group}>
+                  <div style={{ padding: "6px 12px 2px", fontSize: "0.7rem", color: "var(--text-secondary)", opacity: 0.7, fontWeight: "bold", textTransform: "uppercase", textAlign: "left" }}>
+                    {group}
+                  </div>
+                  {items?.map((item) => (
+                    <DropdownMenu.Item key={item?.seconds} asChild>
+                      <button
+                        onClick={() => setTimeframeValue(item?.value)}
+                        style={{
+                          ...d.dropdownItem,
+                          background: timeframeValue === item?.value ? "var(--bg-secondary)" : "transparent",
+                          color: timeframeValue === item?.value ? "var(--accent-color)" : "var(--text-primary)",
+                        }}
+                        onMouseEnter={(e) => { if (timeframeValue !== item?.value) e.currentTarget.style.background = "var(--bg-secondary)"; }}
+                        onMouseLeave={(e) => { if (timeframeValue !== item?.value) e.currentTarget.style.background = "transparent"; }}
+                      >
+                        <span style={{ flex: 1, textAlign: "left" }}>{item?.label}</span>
+                        {timeframeValue === item?.value && <span style={{ color: "var(--accent-color)", fontSize: "0.7rem" }}>✓</span>}
+                      </button>
+                    </DropdownMenu.Item>
+                  ))}
+                </div>
+              ))}
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
 
         <div style={d.divider} />
 
@@ -347,6 +397,33 @@ export default function ChartHeader({
         )} */}
 
         {/* <ProfileDropDown /> */}
+        
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+          {!isFullscreen && (
+            <button
+              style={d.btn}
+              title="Maximize Chart"
+              onClick={onToggleFullscreen}
+            >
+              <CgMaximizeAlt size={15} />
+            </button>
+          )}
+
+          {isFullscreen && (
+            <button
+              style={{ ...d.btn, backgroundColor: "rgba(239, 68, 68, 0.1)", borderColor: "#ef4444", color: "#ef4444" }}
+              title="Exit Fullscreen (Esc)"
+              onClick={onToggleFullscreen}
+            >
+              <MdOutlineFullscreenExit size={15} />
+              EXIT
+            </button>
+          )}
+
+          <button style={d.btn} title="Go to" onClick={() => setShowGoToDate(true)}>
+            <TbCalendarShare size={14} />
+          </button>
+        </div>
       </div>
 
       <ListingModal
@@ -368,6 +445,15 @@ export default function ChartHeader({
           closeModal();
         }}
       />
+
+      {showGoToDate && (
+        <GoToDateDialog
+          onClose={() => setShowGoToDate(false)}
+          onGoTo={(date) => {
+            if (onGoToDate) onGoToDate(date);
+          }}
+        />
+      )}
     </div>
   );
 }
