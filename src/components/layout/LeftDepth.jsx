@@ -129,34 +129,34 @@ const LeftDepth = ({
         <FiX style={{ cursor: "pointer" }} onClick={onClose} />
       </div>
 
-      {predictionStatus?.status === 'running' && (
-      <div style={styles.progressContainer}>
-        <div style={styles.progressHeader}>
-          <span>
-            {predictionStatus?.phase === "predicting"
-              ? "Predicting AI..."
-              : "Fetching Ticks..."}
-          </span>
-          <span>
-            {predictionStatus?.total
-              ? `${predictionStatus?.processed || 0} / ${predictionStatus?.total} (${Number(predictionStatus?.processed) > 0 ? Math.round((Number(predictionStatus.processed) / Number(predictionStatus.total)) * 100) : 0}%)`
-              : "0 / 0 (0%)"}
-          </span>
+      {predictionStatus?.status === "running" && (
+        <div style={styles.progressContainer}>
+          <div style={styles.progressHeader}>
+            <span>
+              {predictionStatus?.phase === "predicting"
+                ? "Predicting AI..."
+                : "Fetching Ticks..."}
+            </span>
+            <span>
+              {predictionStatus?.total
+                ? `${predictionStatus?.processed || 0} / ${predictionStatus?.total} (${Number(predictionStatus?.processed) > 0 ? Math.round((Number(predictionStatus.processed) / Number(predictionStatus.total)) * 100) : 0}%)`
+                : "0 / 0 (0%)"}
+            </span>
+          </div>
+          <div style={styles.progressBarBg}>
+            <div
+              style={{
+                ...styles.progressBarFill,
+                width:
+                  Number(predictionStatus?.processed) > 0 &&
+                  Number(predictionStatus?.total)
+                    ? `${Math.round((Number(predictionStatus.processed) / Number(predictionStatus.total)) * 100)}%`
+                    : "0%",
+              }}
+            />
+          </div>
         </div>
-        <div style={styles.progressBarBg}>
-          <div
-            style={{
-              ...styles.progressBarFill,
-              width:
-                Number(predictionStatus?.processed) > 0 &&
-                Number(predictionStatus?.total)
-                  ? `${Math.round((Number(predictionStatus.processed) / Number(predictionStatus.total)) * 100)}%`
-                  : "0%",
-            }}
-          />
-        </div>
-      </div>
-  )} 
+      )}
 
       <div className="custom-scrollbar" style={styles.listContainer}>
         {isPredicting &&
@@ -332,36 +332,38 @@ const LeftDepth = ({
           return (
             <>
               {statusStr && (
-                <span
-                  style={{
-                    fontSize: "0.75rem",
-                    fontWeight: "600",
-                    padding: "4px 10px",
-                    borderRadius: "6px",
-                    backgroundColor: "rgba(234, 179, 8, 0.15)",
-                    color: "#eab308",
-                    border: "1px solid rgba(234, 179, 8, 0.3)",
-                    textTransform: "capitalize",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Status: {statusStr}
-                </span>
+                <>
+                  <span
+                    style={{
+                      fontSize: "0.75rem",
+                      fontWeight: "600",
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      backgroundColor: "rgba(234, 179, 8, 0.15)",
+                      color: "#eab308",
+                      border: "1px solid rgba(234, 179, 8, 0.3)",
+                      textTransform: "capitalize",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Status: {statusStr}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "0.75rem",
+                      fontWeight: "600",
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      backgroundColor: "rgba(59, 130, 246, 0.15)",
+                      color: "#3b82f6",
+                      border: "1px solid rgba(59, 130, 246, 0.3)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Trades: {predictResults?.length || 0}
+                  </span>
+                </>
               )}
-              <span
-                style={{
-                  fontSize: "0.75rem",
-                  fontWeight: "600",
-                  padding: "4px 10px",
-                  borderRadius: "6px",
-                  backgroundColor: "rgba(59, 130, 246, 0.15)",
-                  color: "#3b82f6",
-                  border: "1px solid rgba(59, 130, 246, 0.3)",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Trades: {predictResults?.length || 0}
-              </span>
             </>
           );
         })()}

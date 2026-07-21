@@ -402,15 +402,43 @@ export default function Candlestick() {
   
   const deduplicateTrades = (trades) => {
     if (!trades || !Array.isArray(trades)) return [];
-    const seen = new Set();
-    return trades.filter((trade) => {
+    
+    const bestVersions = new Map();
+    trades.forEach((trade) => {
       const sym = trade?.symbol;
-      const tStr = trade?.tick?.datetime || trade?.response?.entry_time || trade?.timestamp;
-      const key = `${sym}_${tStr}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
+      let tStr = trade?.tick?.datetime || trade?.response?.entry_time || trade?.timestamp;
+      let timeKey = tStr;
+      if (tStr) {
+        const d = new Date(tStr);
+        if (!isNaN(d.getTime())) timeKey = d.getTime();
+      }
+      const key = `${sym}_${timeKey}`;
+      
+      const existing = bestVersions.get(key);
+      if (!existing || (trade?.response?.rsi !== undefined && existing?.response?.rsi === undefined)) {
+        bestVersions.set(key, trade);
+      }
     });
+    
+    const seen = new Set();
+    const result = [];
+    trades.forEach((trade) => {
+      const sym = trade?.symbol;
+      let tStr = trade?.tick?.datetime || trade?.response?.entry_time || trade?.timestamp;
+      let timeKey = tStr;
+      if (tStr) {
+        const d = new Date(tStr);
+        if (!isNaN(d.getTime())) timeKey = d.getTime();
+      }
+      const key = `${sym}_${timeKey}`;
+      
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(bestVersions.get(key));
+      }
+    });
+    
+    return result;
   };
 
   const [predictResultData, setPredictResultData] = useState([]);
@@ -5173,6 +5201,14 @@ json.dumps(result)
       if ((options.mergeMode || "replace") === "replace") {
         latestReplaceRequestIdRef.current = requestId;
       }
+      historicalRequestOptionsRef.current.set(requestId, {
+        mergeMode: options.mergeMode || "replace",
+        pendingFromDate: options.pendingFromDate || null,
+        pendingToDate: options.pendingToDate || null,
+        preserveVisibleRange: options.preserveVisibleRange || null,
+        symbol: historicalPayload.symbol,
+        timeframe: timeframeValue,
+      });
       console.log("📬 getManualHistoricalData Payload:", historicalPayload);
       historyBackfillInFlightRef.current = true;
       if (emitRef.current) {

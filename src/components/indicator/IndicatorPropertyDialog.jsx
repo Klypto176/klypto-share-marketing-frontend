@@ -198,6 +198,58 @@ export default function IndicatorPropertyDialog({
       ? activeBarIndicator.type
       : activeBarIndicator;
 
+  const [isDragging, setIsDragging] = React.useState(false);
+  const dragStartPos = React.useRef({ x: 0, y: 0 });
+  const currentTranslate = React.useRef({ x: 0, y: 0 });
+
+  React.useEffect(() => {
+    if (!indicatorProperty) {
+      currentTranslate.current = { x: 0, y: 0 };
+      const modalDialog = document.querySelector('.modal.show .modal-dialog');
+      if (modalDialog) modalDialog.style.transform = `translate(0px, 0px)`;
+    }
+  }, [indicatorProperty]);
+
+  React.useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isDragging) return;
+      const modalDialog = document.querySelector('.modal.show .modal-dialog');
+      if (modalDialog) {
+        let newX = e.clientX - dragStartPos.current.x;
+        let newY = e.clientY - dragStartPos.current.y;
+        
+        const maxY = window.innerHeight / 2 - 40;
+        const minY = -(window.innerHeight / 2) + 40;
+        if (newY > maxY) newY = maxY;
+        if (newY < minY) newY = minY;
+
+        currentTranslate.current = { x: newX, y: newY };
+        modalDialog.style.transform = `translate(${newX}px, ${newY}px)`;
+        modalDialog.style.transition = 'none'; 
+      }
+    };
+    const handleMouseUp = () => setIsDragging(false);
+    
+    if (isDragging) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging]);
+
+  const handleMouseDown = (e) => {
+    // Only drag if clicking exactly on the header area (not inputs)
+    if (e.target.closest('button.btn-close')) return;
+    setIsDragging(true);
+    dragStartPos.current = {
+      x: e.clientX - currentTranslate.current.x,
+      y: e.clientY - currentTranslate.current.y,
+    };
+  };
+
   const currentConfig = {
     ...(indicatorConfigDefault[activeType] || {}),
     ...(indicatorConfigs[instanceId] || indicatorConfigs[activeType] || {}),
@@ -2934,7 +2986,11 @@ export default function IndicatorPropertyDialog({
       backdropClassName="indicator-modal-backdrop"
       enforceFocus={false}
     >
-      <Modal.Header closeButton className="border-0 pb-0 px-4 pt-4">
+      <Modal.Header 
+        closeButton 
+        className="border-0 pb-0 px-4 pt-4 cursor-move"
+        onMouseDown={handleMouseDown}
+      >
         <Modal.Title
           style={{
             fontSize: 17,
