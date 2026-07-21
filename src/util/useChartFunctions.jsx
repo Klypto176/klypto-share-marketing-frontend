@@ -127,7 +127,7 @@ export default function useChartFunctions({
         }
 
         for (const result of results) {
-          const id = result?.id;
+          const id = result?.id || result?.requestId || result?.instance_id;
           const type = result?.type;
           if (!id || !type) continue;
           const mappedResult = await fetchDataForIndicators(
@@ -1121,11 +1121,11 @@ async function fetchBatchIndicatorData(
         batchRequestId,
         ...expectedContext,
         exchange: getIndicatorExchange(selectedCurrency),
-        candles: serializeIndicatorCandles(candles),
+        // candles: serializeIndicatorCandles(candles),
         requests,
       };
       console.log("Emitting getIndicatorDetailsBatch with payload:", payload);
-      socketRef.current.emit("getIndicatorDetailsBatch", payload);
+      activeSocket.emit("getIndicatorDetailsBatch", payload);
     });
 
     const rawResults = Array.isArray(response?.results) ? response.results : [];
@@ -1249,7 +1249,7 @@ async function fetchDataForIndicators(
           ...indicatorConfig,
         };
         console.log("Emitting getIndicatorDetails with payload:", payload);
-        socketRef.current?.emit("getIndicatorDetails", payload);
+        activeSocket.emit("getIndicatorDetails", payload);
       }));
 
     if (!response || !response.data) {

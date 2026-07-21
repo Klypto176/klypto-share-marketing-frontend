@@ -6010,6 +6010,9 @@ json.dumps(result)
           "bandBackground",
           "bgFill",
           "zeroLine",
+          "upperRSI",
+          "middleRSI",
+          "lowerRSI",
         ];
 
         Object.entries(seriesGroup).forEach(([lineName, series]) => {
@@ -6035,6 +6038,7 @@ json.dumps(result)
             if (
               lineName === "upper" ||
               lineName === "upperBand" ||
+              lineName === "upperRSI" ||
               lineName === "overboughtFill" ||
               lineName === "bandBackground" ||
               lineName === "bgFill"
@@ -6042,20 +6046,27 @@ json.dumps(result)
               value =
                 instType === "CCI"
                   ? (style?.upperBand?.value ?? 100)
+                  : instType === "RSI"
+                  ? (style?.upperRSI?.value ?? 70)
                   : (style?.upper?.value ?? 70);
-            } else if (lineName === "middle" || lineName === "middleBand") {
+            } else if (lineName === "middle" || lineName === "middleBand" || lineName === "middleRSI") {
               value =
                 instType === "CCI"
                   ? (style?.middleBand?.value ?? 0)
+                  : instType === "RSI"
+                  ? (style?.middleRSI?.value ?? 50)
                   : (style?.middle?.value ?? 50);
             } else if (
               lineName === "lower" ||
               lineName === "lowerBand" ||
+              lineName === "lowerRSI" ||
               lineName === "oversoldFill"
             ) {
               value =
                 instType === "CCI"
                   ? (style?.lowerBand?.value ?? -100)
+                  : instType === "RSI"
+                  ? (style?.lowerRSI?.value ?? 30)
                   : (style?.lower?.value ?? 30);
             } else if (lineName === "zeroLine") {
               value = style?.zeroLine?.value ?? 0;
