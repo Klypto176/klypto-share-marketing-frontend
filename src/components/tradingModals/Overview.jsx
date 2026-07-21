@@ -397,17 +397,16 @@ const Overview = ({ selectedCurrency, onBack }) => {
   // Basic Fields
   const ltp =
     overview.last_traded_price ??
-    tick.last_traded_price ??
     raw.last_traded_price ??
     "--";
-  const netChange = overview.net_change ?? tick.net_change ?? raw.change ?? 0;
+  const netChange = overview.net_change ?? 0;
   const percentChange =
-    overview.percent_change ?? tick.percent_change ?? raw.percent_change ?? 0;
+    overview.percent_change ?? raw.percent_change ?? 0;
 
-  const open = overview.open ?? tick.open ?? "--";
-  const high = overview.day_high ?? tick.day_high ?? tick.high ?? "--";
-  const low = overview.day_low ?? tick.day_low ?? tick.low ?? "--";
-  const close = overview.close ?? tick.close ?? raw.close_price ?? "--";
+  const open = overview.open ?? "--";
+  const high = overview.day_high ?? "--";
+  const low = overview.day_low ?? "--";
+  const close = overview.close ?? "--";
 
   const isPositive =
     String(netChange).startsWith("+") || Number(netChange) >= 0;
@@ -416,31 +415,31 @@ const Overview = ({ selectedCurrency, onBack }) => {
     : "var(--danger-color)";
 
   // Additional Data
-  const tradeVolume = overview.volume ?? tick.volume ?? 0;
-  const opnInterest = overview.open_interest ?? tick.open_interest ?? 0;
+  const tradeVolume = overview.volume ??  0;
+  const opnInterest = overview.open_interest ?? 0;
   const lastTradeQty =
-    overview.last_trade_quantity ?? tick.last_trade_quantity ?? 0;
+    overview.last_trade_quantity ?? 0;
 
   const exchFeedTime =
-    overview.exchange_feed_time ?? tick.exchange_feed_time ?? "--";
+    overview.exchange_feed_time ?? "--";
   const exchTradeTime =
-    overview.exchange_trade_time ?? tick.exchange_trade_time ?? "--";
+    overview.exchange_trade_time ??  "--";
 
-  const lowerCircuit = overview.lower_circuit ?? tick.lower_circuit ?? "--";
-  const upperCircuit = overview.upper_circuit ?? tick.upper_circuit ?? "--";
+  const lowerCircuit = overview.lower_circuit ?? "--";
+  const upperCircuit = overview.upper_circuit ?? "--";
   const week52Low =
-    overview.fiftytwo_week_low ?? tick.fiftytwo_week_low ?? "--";
+    overview.fiftytwo_week_low ?? "--";
   const week52High =
-    overview.fiftytwo_week_high ?? tick.fiftytwo_week_high ?? "--";
+    overview.fiftytwo_week_high ?? "--";
 
   const totBuyQuan =
-    overview.total_buy_quantity ?? tick.total_buy_quantity ?? 0;
+    overview.total_buy_quantity ?? 0;
   const totSellQuan =
-    overview.total_sell_quantity ?? tick.total_sell_quantity ?? 0;
+    overview.total_sell_quantity ?? 0;
 
   // Depth Parsing
-  const buyDepth = overview.best_five_buy ?? tick.best_five_buy ?? [];
-  const sellDepth = overview.best_five_sell ?? tick.best_five_sell ?? [];
+  const buyDepth = overview.best_five_buy ?? [];
+  const sellDepth = overview.best_five_sell ?? [];
   const maxBuyQty = Math.max(...buyDepth?.map((b) => Number(b.quantity)), 0);
   const maxSellQty = Math.max(...sellDepth?.map((s) => Number(s.quantity)), 0);
 
@@ -579,7 +578,7 @@ const Overview = ({ selectedCurrency, onBack }) => {
         <div style={{ width: 1, background: "var(--border-color)" }} />
         <TopStat label="Prev Close" value={fmt(close)} />
         <div style={{ width: 1, background: "var(--border-color)" }} />
-        <TopStat label="Avg Price" value={fmt(overview.avgPrice || "--")} />
+        <TopStat label="Avg Price" value={fmt(raw.avgPrice || "--")} />
         <div style={{ width: 1, background: "var(--border-color)" }} />
         <TopStat label="Volume" value={fmt(tradeVolume, 0)} />
         <div style={{ width: 1, background: "var(--border-color)" }} />

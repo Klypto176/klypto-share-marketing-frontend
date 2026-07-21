@@ -90,14 +90,15 @@ export default function SuperSmootherPlot({
       //------------------------------------
       if (lineName === "oscillator") {
         // 1. Fill Series (Baseline) without line
+        const fillStyle = styleConfig?.oscillatorFill || style?.oscillatorFill;
         const fillSeries = addSeries(id, BaselineSeries, {
           baseValue: { type: "price", price: 0 },
           topLineColor: "rgba(0, 0, 0, 0)", // Transparent line
           bottomLineColor: "rgba(0, 0, 0, 0)", // Transparent line
-          topFillColor1: "rgba(0, 255, 0, 0.5)",
-          topFillColor2: "rgba(0, 255, 0, 0.05)",
-          bottomFillColor1: "rgba(255, 0, 0, 0.05)",
-          bottomFillColor2: "rgba(255, 0, 140, 0.5)",
+          topFillColor1: fillStyle?.topFillColor1 || "rgba(0, 255, 0, 0.5)",
+          topFillColor2: fillStyle?.topFillColor2 || "rgba(0, 255, 0, 0.05)",
+          bottomFillColor1: fillStyle?.bottomFillColor1 || "rgba(255, 20, 147, 0.05)",
+          bottomFillColor2: fillStyle?.bottomFillColor2 || "rgba(255, 20, 147, 0.5)",
           lineWidth: 0,
           visible: styleConfig?.visible ?? true,
           priceLineVisible: false,
@@ -118,7 +119,15 @@ export default function SuperSmootherPlot({
           lastValueVisible: true,
         });
 
-        lineSeries.setData(lineData);
+        const styledLineData = lineData.map((d) => {
+          const isRising = d.value >= 0;
+          return {
+            ...d,
+            color: d.color || (isRising ? "rgba(0, 255, 0, 1)" : "rgba(255, 20, 147, 1)")
+          };
+        });
+
+        lineSeries.setData(styledLineData);
         groupedSeries[lineName] = lineSeries;
 
         // 3. Zero line reference
@@ -167,13 +176,28 @@ export default function SuperSmootherPlot({
     const group = indicatorSeriesRef.current?.[id];
     if (!group || !result) return;
 
-    const style = indicatorStyle?.[id] || indicatorStyle?.SUPERSMOOTHER;
+    const styleStr = JSON.stringify(indicatorStyle?.[id] || indicatorStyle?.SUPERSMOOTHER || {});
+    if (group._lastStyleStr === styleStr) return;
+    group._lastStyleStr = styleStr;
+
+    const style = JSON.parse(styleStr);
 
     group.oscillator?.applyOptions({
       color: style?.oscillator?.color,
       lineWidth: style?.oscillator?.width,
       visible: style?.oscillator?.visible,
     });
+
+    const fillStyle = style?.oscillator?.oscillatorFill || style?.oscillatorFill;
+    if (group.oscillatorFill) {
+      group.oscillatorFill.applyOptions({
+        topFillColor1: fillStyle?.topFillColor1 || "rgba(0, 255, 0, 0.5)",
+        topFillColor2: fillStyle?.topFillColor2 || "rgba(0, 255, 0, 0.05)",
+        bottomFillColor1: fillStyle?.bottomFillColor1 || "rgba(255, 20, 147, 0.05)",
+        bottomFillColor2: fillStyle?.bottomFillColor2 || "rgba(255, 20, 147, 0.5)",
+        visible: style?.oscillator?.visible,
+      });
+    }
 
     group.signalLine?.applyOptions({
       color: style?.signalLine?.color,
@@ -208,6 +232,23 @@ export default function SuperSmootherPlot({
       };
 
       group._recolor();
+    }
+
+    if (group.oscillator) {
+      group._recolorOscillator = () => {
+        const lineDataToColor = group.rawData?.oscillator || result?.data?.oscillator || [];
+        if (!lineDataToColor.length) return;
+
+        const styledLineData = lineDataToColor.map((d) => {
+          const isRising = d.value >= 0;
+          return {
+            ...d,
+            color: d.color || (isRising ? "rgba(0, 255, 0, 1)" : "rgba(255, 20, 147, 1)")
+          };
+        });
+        group.oscillator.setData(styledLineData);
+      };
+      group._recolorOscillator();
     }
 
     // if (pane) {

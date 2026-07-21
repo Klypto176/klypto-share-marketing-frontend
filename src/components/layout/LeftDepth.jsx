@@ -2,7 +2,20 @@ import React from "react";
 import { FiX, FiSettings } from "react-icons/fi";
 import { Spinner } from "../tradingModals/Spinner";
 
-const LeftDepth = ({ onClose, predictResults, setSelectedCurrency, isPredicting, predictionStatus }) => {
+const LeftDepth = ({
+  onClose,
+  predictResults,
+  setSelectedCurrency,
+  isPredicting,
+  predictionStatus,
+}) => {
+  console.log(
+    "[DEBUG LeftDepth] Rendered with predictionStatus:",
+    predictionStatus,
+    "isPredicting:",
+    isPredicting,
+  );
+
   const styles = {
     container: {
       display: "flex",
@@ -11,7 +24,8 @@ const LeftDepth = ({ onClose, predictResults, setSelectedCurrency, isPredicting,
       background: "var(--bg-primary)",
       color: "var(--text-primary)",
       borderRight: "1px solid var(--border-color)",
-      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      fontFamily:
+        "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     },
     header: {
       display: "flex",
@@ -88,24 +102,26 @@ const LeftDepth = ({ onClose, predictResults, setSelectedCurrency, isPredicting,
     time: {
       fontSize: "0.75rem",
       color: "var(--text-secondary)",
-    }
+    },
   };
 
   return (
     <div style={styles.container}>
       <div style={styles.header}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span>Strategy Results</span> 
+          <span>Strategy Results</span>
           {predictResults && predictResults.length > 0 && (
-            <span style={{
-              fontSize: "0.7rem",
-              fontWeight: "600",
-              padding: "2px 8px",
-              borderRadius: "12px",
-              backgroundColor: "rgba(59, 130, 246, 0.15)",
-              color: "#3b82f6",
-              border: "1px solid rgba(59, 130, 246, 0.3)"
-            }}>
+            <span
+              style={{
+                fontSize: "0.7rem",
+                fontWeight: "600",
+                padding: "2px 8px",
+                borderRadius: "12px",
+                backgroundColor: "rgba(59, 130, 246, 0.15)",
+                color: "#3b82f6",
+                border: "1px solid rgba(59, 130, 246, 0.3)",
+              }}
+            >
               {predictResults.length}
             </span>
           )}
@@ -114,51 +130,70 @@ const LeftDepth = ({ onClose, predictResults, setSelectedCurrency, isPredicting,
       </div>
 
       {predictionStatus?.status === 'running' && (
-        <div style={styles.progressContainer}>
-          <div style={styles.progressHeader}>
-            <span>{predictionStatus.phase === 'fetching_ticks' ? 'Fetching Ticks...' : 'Predicting AI...'}</span>
-            <span>
-              {predictionStatus.total ? `${predictionStatus.processed || 0} / ${predictionStatus.total} (${predictionStatus.progress || Math.round(((predictionStatus.processed || 0) / predictionStatus.total) * 100)}%)` : ''}
-            </span>
-          </div>
-          <div style={styles.progressBarBg}>
-            <div 
-              style={{
-                ...styles.progressBarFill, 
-                width: predictionStatus.progress 
-                  ? `${Math.max(5, predictionStatus.progress)}%`
-                  : predictionStatus.total 
-                    ? `${Math.max(5, ((predictionStatus.processed || 0) / predictionStatus.total) * 100)}%` 
-                    : "5%"
-              }} 
-            />
-          </div>
+      <div style={styles.progressContainer}>
+        <div style={styles.progressHeader}>
+          <span>
+            {predictionStatus?.phase === "predicting"
+              ? "Predicting AI..."
+              : "Fetching Ticks..."}
+          </span>
+          <span>
+            {predictionStatus?.total
+              ? `${predictionStatus?.processed || 0} / ${predictionStatus?.total} (${Number(predictionStatus?.processed) > 0 ? Math.round((Number(predictionStatus.processed) / Number(predictionStatus.total)) * 100) : 0}%)`
+              : "0 / 0 (0%)"}
+          </span>
         </div>
-      )}
+        <div style={styles.progressBarBg}>
+          <div
+            style={{
+              ...styles.progressBarFill,
+              width:
+                Number(predictionStatus?.processed) > 0 &&
+                Number(predictionStatus?.total)
+                  ? `${Math.round((Number(predictionStatus.processed) / Number(predictionStatus.total)) * 100)}%`
+                  : "0%",
+            }}
+          />
+        </div>
+      </div>
+  )} 
 
       <div className="custom-scrollbar" style={styles.listContainer}>
-        {isPredicting && (!predictionStatus || predictionStatus.status !== 'running') ? (
-          <div style={{ display: "flex", height: "100%", justifyContent: "center", alignItems: "center" }}>
+        {isPredicting &&
+        (!predictionStatus || predictionStatus.status !== "running") ? (
+          <div
+            style={{
+              display: "flex",
+              height: "100%",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
             <Spinner />
           </div>
         ) : predictResults && predictResults.length > 0 ? (
           predictResults.map((item, idx) => {
             const type = item.response?.type || "UNKNOWN";
             const isCall = type.toUpperCase() === "CALL";
-            
+
             return (
               <div
                 key={item.uuid || idx}
                 style={styles.listItem}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "var(--bg-secondary)"}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.backgroundColor =
+                    "var(--bg-secondary)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.backgroundColor = "transparent")
+                }
                 onClick={() => {
                   if (setSelectedCurrency && item.symbol) {
                     setSelectedCurrency({
                       name: item.symbol,
                       symbol: item.symbol,
                       segment: "NSE",
-                      type: "currency"
+                      type: "currency",
                     });
                   }
                 }}
@@ -166,24 +201,62 @@ const LeftDepth = ({ onClose, predictResults, setSelectedCurrency, isPredicting,
                 {/* Row 1: Symbol + Trade Type Badge */}
                 <div style={styles.itemTop}>
                   <span style={styles.symbol}>{item?.symbol}</span>
-                  <span style={{...styles.badge, ...(isCall ? styles.badgeCall : styles.badgePut)}}>
+                  <span
+                    style={{
+                      ...styles.badge,
+                      ...(isCall ? styles.badgeCall : styles.badgePut),
+                    }}
+                  >
                     {type}
                   </span>
                 </div>
 
                 {/* Row 2: Entry Price + Trend + RSI */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: "0.8rem", fontWeight: "600", color: isCall ? "#22c55e" : "#ef4444" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "0.8rem",
+                      fontWeight: "600",
+                      color: isCall ? "#22c55e" : "#ef4444",
+                    }}
+                  >
                     ₹{item.response?.entry_price ?? "—"}
                   </span>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", justifyContent: "flex-end" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      justifyContent: "flex-end",
+                    }}
+                  >
                     {item.response?.trend && (
-                      <span style={{ fontSize: "0.68rem", color: item.response.trend === "UP" ? "#22c55e" : "#ef4444" }}>
-                        {item.response.trend === "UP" ? "↑" : "↓"} {item.response.trend}
+                      <span
+                        style={{
+                          fontSize: "0.68rem",
+                          color:
+                            item.response.trend === "UP"
+                              ? "#22c55e"
+                              : "#ef4444",
+                        }}
+                      >
+                        {item.response.trend === "UP" ? "↑" : "↓"}{" "}
+                        {item.response.trend}
                       </span>
                     )}
                     {item.response?.rsi && (
-                      <span style={{ fontSize: "0.68rem", color: "var(--text-secondary)" }}>
+                      <span
+                        style={{
+                          fontSize: "0.68rem",
+                          color: "var(--text-secondary)",
+                        }}
+                      >
                         RSI: {Number(item.response.rsi).toFixed(1)}
                       </span>
                     )}
@@ -193,12 +266,21 @@ const LeftDepth = ({ onClose, predictResults, setSelectedCurrency, isPredicting,
                 {/* Row 4: Time */}
                 <div style={styles.time}>
                   {(() => {
-                    const timeStr = item.tick?.datetime || item.response?.entry_time;
+                    const timeStr =
+                      item.tick?.datetime || item.response?.entry_time;
                     if (!timeStr) return "N/A";
                     try {
                       const d = new Date(timeStr);
                       if (isNaN(d.getTime())) return timeStr;
-                      return d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                      return d.toLocaleString("en-IN", {
+                        timeZone: "Asia/Kolkata",
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                      });
                     } catch (e) {
                       return timeStr;
                     }
@@ -207,52 +289,83 @@ const LeftDepth = ({ onClose, predictResults, setSelectedCurrency, isPredicting,
               </div>
             );
           })
-        ) : (predictionStatus?.status === 'running' || predictionStatus?.phase === 'predicting' || predictionStatus?.phase === 'starting' || predictionStatus?.status === 'starting') ? null : (
-          <div style={{ textAlign: "center", marginTop: "20px", color: "var(--text-secondary)", fontSize: "0.85rem" }}>
+        ) : predictionStatus?.status === "running" ||
+          predictionStatus?.phase === "predicting" ||
+          predictionStatus?.phase === "starting" ||
+          predictionStatus?.status === "starting" ? null : (
+          <div
+            style={{
+              textAlign: "center",
+              marginTop: "20px",
+              color: "var(--text-secondary)",
+              fontSize: "0.85rem",
+            }}
+          >
             No results available.
           </div>
         )}
       </div>
-      
-      {predictionStatus && (
-        <div style={{
+
+      <div
+        style={{
           display: "flex",
           justifyContent: "space-between",
           padding: "12px 16px",
           borderTop: "1px solid var(--border-color)",
           background: "var(--bg-secondary)",
           alignItems: "center",
-          gap: "8px"
-        }}>
-          <span style={{
-            fontSize: "0.75rem",
-            fontWeight: "600",
-            padding: "4px 10px",
-            borderRadius: "6px",
-            backgroundColor: (predictionStatus.phase === "complete" || predictionStatus.status === "done") ? "rgba(34, 197, 94, 0.15)" : "rgba(234, 179, 8, 0.15)",
-            color: (predictionStatus.phase === "complete" || predictionStatus.status === "done") ? "#22c55e" : "#eab308",
-            border: `1px solid ${(predictionStatus.phase === "complete" || predictionStatus.status === "done") ? "rgba(34, 197, 94, 0.3)" : "rgba(234, 179, 8, 0.3)"}`,
-            textTransform: "capitalize",
-            whiteSpace: "nowrap"
-          }}>
-            Status: {predictionStatus.status || predictionStatus.phase }
-          </span>
-          {
-            <span style={{
-              fontSize: "0.75rem",
-              fontWeight: "600",
-              padding: "4px 10px",
-              borderRadius: "6px",
-              backgroundColor: "rgba(59, 130, 246, 0.15)",
-              color: "#3b82f6",
-              border: "1px solid rgba(59, 130, 246, 0.3)",
-              whiteSpace: "nowrap"
-            }}>
-              Trades: {predictionStatus.trades_found ?? 0}
-            </span>
-          }
-        </div>
-      )}
+          gap: "8px",
+        }}
+      >
+        {(() => {
+          const statusStr =
+            typeof predictionStatus === "string"
+              ? predictionStatus
+              : predictionStatus?.phase || predictionStatus?.status || "";
+
+          const isSuccess =
+            statusStr?.toLowerCase() === "complete" ||
+            statusStr?.toLowerCase() === "done";
+
+          if (isSuccess) return null; // Do not show buttons after prediction is completed
+
+          return (
+            <>
+              {statusStr && (
+                <span
+                  style={{
+                    fontSize: "0.75rem",
+                    fontWeight: "600",
+                    padding: "4px 10px",
+                    borderRadius: "6px",
+                    backgroundColor: "rgba(234, 179, 8, 0.15)",
+                    color: "#eab308",
+                    border: "1px solid rgba(234, 179, 8, 0.3)",
+                    textTransform: "capitalize",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Status: {statusStr}
+                </span>
+              )}
+              <span
+                style={{
+                  fontSize: "0.75rem",
+                  fontWeight: "600",
+                  padding: "4px 10px",
+                  borderRadius: "6px",
+                  backgroundColor: "rgba(59, 130, 246, 0.15)",
+                  color: "#3b82f6",
+                  border: "1px solid rgba(59, 130, 246, 0.3)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Trades: {predictResults?.length || 0}
+              </span>
+            </>
+          );
+        })()}
+      </div>
     </div>
   );
 };

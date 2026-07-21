@@ -389,6 +389,10 @@ export default function Candlestick() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
   const [predictionStatus, setPredictionStatus] = useState(null);
+
+  useEffect(() => {
+    console.log("[DEBUG CandleStick] predictionStatus state changed to:", predictionStatus);
+  }, [predictionStatus]);
   const [isPredicting, setIsPredicting] = useState(false);
   const [isDepthOpen, setIsDepthOpen] = useState(false);
   const [isAgentPanelOpen, setIsAgentPanelOpen] = useState(false);
@@ -509,82 +513,86 @@ export default function Candlestick() {
   }, [areStrategyVisualsVisible]);
 
   const handleStrategyClick = () => {
-    setIsPredicting(true);
     setIsDepthOpen(true);
     setIsWatchlistOpen(false);
     setIsDetailsOpen(false);
     if (activeTab === "Alerts") setActiveTab("Chart");
 
-    setPredictResultData([]);
-    setPredictionStatus(null);
+    const isCurrentlyRunning = predictionStatus?.status === "running" || predictionStatus?.phase === "predicting";
 
-    // Fetch from REST API directly
-    apiService
-      .get("/api/predictResult")
-      .then((res) => {
-        const results = Array.isArray(res?.data)
-          ? res.data
-          : Array.isArray(res)
-            ? res
-            : [];
-        if (results.length > 0) {
-          console.log(
-            "[AI PREDICTION] REST results loaded on click:",
-            results.length,
-          );
-          setIsDepthOpen(true);
+    if (!isCurrentlyRunning) {
+      setIsPredicting(true);
+      setPredictResultData([]);
+      setPredictionStatus(null);
 
-          const mapped = results.map((item) => ({
-            symbol: item.symbol,
-            response: {
-              type: item.trade_type,
-              entry_time: item.entry_time,
-              entry_price: item.entry_price,
-              signal: item.signal,
-              trend: item.trend,
-              status: item.status,
-              rsi: item.rsi,
-              candle_open: item.candle_open,
-              candle_high: item.candle_high,
-              candle_low: item.candle_low,
-              candle_close: item.candle_close,
-              candle_volume: item.candle_volume,
-            },
-            tick: {
-              datetime: item.entry_time,
-            },
-            uuid: item.uuid,
-            created_at: item.created_at,
-          }));
+      // Fetch from REST API directly
+      apiService
+        .get("/api/predictResult")
+        .then((res) => {
+          const results = Array.isArray(res?.data)
+            ? res.data
+            : Array.isArray(res)
+              ? res
+              : [];
+          if (results.length > 0) {
+            console.log(
+              "[AI PREDICTION] REST results loaded on click:",
+              results.length,
+            );
+            setIsDepthOpen(true);
 
-          setPredictResultData(mapped);
-
-          // Also plot on chart
-          const signals = results.map((item) => {
-            let timeStr =
-              item.entry_time || item.created_at || new Date().toISOString();
-            timeStr = timeStr.replace(" ", "T");
-            return {
+            const mapped = results.map((item) => ({
               symbol: item.symbol,
-              signalType: item.trade_type,
-              timestamp: timeStr,
-              segment: "SCRIPT",
-            };
-          });
+              response: {
+                type: item.trade_type,
+                entry_time: item.entry_time,
+                entry_price: item.entry_price,
+                signal: item.signal,
+                trend: item.trend,
+                status: item.status,
+                rsi: item.rsi,
+                candle_open: item.candle_open,
+                candle_high: item.candle_high,
+                candle_low: item.candle_low,
+                candle_close: item.candle_close,
+                candle_volume: item.candle_volume,
+              },
+              tick: {
+                datetime: item.entry_time,
+              },
+              uuid: item.uuid,
+              created_at: item.created_at,
+            }));
 
-          setDashboardSignals(signals);
-          setIsDeployed(true);
-          setDeployedStrategyCode("API_PREDICTION");
-        } else {
-          console.log("[AI PREDICTION] REST returned no results.");
-        }
-      })
-      .catch((err) => {
-        console.warn("[AI PREDICTION] REST fetch failed:", err);
-      })
-      .finally(() => {
-        setIsPredicting(false);
-      });
+            setPredictResultData(mapped);
+
+            // Also plot on chart
+            const signals = results.map((item) => {
+              let timeStr =
+                item.entry_time || item.created_at || new Date().toISOString();
+              timeStr = timeStr.replace(" ", "T");
+              return {
+                symbol: item.symbol,
+                signalType: item.trade_type,
+                timestamp: timeStr,
+                segment: "SCRIPT",
+              };
+            });
+
+            setDashboardSignals(signals);
+            setIsDeployed(true);
+            setDeployedStrategyCode("API_PREDICTION");
+          } else {
+            console.log("[AI PREDICTION] REST returned no results.");
+          }
+        })
+        .catch((err) => {
+          console.warn("[AI PREDICTION] REST fetch failed:", err);
+        })
+        .finally(() => {
+          setIsPredicting(false);
+        });
+    }
   };
 
   //code editor
@@ -2253,12 +2261,18 @@ export default function Candlestick() {
         data,
       );
 
-      setPredictionStatus(data);
-      if (data.status === "running") {
+      // Force a new object reference to guarantee a React state update
+      const newData = typeof data === 'object' && data !== null ? { ...data } : data;
+      setPredictionStatus(newData);
+      
+      if (newData.status === "running") {
         setIsPredicting(true);
         setIsDepthOpen(true);
-      } else if (data.status === "done") {
+      } else if (newData.status === "done" || newData.status === "complete") {
         setIsPredicting(false);
+
+
+    
 
         // ✅ FALLBACK: If no trade signals arrived via socket, fetch from REST API
         // Wait briefly to allow any in-flight socket events to arrive first
@@ -3980,11 +3994,24 @@ json.dumps(result)
       };
     }
 
-    const series = chartRef.current.addSeries(
-      SeriesType,
-      finalOptions,
-      paneIndex,
-    );
+    let series;
+    try {
+      series = chartRef.current.addSeries(
+        SeriesType,
+        finalOptions,
+        paneIndex,
+      );
+    } catch (e) {
+      if (!e?.message?.includes("Object is disposed")) throw e;
+      return {
+        setData: () => {},
+        update: () => {},
+        applyOptions: () => {},
+        priceScale: () => ({ applyOptions: () => {} }),
+      };
+    }
+
+
 
     allCreatedSeriesRef.current.push({ id: paneKey, series });
 
@@ -4054,7 +4081,7 @@ json.dumps(result)
         try {
           return originalSetData(data);
         } catch (e) {
-          if (!e.message?.includes("Object is disposed")) throw e;
+          if (!e?.message?.includes("Object is disposed")) throw e;
           return;
         }
       }
@@ -4133,7 +4160,7 @@ json.dumps(result)
       try {
         return originalSetData(cleanedData);
       } catch (e) {
-        if (!e.message.includes("Object is disposed")) {
+        if (!e?.message?.includes("Object is disposed")) {
           throw e;
         }
       }
@@ -4144,7 +4171,7 @@ json.dumps(result)
       try {
         return originalUpdate(data);
       } catch (e) {
-        if (!e.message.includes("Object is disposed")) {
+        if (!e?.message?.includes("Object is disposed")) {
           throw e;
         }
       }
@@ -4155,7 +4182,7 @@ json.dumps(result)
       try {
         return originalApplyOptions(options);
       } catch (e) {
-        if (!e.message.includes("Object is disposed")) {
+        if (!e?.message?.includes("Object is disposed")) {
           throw e;
         }
       }
@@ -4178,7 +4205,7 @@ json.dumps(result)
       try {
         chart.timeScale().setVisibleLogicalRange(logicalRange);
       } catch (e) {
-        if (!e.message?.includes("Object is disposed")) throw e;
+        if (!e?.message?.includes("Object is disposed")) throw e;
       }
     });
     syncingRef.current = false;
@@ -4311,8 +4338,74 @@ json.dumps(result)
       try {
         originalRemoveSeries(series);
       } catch (e) {
-        if (!e.message?.includes("Object is disposed")) throw e;
+        if (!e?.message?.includes("Object is disposed")) throw e;
       }
+    };
+
+    const origSub = chart.subscribeCrosshairMove.bind(chart);
+    chart.subscribeCrosshairMove = (handler) => {
+      try { origSub(handler); } catch(e) { if (!e?.message?.includes("Object is disposed")) throw e; }
+    };
+
+    const origUnsub = chart.unsubscribeCrosshairMove.bind(chart);
+    chart.unsubscribeCrosshairMove = (handler) => {
+      try { origUnsub(handler); } catch(e) { if (!e?.message?.includes("Object is disposed")) throw e; }
+    };
+
+    const origSetCrosshair = chart.setCrosshairPosition.bind(chart);
+    chart.setCrosshairPosition = (...args) => {
+      try { origSetCrosshair(...args); } catch(e) { if (!e?.message?.includes("Object is disposed")) throw e; }
+    };
+
+    const origTimeScale = chart.timeScale.bind(chart);
+    chart.timeScale = () => {
+      const ts = origTimeScale();
+      if (!ts.__patched) {
+        ts.__patched = true;
+        const methods = [
+          'getVisibleLogicalRange', 'setVisibleLogicalRange', 'getVisibleRange', 'setVisibleRange',
+          'fitContent', 'scrollToRealTime', 'scrollToPosition', 'timeToCoordinate', 'coordinateToTime',
+          'subscribeVisibleTimeRangeChange', 'unsubscribeVisibleTimeRangeChange',
+          'subscribeVisibleLogicalRangeChange', 'unsubscribeVisibleLogicalRangeChange'
+        ];
+        methods.forEach(method => {
+          if (typeof ts[method] === 'function') {
+            const origMethod = ts[method].bind(ts);
+            ts[method] = (...args) => {
+              try {
+                return origMethod(...args);
+              } catch (e) {
+                if (!e?.message?.includes("Object is disposed")) throw e;
+                return null;
+              }
+            };
+          }
+        });
+      }
+      return ts;
+    };
+
+    const origPriceScale = chart.priceScale.bind(chart);
+    chart.priceScale = (id) => {
+      const ps = origPriceScale(id);
+      if (!ps.__patched) {
+        ps.__patched = true;
+        const methods = ['applyOptions', 'options', 'width'];
+        methods.forEach(method => {
+          if (typeof ps[method] === 'function') {
+            const origMethod = ps[method].bind(ps);
+            ps[method] = (...args) => {
+              try {
+                return origMethod(...args);
+              } catch (e) {
+                if (!e?.message?.includes("Object is disposed")) throw e;
+                return null;
+              }
+            };
+          }
+        });
+      }
+      return ps;
     };
 
     chartRef.current = chart;
@@ -4324,6 +4417,11 @@ json.dumps(result)
         chartRef.current.remove();
         chartRef.current = null;
       }
+      seriesRef.current = null;
+      seriesReadyRef.current = false;
+      customScriptMarkersRef.current = null;
+      strategyMarkersRef.current = null;
+      customScriptBarColorsAppliedRef.current = false;
     };
   }, []); // Run only once
 
@@ -4951,11 +5049,15 @@ json.dumps(result)
 
       // sync crosshair
       charts.forEach((c) => {
-        c.setCrosshairPosition(
-          param.point?.x ?? 0,
-          param.point?.y ?? 0,
-          param.time,
-        );
+        try {
+          c.setCrosshairPosition(
+            param.point?.x ?? 0,
+            param.point?.y ?? 0,
+            param.time,
+          );
+        } catch (e) {
+          if (!e?.message?.includes("Object is disposed")) console.warn(e);
+        }
       });
 
       // update candles
@@ -4981,8 +5083,15 @@ json.dumps(result)
       updateSandboxLegendValues(param);
     };
 
-    chart.subscribeCrosshairMove(handler);
-    return () => chart.unsubscribeCrosshairMove(handler);
+    try {
+      chart.subscribeCrosshairMove(handler);
+    } catch (e) {}
+    
+    return () => {
+      try {
+        chart.unsubscribeCrosshairMove?.(handler);
+      } catch (e) {}
+    };
   }, [updateSandboxLegendValues]);
 
   const { fetchIndicatorData } = useChartFunctions({
@@ -5051,6 +5160,7 @@ json.dumps(result)
         latestReplaceRequestIdRef.current = requestId;
       }
       console.log("📬 getManualHistoricalData Payload:", historicalPayload);
+      historyBackfillInFlightRef.current = true;
       if (emitRef.current) {
         emitRef.current(EVENTS.CHART.GET, historicalPayload);
       }
@@ -5294,6 +5404,61 @@ json.dumps(result)
   // ── Central Socket Hook ──
   const { emit, once, connected, off, socket: dataSocket } = useSocket({
     disableOverviewLiveTickFallback: true,
+    handleAiPredictionStatus: (data) => {
+      const newData = typeof data === 'object' && data !== null ? { ...data } : data;
+      setPredictionStatus(newData);
+      
+      if (newData.status === "running") {
+        setIsPredicting(true);
+        setIsDepthOpen(true);
+      } else if (newData.status === "done" || newData.status === "complete") {
+        setIsPredicting(false);
+        setTimeout(async () => {
+          setPredictResultData((currentResults) => {
+            if (currentResults && currentResults.length > 0) return currentResults;
+            apiService.get("/api/predictResult").then((res) => {
+              const results = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+              if (results.length > 0) {
+                setIsDepthOpen(true);
+                const mapped = results.map((item) => ({
+                  symbol: item.symbol,
+                  response: {
+                    type: item.trade_type, entry_time: item.entry_time, entry_price: item.entry_price,
+                    signal: item.signal, trend: item.trend, status: item.status, rsi: item.rsi,
+                    candle_open: item.candle_open, candle_high: item.candle_high, candle_low: item.candle_low,
+                    candle_close: item.candle_close, candle_volume: item.candle_volume,
+                  },
+                  tick: { datetime: item.entry_time },
+                  uuid: item.uuid, created_at: item.created_at,
+                }));
+                setPredictResultData(mapped);
+                const signals = results.map((item) => {
+                  let timeStr = item.entry_time || item.created_at || new Date().toISOString();
+                  return { symbol: item.symbol, signalType: item.trade_type, timestamp: timeStr.replace(" ", "T"), segment: "SCRIPT" };
+                });
+                setDashboardSignals((prev) => [...prev, ...signals]);
+                setIsDeployed(true);
+                setDeployedStrategyCode("API_PREDICTION");
+              }
+            });
+            return currentResults;
+          });
+        }, 1500);
+      }
+    },
+    handleAiTradeSignal: (tradeData) => {
+      setIsDepthOpen(true);
+      const mappedSignal = {
+        symbol: tradeData.symbol,
+        response: { type: tradeData.trade_type, entry_time: tradeData.entry_time, entry_price: tradeData.entry_price, signal: tradeData.signal },
+        tick: { datetime: tradeData.entry_time },
+      };
+      setPredictResultData((prev) => [mappedSignal, ...prev]);
+      let timeStr = tradeData.entry_time || tradeData.timestamp || new Date().toISOString();
+      setDashboardSignals((prev) => [ ...prev, { symbol: tradeData.symbol, signalType: tradeData.trade_type, timestamp: timeStr.replace(" ", "T"), segment: "SCRIPT" } ]);
+      setIsDeployed(true);
+      setDeployedStrategyCode("API_PREDICTION");
+    },
     handleConnect: () => {
       console.log("✅ SOCKET CONNECTED", true);
       requestHistoricalData(true);
@@ -5507,6 +5672,8 @@ json.dumps(result)
         liveAutoScaleResetTimerRef.current = null;
       }, 1200);
 
+      if (!chartRef.current || chartDisposedRef.current) return;
+
       switch (chartType) {
         case "line":
           if (!seriesRef.current) {
@@ -5689,7 +5856,7 @@ json.dumps(result)
           try {
             seriesRef.current.attachPrimitive(customScriptMarkersRef.current);
           } catch(e) {
-            if (!e.message?.includes("Object is disposed")) throw e;
+            if (!e?.message?.includes("Object is disposed")) throw e;
           }
         } else {
           try {
@@ -5697,7 +5864,7 @@ json.dumps(result)
               areStrategyVisualsVisible ? lastDeployedMarkersRef.current : [],
             );
           } catch(e) {
-            if (!e.message?.includes("Object is disposed")) throw e;
+            if (!e?.message?.includes("Object is disposed")) throw e;
           }
         }
       }
@@ -5727,7 +5894,7 @@ json.dumps(result)
             chartRef.current?.timeScale().fitContent();
           }
         } catch(e) {
-          if (!e.message?.includes("Object is disposed")) console.error("timeScale error:", e);
+          if (!e?.message?.includes("Object is disposed")) console.error("timeScale error:", e);
         }
 
         if (
@@ -5799,6 +5966,8 @@ json.dumps(result)
       toast.error(err.message || "Failed to fetch historical data");
       console.error("❌ Historical data error:", err);
       setMainChartLoading(false);
+      symbolTransitioningRef.current = false;
+      setSymbolTransitioning(false);
     },
     handleLiveTick: (tickOrArray) => {
       console.log("Live tick received:", tickOrArray);
@@ -5974,7 +6143,6 @@ json.dumps(result)
       });
     },
     // Note: We've combined liveTick logic into a single handleLiveTick,
-    // so we don't need a separate array-specific handler if the new centralized one supports both (and it does not need to care, as it just passes through).
     handleLiveIndicator: (payload) => {
       if (!payload?.success || !payload?.type) return;
 
@@ -6013,6 +6181,7 @@ json.dumps(result)
           "upperRSI",
           "middleRSI",
           "lowerRSI",
+          "zero",
         ];
 
         Object.entries(seriesGroup).forEach(([lineName, series]) => {
@@ -6030,6 +6199,8 @@ json.dumps(result)
 
           if (dynamicValue !== undefined && dynamicValue !== null) {
             value = dynamicValue;
+          } else if (lineName === "oscillatorFill" && instType === "SUPERSMOOTHER") {
+            value = lastPoint.oscillator;
           } else if (staticKeys.includes(lineName)) {
             // Fallback to static style lines (e.g., RSI 70/30) if no dynamic data is provided
             const style =
@@ -6102,6 +6273,11 @@ json.dumps(result)
                   : "rgba(255,0,0,1)";
               }
               updateObj.color = hColor;
+            } else if (lineName === "oscillator" && instType === "SUPERSMOOTHER") {
+              const isRising = Number(value) >= 0;
+              updateObj.color = lastPoint.color || (isRising ? "rgba(0, 255, 0, 1)" : "rgba(255, 20, 147, 1)");
+            } else if (lastPoint.color) {
+              updateObj.color = lastPoint.color;
             }
             series.update(updateObj);
 
@@ -6121,8 +6297,8 @@ json.dumps(result)
             }
           } catch (e) {
             if (
-              !e.message.includes("oldest data") &&
-              !e.message.includes("Object is disposed")
+              !e?.message?.includes("oldest data") &&
+              !e?.message?.includes("Object is disposed")
             ) {
               console.warn(
                 `Indicator update failed [${indicatorType}][${instId}]:`,

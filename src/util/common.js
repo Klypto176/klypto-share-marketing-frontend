@@ -1959,6 +1959,14 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instance
           label: "Oscillator",
           type: "line",
           showValue: true,
+          children: [
+            {
+              key: "oscillatorFill",
+              parent: "oscillator",
+              label: "Fill",
+              type: "fill",
+            },
+          ],
         },
         {
           key: "signalLine",
