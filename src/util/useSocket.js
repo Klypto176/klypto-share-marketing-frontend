@@ -110,10 +110,12 @@ const useSocket = (props = {}) => {
 
       [EVENTS.STRATEGY.AI_PREDICTION_STATUS]: (response) => {
         console.log(`[SOCKET] signal ${EVENTS.STRATEGY.AI_PREDICTION_STATUS} Payload:`, response);
+        if (propsRef.current.handleAiPredictionStatus) propsRef.current.handleAiPredictionStatus(response);
       },
 
       [EVENTS.STRATEGY.AI_TRADE_SIGNAL]: (response) => {
         console.log(`[SOCKET] ${EVENTS.STRATEGY.AI_TRADE_SIGNAL} Payload:`, response);
+        if (propsRef.current.handleAiTradeSignal) propsRef.current.handleAiTradeSignal(response);
       },
 
 
