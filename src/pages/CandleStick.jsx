@@ -399,6 +399,20 @@ export default function Candlestick() {
   const [agentMessages, setAgentMessages] = useState([]);
   const [agentDraft, setAgentDraft] = useState("");
   const [isAgentLoading, setIsAgentLoading] = useState(false);
+  
+  const deduplicateTrades = (trades) => {
+    if (!trades || !Array.isArray(trades)) return [];
+    const seen = new Set();
+    return trades.filter((trade) => {
+      const sym = trade?.symbol;
+      const tStr = trade?.tick?.datetime || trade?.response?.entry_time || trade?.timestamp;
+      const key = `${sym}_${tStr}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
   const [predictResultData, setPredictResultData] = useState([]);
   const [detailsList, setDetailsList] = useState([]);
   const [activeTab, setActiveTab] = useState("Chart");
@@ -564,7 +578,7 @@ export default function Candlestick() {
               created_at: item.created_at,
             }));
 
-            setPredictResultData(mapped);
+            setPredictResultData(deduplicateTrades(mapped));
 
             // Also plot on chart
             const signals = results.map((item) => {
@@ -2322,7 +2336,7 @@ export default function Candlestick() {
                     created_at: item.created_at,
                   }));
 
-                  setPredictResultData(mapped);
+                  setPredictResultData(deduplicateTrades(mapped));
 
                   // Also plot on chart
                   const signals = results.map((item) => {
@@ -2379,7 +2393,7 @@ export default function Candlestick() {
         },
       };
 
-      setPredictResultData((prev) => [mappedSignal, ...prev]);
+      setPredictResultData((prev) => deduplicateTrades([mappedSignal, ...prev]));
 
       // Add to dashboardSignals so it plots on the chart
       let timeStr =
@@ -5431,7 +5445,7 @@ json.dumps(result)
                   tick: { datetime: item.entry_time },
                   uuid: item.uuid, created_at: item.created_at,
                 }));
-                setPredictResultData(mapped);
+                setPredictResultData(deduplicateTrades(mapped));
                 const signals = results.map((item) => {
                   let timeStr = item.entry_time || item.created_at || new Date().toISOString();
                   return { symbol: item.symbol, signalType: item.trade_type, timestamp: timeStr.replace(" ", "T"), segment: "SCRIPT" };
@@ -5453,7 +5467,7 @@ json.dumps(result)
         response: { type: tradeData.trade_type, entry_time: tradeData.entry_time, entry_price: tradeData.entry_price, signal: tradeData.signal },
         tick: { datetime: tradeData.entry_time },
       };
-      setPredictResultData((prev) => [mappedSignal, ...prev]);
+      setPredictResultData((prev) => deduplicateTrades([mappedSignal, ...prev]));
       let timeStr = tradeData.entry_time || tradeData.timestamp || new Date().toISOString();
       setDashboardSignals((prev) => [ ...prev, { symbol: tradeData.symbol, signalType: tradeData.trade_type, timestamp: timeStr.replace(" ", "T"), segment: "SCRIPT" } ]);
       setIsDeployed(true);
