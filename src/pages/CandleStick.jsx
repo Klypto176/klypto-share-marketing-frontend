@@ -6739,7 +6739,11 @@ json.dumps(result)
                 <ChartTabs
                   activeTab={activeTab}
                   setActiveTab={setActiveTab}
-                  onCodeClick={() => setIsCodeEditorOpen((prev) => !prev)}
+                  onCodeClick={() => {
+                    setIsAgentPanelOpen(false);
+                    setIsCodeEditorOpen((prev) => !prev);
+                  }}
+                  onAgentClick={handleToggleAgentPanel}
                   onStrategyClick={handleStrategyClick}
                   onGoToDate={handleGoToDate}
                   isFullscreen={isFullscreen}
