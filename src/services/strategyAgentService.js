@@ -24,10 +24,10 @@ export async function generateStrategyAgent(payload) {
   };
 
   const response = await axios.post(
-    `https://api2.klypto.in/api/strategy/agent/generate`,
+    `${baseUrl}/api/strategy/agent/generate`,
     sanitizedPayload,
     {
-      timeout: 90000,
+      timeout: 180000,
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),

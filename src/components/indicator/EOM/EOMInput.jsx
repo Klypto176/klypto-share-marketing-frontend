@@ -26,7 +26,7 @@ export default function EOMInput(
   const eomData = rows
     .filter((d) => (d.eom != null || d.value != null) && d.time != null)
     .map((d) => ({
-      time: Number(d.time),
+      time: Number(d.time) + 19800,
       value: Number(d.eom ?? d.value),
     }));
 
@@ -41,5 +41,5 @@ export default function EOMInput(
     eom: eomData[eomData.length - 1]?.value ?? null,
   };
 
-  console.log("✅ EOM updated", eomData.length);
+  // console.log("✅ EOM updated", eomData.length);
 }

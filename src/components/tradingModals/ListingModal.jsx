@@ -8,6 +8,8 @@ import { useDebounce } from "../../util/common";
 import NSE from "../../assets/NSE.svg";
 import BSE from "../../assets/BSE.svg";
 import axios from "axios";
+import { getNotebookStrategies } from "../../services/notebookStrategyService";
+import { getUser } from "../../pages/auth/protected";
 
 const SymbolAvatar = ({ code, symbol }) => {
   const initial = (symbol || code || "S").charAt(0).toUpperCase();
@@ -47,9 +49,11 @@ export const ListingModal = ({
   renderActions,
   timeframeValue,
   onSubmit,
+  onSelectStrategy,
 }) => {
   const [indicators, setIndicators] = useState([]);
   const [currencies, setCurrencies] = useState([]);
+  const [savedStrategies, setSavedStrategies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchIndicator, setSearchIndicator] = useState("");
@@ -176,6 +180,47 @@ export const ListingModal = ({
     }
   }
 
+  async function fetchSavedStrategies() {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const currentUser = getUser();
+      const userId =
+        currentUser?.id || currentUser?._id || currentUser?.userId || undefined;
+
+      const response = await getNotebookStrategies({
+        userId,
+        limit: 100,
+        offset: 0,
+      });
+
+      const rawStrategies = Array.isArray(response)
+        ? response
+        : Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response?.items)
+            ? response.items
+            : Array.isArray(response?.results)
+              ? response.results
+              : Array.isArray(response?.strategies)
+                ? response.strategies
+                : [];
+
+      setSavedStrategies(rawStrategies);
+    } catch (err) {
+      console.error(err);
+      setError(
+        err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          err?.message ||
+          "Failed to fetch saved strategies",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -183,6 +228,11 @@ export const ListingModal = ({
       if (!indicators || indicators.length === 0) {
         fetchIndicators();
       }
+      return;
+    }
+
+    if (title === "Strategies") {
+      fetchSavedStrategies();
       return;
     }
 
@@ -208,6 +258,34 @@ export const ListingModal = ({
       }
     }
   }, [title, activeTab, isOpen]);
+
+  const filteredStrategies = (savedStrategies || [])
+    .filter((strategy) => {
+      if (!searchCurrency) return true;
+      const search = searchCurrency.toLowerCase().trim();
+      const strategyName = String(
+        strategy?.name || strategy?.strategyName || "",
+      ).toLowerCase();
+      const symbol = String(
+        strategy?.config?.symbol || strategy?.config?.lookupSymbol || "",
+      ).toLowerCase();
+      const timeframe = String(strategy?.config?.timeframe || "").toLowerCase();
+
+      return (
+        strategyName.includes(search) ||
+        symbol.includes(search) ||
+        timeframe.includes(search)
+      );
+    })
+    .sort((a, b) => {
+      const aTime = new Date(
+        a?.updatedAt || a?.updated_at || a?.createdAt || a?.created_at || 0,
+      ).getTime();
+      const bTime = new Date(
+        b?.updatedAt || b?.updated_at || b?.createdAt || b?.created_at || 0,
+      ).getTime();
+      return bTime - aTime;
+    });
 
   // 🔍 Indicator Filter
   const filteredIndicators = (indicators ?? []).filter((item) => {
@@ -531,6 +609,136 @@ export const ListingModal = ({
           </div>
         )}
 
+        {title === "Strategies" && (
+          <div className="py-3 flex flex-col flex-1 overflow-hidden">
+            <InputGroup className="mb-3">
+              <InputGroup.Text
+                style={{
+                  background: "var(--bg-secondary)",
+                  color: "var(--text-secondary)",
+                  borderColor: "rgba(255, 255, 255, 0.2)",
+                }}
+              >
+                <FiSearch />
+              </InputGroup.Text>
+              <Form.Control
+                style={{
+                  background: "var(--bg-secondary)",
+                  color: "var(--text-primary)",
+                  borderColor: "rgba(255, 255, 255, 0.2)",
+                  boxShadow: "none",
+                }}
+                type="text"
+                autoFocus
+                placeholder="Search saved strategies..."
+                value={searchCurrency}
+                onChange={(e) => setSearchCurrency(e.target.value)}
+              />
+            </InputGroup>
+
+            <div
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                marginTop: "10px",
+                paddingRight: "5px",
+              }}
+              className="custom-scrollbar"
+            >
+              {loading ? (
+                <Spinner />
+              ) : error ? (
+                <p className="text-center text-danger py-3">{error}</p>
+              ) : filteredStrategies.length > 0 ? (
+                <ListGroup variant="flush">
+                  {filteredStrategies.map((strategy, index) => {
+                    const strategyName =
+                      strategy?.name ||
+                      strategy?.strategyName ||
+                      `Strategy ${index + 1}`;
+                    const symbol =
+                      strategy?.config?.symbol ||
+                      strategy?.config?.lookupSymbol ||
+                      "--";
+                    const timeframe =
+                      strategy?.config?.timeframe || timeframeValue || "--";
+                    const updatedAt =
+                      strategy?.updatedAt ||
+                      strategy?.updated_at ||
+                      strategy?.createdAt ||
+                      strategy?.created_at;
+
+                    return (
+                      <ListGroup.Item
+                        key={strategy?.id || strategy?._id || `${strategyName}-${index}`}
+                        action
+                        onClick={async () => {
+                          if (typeof onSelectStrategy === "function") {
+                            await onSelectStrategy(strategy);
+                          }
+                          onClose();
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background =
+                            "var(--bg-tertiary)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background =
+                            "var(--bg-secondary)";
+                        }}
+                        style={{
+                          cursor: "pointer",
+                          background: "var(--bg-secondary)",
+                          color: "var(--text-primary)",
+                          borderColor: "var(--border-color)",
+                          transition: "background 0.2s ease",
+                          padding: "12px 14px",
+                        }}
+                      >
+                        <div className="d-flex justify-content-between align-items-start gap-3">
+                          <div className="d-flex align-items-start gap-2">
+                            <SymbolAvatar symbol={strategyName} />
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: 13 }}>
+                                {strategyName}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 11,
+                                  color: "var(--text-secondary)",
+                                  marginTop: 3,
+                                }}
+                              >
+                                {symbol} · {timeframe}
+                              </div>
+                            </div>
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 10,
+                              color: "var(--text-secondary)",
+                              textAlign: "right",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {updatedAt
+                              ? new Date(updatedAt).toLocaleDateString("en-IN")
+                              : "Saved"}
+                          </div>
+                        </div>
+                      </ListGroup.Item>
+                    );
+                  })}
+                </ListGroup>
+              ) : (
+                <p className="text-center text-[var(--text-primary)] py-3">
+                  No saved strategies found
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ================= INDICATORS ================= */}
         {title === "Indicators" && (
           <div className="mt-3 flex flex-col flex-1 overflow-hidden">
@@ -580,23 +788,9 @@ export const ListingModal = ({
                         key={index}
                         action
                         onClick={() => {
-                          const newInst = {
-                            id: `${item.slug}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-                            type: item.slug,
-                          };
-                          setSelectedIndicator((prev) => {
-                            const isExisting = prev.some(
-                              (i) => i.type === item.slug,
-                            );
-                            if (isExisting) {
-                              return [
-                                ...prev.filter((i) => i.type !== item.slug),
-                                newInst,
-                              ];
-                            }
-                            return [...prev, newInst];
-                          });
-                          // Modal stays open so user can add more indicators
+                          if (toggleIndicator) {
+                            toggleIndicator(item.slug);
+                          }
                         }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.background =

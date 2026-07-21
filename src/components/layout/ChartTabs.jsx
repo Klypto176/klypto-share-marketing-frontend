@@ -308,32 +308,7 @@ const ChartTabs = ({
       </div>
 
       <div className="chart-actions-group">
-        {!isFullscreen && (
-          <button
-            className="chart-maximize-btn"
-            title="Maximize Chart"
-            onClick={onToggleFullscreen}
-          >
-            <CgMaximizeAlt size={15} />
-            MAXIMIZE
-          </button>
-        )}
 
-        {isFullscreen && (
-          <button
-            className="chart-exit-fullscreen-btn"
-            title="Exit Fullscreen (Esc)"
-            onClick={onToggleFullscreen}
-          >
-            <MdOutlineFullscreenExit size={15} />
-            EXIT FULLSCREEN
-          </button>
-        )}
-
-        <button className="chart-goto-btn" title="Go to" onClick={() => setShowGoToDate(true)}>
-          <TbCalendarShare size={14} />
-          GO TO
-        </button>
         <button
           title="Open Backtest"
           onClick={() => {
@@ -361,14 +336,7 @@ const ChartTabs = ({
         </button>
       </div>
 
-      {showGoToDate && (
-        <GoToDateDialog
-          onClose={() => setShowGoToDate(false)}
-          onGoTo={(date) => {
-            if (onGoToDate) onGoToDate(date);
-          }}
-        />
-      )}
+
     </div>
   );
 };
