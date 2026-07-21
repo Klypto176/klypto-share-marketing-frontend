@@ -131,15 +131,15 @@ export default function useChartFunctions({
           const type = result?.type;
           if (!id || !type) continue;
           const mappedResult = await fetchDataForIndicators(
-            candlesRef.current,
+            null, // candles
             selectedCurrency,
             type,
             timeframeValue,
             fromDate,
             toDate,
             socketRef,
-            null,
-            null,
+            null, // indicatorConfig
+            null, // requestId
             result,
           );
           processIndicatorResponse(id, type, mappedResult);
