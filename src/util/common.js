@@ -242,6 +242,50 @@ export const getTimeframeLabel = (tf) => {
   return tf;
 };
 
+export const normalizeChartTimeframe = (timeframe) => {
+  const raw = String(timeframe || "").trim();
+  if (!raw) return "1m";
+
+  const value = raw.toLowerCase();
+  const aliasMap = {
+    "60m": "1h",
+    "120m": "2h",
+    "240m": "4h",
+    "1day": "1d",
+    day: "1d",
+    daily: "1d",
+    week: "1w",
+    weekly: "1w",
+  };
+
+  return aliasMap[value] || value;
+};
+
+export const formatTimeframeForBackend = (timeframe) => {
+  const normalized = normalizeChartTimeframe(timeframe);
+  const backendMap = {
+    "1m": "ONE_MINUTE",
+    "3m": "THREE_MINUTE",
+    "5m": "FIVE_MINUTE",
+    "10m": "TEN_MINUTE",
+    "15m": "FIFTEEN_MINUTE",
+    "30m": "THIRTY_MINUTE",
+    "1h": "ONE_HOUR",
+    "2h": "TWO_HOUR",
+    "4h": "FOUR_HOUR",
+    "6h": "SIX_HOUR",
+    "1d": "ONE_DAY",
+    "1w": "ONE_WEEK",
+  };
+
+  return backendMap[normalized] || normalized.toUpperCase();
+};
+
+export const formatTimeframeForDisplay = (timeframe) => {
+  const normalized = normalizeChartTimeframe(timeframe);
+  return getTimeframeLabel(normalized);
+};
+
 // export const symbols = [
 //   { label: "BTCUSDT", value: "BTCUSDT" },
 //   { label: "ETHUSDT", value: "ETHUSDT" },

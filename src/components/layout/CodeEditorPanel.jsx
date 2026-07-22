@@ -1,7 +1,21 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Editor from "@monaco-editor/react";
 import { IoCloseSharp } from "react-icons/io5";
-import { FaBookOpen, FaPlay, FaSave, FaTrash, FaSyncAlt } from "react-icons/fa";
+import {
+  FaBookOpen,
+  FaBug,
+  FaChartLine,
+  FaDatabase,
+  FaFolderOpen,
+  FaPlay,
+  FaSave,
+  FaShieldAlt,
+  FaStepForward,
+  FaStop,
+  FaSyncAlt,
+  FaTerminal,
+  FaTrash,
+} from "react-icons/fa";
 import { Spinner } from "../tradingModals/Spinner";
 import chartlabGuideMarkdown from "../../assets/chartlab-build-guide.md?raw";
 
@@ -1227,11 +1241,402 @@ sell_breakout = df["close"] < rolling_low.shift(1)
 
 # Use buy_breakout and sell_breakout in your own workflow.`,
   },
+  {
+    id: "flag-pattern",
+    label: "Flag Pattern Scanner",
+    code: `from chartlab import indicator, input_int, input_float, input_bool, line_segment, polyline, label, pattern, signal
+
+
+@indicator(name="Flag Pattern Scanner", pane="overlay")
+def run(ctx):
+    pole_bars = input_int("Flag Pole Bars", 8, min=3, max=50)
+    flag_bars = input_int("Flag Bars", 10, min=3, max=50)
+    min_pole_pct = input_float("Min Pole %", 4.0, min=0.5, max=30.0, step=0.5) / 100
+    max_retrace = input_float("Max Retrace %", 55.0, min=10.0, max=90.0, step=5.0) / 100
+    breakout_tolerance = input_float("Breakout Tolerance %", 0.3, min=0.0, max=3.0, step=0.1) / 100
+    use_volume = input_bool("Volume Confirm", False)
+
+    n = len(ctx.close)
+    last_detection_index = {}
+
+    min_window = pole_bars + flag_bars + 5
+    if n <= min_window:
+        return
+
+    avg_volume = ctx.ta.sma(ctx.volume, length=5) if len(ctx.volume) == n else [None] * n
+
+    def volume_ok(index):
+        if not use_volume or len(ctx.volume) != n:
+            return True
+        return avg_volume[index - 1] is not None and ctx.volume[index] > avg_volume[index - 1]
+
+    def linreg(values):
+        size = len(values)
+        if size < 2:
+            return 0, values[0] if values else 0
+        mean_x = (size - 1) / 2
+        mean_y = sum(values) / size
+        numerator = 0
+        denominator = 0
+        for x, y in enumerate(values):
+            numerator += (x - mean_x) * (y - mean_y)
+            denominator += (x - mean_x) * (x - mean_x)
+        slope = numerator / denominator if denominator else 0
+        intercept = mean_y - slope * mean_x
+        return slope, intercept
+
+    def line_value(slope, intercept, x):
+        return slope * x + intercept
+
+    def emit_pattern(name, index, price, color, outcome="PATTERN", points=None, lines=None, **metadata):
+        if not can_emit_pattern(name, index):
+            return False
+        last_detection_index[name] = index
+        pattern(
+            name,
+            ctx.time[points[0]["index"]] if points else ctx.time[index],
+            ctx.time[index],
+            outcome=outcome,
+            price=price,
+            color=color,
+            points=[
+                {
+                    "time": ctx.time[item["index"]],
+                    "price": item["price"],
+                    "kind": item.get("kind", "anchor"),
+                }
+                for item in (points or [{"index": index, "price": price, "kind": "signal"}])
+            ],
+            lines=lines or [],
+            **metadata,
+        )
+        return True
+
+    def can_emit_pattern(name, index):
+        last_index = last_detection_index.get(name)
+        return last_index is None or index - last_index >= max(5, flag_bars)
+
+    def draw_flag_result(
+        name,
+        index,
+        color,
+        direction,
+        pole_start_index,
+        pole_end_index,
+        flag_start_index,
+        upper_points,
+        lower_points,
+    ):
+        breakout_price = ctx.close[index]
+        pole_height = abs(ctx.close[pole_end_index] - ctx.close[pole_start_index])
+        stop_price = min(ctx.low[flag_start_index:index + 1]) if direction == "bull" else max(ctx.high[flag_start_index:index + 1])
+        target_price = breakout_price + pole_height if direction == "bull" else breakout_price - pole_height
+        risk = abs(breakout_price - stop_price)
+        reward = abs(target_price - breakout_price)
+        rr = round(reward / risk, 2) if risk else None
+        line_end_index = min(index + 8, n - 1)
+        line_end_time = ctx.time[line_end_index]
+        signal_side = "BUY" if direction == "bull" else "SELL"
+
+        signal(
+            ctx.time[index],
+            side=signal_side,
+            label=name,
+            price=breakout_price,
+            stop=stop_price,
+            target=target_price,
+            riskReward=rr,
+        )
+
+        line_segment(
+            ctx.time[pole_start_index],
+            ctx.close[pole_start_index],
+            ctx.time[pole_end_index],
+            ctx.close[pole_end_index],
+            title=f"{name} Pole",
+            color=color,
+            width=3,
+            lineStyle="solid",
+            export=True,
+            showInLegend=True,
+        )
+        outline_id = polyline(
+            [
+                {"time": ctx.time[pole_start_index], "value": ctx.close[pole_start_index]},
+                {"time": ctx.time[pole_end_index], "value": ctx.close[pole_end_index]},
+                {"time": ctx.time[flag_start_index], "value": upper_points[0]},
+                {"time": ctx.time[index], "value": upper_points[-1]},
+                {"time": ctx.time[index], "value": lower_points[-1]},
+                {"time": ctx.time[flag_start_index], "value": lower_points[0]},
+                {"time": ctx.time[pole_end_index], "value": ctx.close[pole_end_index]},
+            ],
+            title=f"{name} Connected Pattern",
+            color=color,
+            width=3,
+            lineStyle="solid",
+            export=True,
+            showInLegend=True,
+        )
+        upper_id = line_segment(
+            ctx.time[flag_start_index],
+            upper_points[0],
+            ctx.time[index],
+            upper_points[-1],
+            title=f"{name} Upper Channel",
+            color=color,
+            width=2,
+            lineStyle="dashed",
+            export=True,
+            showInLegend=True,
+        )
+        lower_id = line_segment(
+            ctx.time[flag_start_index],
+            lower_points[0],
+            ctx.time[index],
+            lower_points[-1],
+            title=f"{name} Lower Channel",
+            color=color,
+            width=2,
+            lineStyle="dashed",
+            export=True,
+            showInLegend=True,
+        )
+        line_segment(
+            ctx.time[index],
+            breakout_price,
+            line_end_time,
+            breakout_price,
+            title=f"{name} Entry",
+            color="#facc15",
+            width=2,
+            lineStyle="solid",
+            export=True,
+            showInLegend=True,
+        )
+        line_segment(
+            ctx.time[index],
+            stop_price,
+            line_end_time,
+            stop_price,
+            title=f"{name} Stop",
+            color="#ef4444",
+            width=2,
+            lineStyle="dotted",
+            export=True,
+            showInLegend=True,
+        )
+        line_segment(
+            ctx.time[index],
+            target_price,
+            line_end_time,
+            target_price,
+            title=f"{name} Target",
+            color="#22c55e",
+            width=2,
+            lineStyle="dotted",
+            export=True,
+            showInLegend=True,
+        )
+        label(
+            ctx.time[index],
+            breakout_price,
+            f"{name} | Entry {round(breakout_price, 2)} | Stop {round(stop_price, 2)} | Target {round(target_price, 2)} | RR {rr}",
+            color=color,
+        )
+        return {
+            "entry": breakout_price,
+            "stop": stop_price,
+            "target": target_price,
+            "riskReward": rr,
+            "poleHeight": pole_height,
+            "flagStartTime": ctx.time[flag_start_index],
+            "breakoutTime": ctx.time[index],
+            "lines": [
+                {"id": outline_id, "kind": "connected_outline", "startIndex": pole_start_index, "endIndex": index},
+                {"id": upper_id, "kind": "resistance", "startIndex": flag_start_index, "endIndex": index},
+                {"id": lower_id, "kind": "support", "startIndex": flag_start_index, "endIndex": index},
+            ],
+        }
+
+    for i in range(min_window, n):
+        current_close = ctx.close[i]
+        if current_close is None:
+            continue
+
+        # Flag / pennant breakout scan.
+        flag_detected = False
+        for fb in range(max(3, flag_bars - 4), flag_bars + 5):
+            if flag_detected:
+                break
+            for pb in range(max(3, pole_bars - 3), pole_bars + 4):
+                pole_start_index = i - fb - pb
+                pole_end_index = i - fb
+                flag_start_index = pole_end_index + 1
+                if pole_start_index < 0 or flag_start_index >= i:
+                    continue
+
+                pole_start = ctx.close[pole_start_index]
+                pole_end = ctx.close[pole_end_index]
+                if pole_start is None or pole_end is None or pole_start == 0:
+                    continue
+
+                flag_highs = ctx.high[flag_start_index:i]
+                flag_lows = ctx.low[flag_start_index:i]
+                flag_closes = ctx.close[flag_start_index:i]
+                if len(flag_closes) < 3 or any(value is None for value in flag_closes):
+                    continue
+
+                pole_change = (pole_end - pole_start) / pole_start
+                pole_height = abs(pole_end - pole_start)
+                if pole_height == 0:
+                    continue
+
+                flag_high = max(flag_highs)
+                flag_low = min(flag_lows)
+                flag_range = flag_high - flag_low
+                flag_slope, _ = linreg(flag_closes)
+                upper_slope, upper_intercept = linreg(flag_highs)
+                lower_slope, lower_intercept = linreg(flag_lows)
+                upper_points = [
+                    line_value(upper_slope, upper_intercept, x)
+                    for x in range(len(flag_highs) + 1)
+                ]
+                lower_points = [
+                    line_value(lower_slope, lower_intercept, x)
+                    for x in range(len(flag_lows) + 1)
+                ]
+
+                bullish_pole = pole_change >= min_pole_pct
+                bullish_retrace = (pole_end - flag_low) / pole_height
+                bullish_consolidation = (
+                    bullish_retrace <= max_retrace
+                    and flag_range <= pole_height * max_retrace
+                    and flag_slope <= pole_height * 0.08
+                )
+                bullish_breakout = current_close >= flag_high * (1 - breakout_tolerance)
+
+                bearish_pole = pole_change <= -min_pole_pct
+                bearish_retrace = (flag_high - pole_end) / pole_height
+                bearish_consolidation = (
+                    bearish_retrace <= max_retrace
+                    and flag_range <= pole_height * max_retrace
+                    and flag_slope >= -pole_height * 0.08
+                )
+                bearish_breakdown = current_close <= flag_low * (1 + breakout_tolerance)
+
+                if bullish_pole and bullish_consolidation:
+                    if bullish_breakout or not use_volume:
+                        if not can_emit_pattern("Bull Flag", i):
+                            continue
+                        flag_result = draw_flag_result(
+                            "Bull Flag",
+                            i,
+                            "#22c55e",
+                            "bull",
+                            pole_start_index,
+                            pole_end_index,
+                            flag_start_index,
+                            upper_points,
+                            lower_points,
+                        )
+                        did_emit = emit_pattern(
+                            "Bull Flag",
+                            i,
+                            ctx.low[i],
+                            "#22c55e",
+                            outcome="BULLISH" if bullish_breakout else "FORMING",
+                            points=[
+                                {"index": pole_start_index, "price": pole_start, "kind": "pole_start"},
+                                {"index": pole_end_index, "price": pole_end, "kind": "pole_end"},
+                                {"index": i, "price": current_close, "kind": "breakout" if bullish_breakout else "flag_end"},
+                            ],
+                            status="breakout" if bullish_breakout else "forming",
+                            lines=flag_result["lines"],
+                            entry=flag_result["entry"],
+                            stop=flag_result["stop"],
+                            target=flag_result["target"],
+                            riskReward=flag_result["riskReward"],
+                            poleHeight=flag_result["poleHeight"],
+                        )
+                        if did_emit:
+                            flag_detected = True
+                            break
+
+                if bearish_pole and bearish_consolidation:
+                    if bearish_breakdown or not use_volume:
+                        if not can_emit_pattern("Bear Flag", i):
+                            continue
+                        flag_result = draw_flag_result(
+                            "Bear Flag",
+                            i,
+                            "#ef4444",
+                            "bear",
+                            pole_start_index,
+                            pole_end_index,
+                            flag_start_index,
+                            upper_points,
+                            lower_points,
+                        )
+                        did_emit = emit_pattern(
+                            "Bear Flag",
+                            i,
+                            ctx.high[i],
+                            "#ef4444",
+                            outcome="BEARISH" if bearish_breakdown else "FORMING",
+                            points=[
+                                {"index": pole_start_index, "price": pole_start, "kind": "pole_start"},
+                                {"index": pole_end_index, "price": pole_end, "kind": "pole_end"},
+                                {"index": i, "price": current_close, "kind": "breakdown" if bearish_breakdown else "flag_end"},
+                            ],
+                            status="breakdown" if bearish_breakdown else "forming",
+                            lines=flag_result["lines"],
+                            entry=flag_result["entry"],
+                            stop=flag_result["stop"],
+                            target=flag_result["target"],
+                            riskReward=flag_result["riskReward"],
+                            poleHeight=flag_result["poleHeight"],
+                        )
+                        if did_emit:
+                            flag_detected = True
+                            break
+`,
+  },
 ];
 
 const DEFAULT_TEMPLATE_ID = "ema-crossover";
 const CUSTOM_TEMPLATE_ID = "__custom__";
 const TEMPLATE_STORAGE_KEY = "strategyEditorSelectedTemplateId";
+const RUNTIME_PROFILE_STORAGE_KEY = "strategyEditorRuntimeProfileId";
+export const DEFAULT_RUNTIME_PROFILE_ID = "quant-research";
+
+const PLATFORM_LAYERS = [
+  { icon: FaFolderOpen, label: "Editor", value: "Monaco + LSP", accent: "#60a5fa" },
+  { icon: FaShieldAlt, label: "Runtime", value: "Jupyter sandbox", accent: "#22c55e" },
+  { icon: FaDatabase, label: "Data", value: "Polars + DuckDB", accent: "#f59e0b" },
+  { icon: FaChartLine, label: "Plots", value: "Contract renderer", accent: "#14b8a6" },
+];
+
+const RUNTIME_PROFILES = [
+  { id: "standard-python", label: "Standard Python" },
+  { id: "quant-research", label: "Quant Research" },
+  { id: "backtest-distributed", label: "Distributed Backtest" },
+  { id: "machine-learning", label: "Machine Learning" },
+];
+
+const DEBUG_ACTIONS = [
+  { icon: FaPlay, label: "Run" },
+  { icon: FaStepForward, label: "Selection" },
+  { icon: FaBug, label: "Debug" },
+  { icon: FaStepForward, label: "Step" },
+  { icon: FaSyncAlt, label: "Restart" },
+  { icon: FaStop, label: "Stop" },
+];
+
+const VARIABLE_ROWS = [
+  ["candles", "Polars DataFrame", "105,220 x 7", "8.4 MB"],
+  ["close", "Series", "105,220", "842 KB"],
+  ["plot_contract", "dict", "2 panes", "18 KB"],
+];
 
 const findTemplateIdByCode = (code) => {
   const match = STRATEGY_EDITOR_TEMPLATES.find(
@@ -1400,6 +1805,12 @@ const CodeEditorPanel = ({
 
     return matchedTemplateId || DEFAULT_TEMPLATE_ID;
   });
+  const [selectedRuntimeProfile, setSelectedRuntimeProfile] = useState(() => {
+    const storedProfile = localStorage.getItem(RUNTIME_PROFILE_STORAGE_KEY);
+    return RUNTIME_PROFILES.some((profile) => profile.id === storedProfile)
+      ? storedProfile
+      : DEFAULT_RUNTIME_PROFILE_ID;
+  });
 
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
@@ -1467,12 +1878,16 @@ const CodeEditorPanel = ({
   );
 
   const isCustomStrategy = selectedTemplateId === CUSTOM_TEMPLATE_ID;
+  const runtimeOptions = {
+    requireStrategyName: isCustomStrategy,
+    runtimeProfile: selectedRuntimeProfile,
+  };
 
   return (
     <>
       <style>{`
         .code-editor-panel {
-          width: 400px;
+          width: min(760px, 52vw);
           max-width: 100%;
           display: flex;
           flex-direction: column;
@@ -1481,6 +1896,7 @@ const CodeEditorPanel = ({
           background-color: var(--bg-primary);
           color: var(--text-primary);
           z-index: 100;
+          min-width: 420px;
         }
         @media (max-width: 768px) {
           .code-editor-panel {
@@ -1490,6 +1906,213 @@ const CodeEditorPanel = ({
             width: 100% !important;
             height: 100% !important;
             border: none;
+            min-width: 0;
+          }
+        }
+        .quant-editor-shell {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 250px;
+          min-height: 0;
+          flex: 1;
+        }
+        .quant-editor-main {
+          display: flex;
+          flex-direction: column;
+          min-width: 0;
+          min-height: 0;
+        }
+        .quant-editor-sidebar {
+          border-left: 1px solid var(--border-color);
+          background: color-mix(in srgb, var(--bg-secondary) 84%, transparent);
+          overflow: auto;
+          min-height: 0;
+        }
+        .quant-topbar,
+        .quant-templatebar,
+        .quant-commandbar,
+        .quant-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 12px;
+          border-bottom: 1px solid var(--border-color);
+        }
+        .quant-topbar {
+          justify-content: space-between;
+          background: var(--bg-primary);
+        }
+        .quant-brand {
+          min-width: 0;
+        }
+        .quant-brand__title {
+          margin: 0;
+          font-size: 14px;
+          font-weight: 700;
+          color: var(--text-primary);
+        }
+        .quant-brand__subtitle {
+          margin: 3px 0 0;
+          font-size: 11px;
+          color: var(--text-secondary);
+        }
+        .quant-templatebar {
+          flex-wrap: wrap;
+          background: var(--bg-secondary);
+        }
+        .quant-select {
+          flex: 1;
+          min-width: 160px;
+          padding: 8px 10px;
+          border-radius: 6px;
+          border: 1px solid var(--border-color);
+          background: var(--bg-primary);
+          color: var(--text-primary);
+          font-size: 12px;
+        }
+        .quant-label {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--text-secondary);
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+        }
+        .quant-commandbar {
+          flex-wrap: wrap;
+          background: color-mix(in srgb, var(--bg-primary) 76%, var(--bg-secondary));
+        }
+        .quant-icon-btn,
+        .quant-action-btn {
+          border-radius: 6px;
+          border: 1px solid var(--border-color);
+          background: var(--bg-primary);
+          color: var(--text-primary);
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+          min-height: 34px;
+          transition: all 0.15s ease;
+        }
+        .quant-icon-btn {
+          width: 36px;
+          padding: 0;
+        }
+        .quant-action-btn {
+          flex: 1;
+          padding: 10px 12px;
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: 0.03em;
+        }
+        .quant-action-btn:disabled,
+        .quant-icon-btn:disabled {
+          cursor: not-allowed;
+          opacity: 0.55;
+        }
+        .quant-action-btn--save {
+          color: #86efac;
+          border-color: rgba(34, 197, 94, 0.35);
+          background: rgba(34, 197, 94, 0.12);
+        }
+        .quant-action-btn--deploy {
+          color: #dbeafe;
+          border-color: rgba(59, 130, 246, 0.48);
+          background: rgba(59, 130, 246, 0.18);
+        }
+        .quant-action-btn--update {
+          color: #fde68a;
+          border-color: rgba(245, 158, 11, 0.42);
+          background: rgba(245, 158, 11, 0.13);
+        }
+        .quant-action-btn--danger {
+          color: #fecaca;
+          border-color: rgba(239, 68, 68, 0.38);
+          background: rgba(239, 68, 68, 0.1);
+        }
+        .quant-editor-canvas {
+          flex: 1;
+          min-height: 280px;
+          overflow: hidden;
+        }
+        .quant-sidebar-section {
+          padding: 12px;
+          border-bottom: 1px solid var(--border-color);
+        }
+        .quant-sidebar-title {
+          margin: 0 0 10px;
+          color: var(--text-primary);
+          font-size: 12px;
+          font-weight: 700;
+        }
+        .quant-layer-grid {
+          display: grid;
+          gap: 8px;
+        }
+        .quant-layer-card {
+          display: grid;
+          grid-template-columns: 28px minmax(0, 1fr);
+          gap: 8px;
+          align-items: center;
+          padding: 8px;
+          border-radius: 8px;
+          border: 1px solid rgba(148, 163, 184, 0.16);
+          background: rgba(15, 23, 42, 0.22);
+        }
+        .quant-layer-icon {
+          width: 28px;
+          height: 28px;
+          border-radius: 6px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(148, 163, 184, 0.12);
+        }
+        .quant-layer-label {
+          font-size: 11px;
+          color: var(--text-secondary);
+        }
+        .quant-layer-value {
+          font-size: 12px;
+          color: var(--text-primary);
+          font-weight: 700;
+        }
+        .quant-kv {
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 8px;
+          margin-bottom: 7px;
+          font-size: 12px;
+          color: var(--text-secondary);
+        }
+        .quant-kv strong {
+          color: var(--text-primary);
+          font-weight: 700;
+        }
+        .quant-var-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 11px;
+        }
+        .quant-var-table th,
+        .quant-var-table td {
+          padding: 6px 4px;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+          text-align: left;
+          color: var(--text-secondary);
+        }
+        .quant-var-table th {
+          color: var(--text-primary);
+          font-weight: 700;
+        }
+        @media (max-width: 980px) {
+          .quant-editor-shell {
+            grid-template-columns: 1fr;
+          }
+          .quant-editor-sidebar {
+            border-left: none;
+            border-top: 1px solid var(--border-color);
+            max-height: 38%;
           }
         }
         .chartlab-guide-btn {
@@ -1616,212 +2239,177 @@ const CodeEditorPanel = ({
         }
       `}</style>
       <div className="code-editor-panel">
-      <div
-        style={{
-          padding: "10px 16px",
-          borderBottom: "1px solid var(--border-color)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <span
-          style={{
-            fontWeight: 600,
-            fontSize: "0.95rem",
-            color: "var(--text-primary)",
-          }}
-        >
-          Code Editor
-        </span>
-        <IoCloseSharp
-          style={{
-            cursor: "pointer",
-            color: "var(--text-secondary)",
-            fontSize: "1.2rem",
-          }}
-          onClick={onClose}
-        />
-      </div>
-      <div
-        style={{
-          padding: "12px 16px",
-          borderBottom: "1px solid var(--border-color)",
-          display: "flex",
-          gap: "8px",
-          alignItems: "center",
-          flexWrap: "wrap",
-          background: "var(--bg-secondary)",
-        }}
-      >
-        <span
-          style={{
-            fontSize: "12px",
-            fontWeight: 600,
-            color: "var(--text-secondary)",
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
-          }}
-        >
-          Templates
-        </span>
-        <select
-          value={selectedTemplateId}
-          onChange={(e) => applyTemplate(e.target.value)}
-          style={{
-            flex: 1,
-            minWidth: "160px",
-            padding: "8px 10px",
-            borderRadius: "6px",
-            border: "1px solid var(--border-color)",
-            background: "var(--bg-primary)",
-            color: "var(--text-primary)",
-            fontSize: "13px",
-          }}
-        >
-          <option value={CUSTOM_TEMPLATE_ID}>Current Custom Code</option>
-          {STRATEGY_EDITOR_TEMPLATES.map((template) => (
-            <option key={template.id} value={template.id}>
-              {template.label}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          className="chartlab-guide-btn"
-          onClick={() => setIsGuideOpen(true)}
-        >
-          <FaBookOpen size={11} />
-          Guide
-        </button>
-      </div>
-      <div
-        style={{
-          flex: 1,
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <Editor
-          height="100%"
-          defaultLanguage="python"
-          theme={theme === "light" ? "light" : "vs-dark"}
-          value={editorCode}
-          onChange={handleChange}
-          onValidate={handleValidate}
-          onMount={handleEditorDidMount}
-          loading={
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                height: "100%",
-              }}
+        <div className="quant-topbar">
+          <div className="quant-brand">
+            <p className="quant-brand__title">Quant Computing Platform</p>
+            <p className="quant-brand__subtitle">
+              Monaco editor, isolated execution, data engine, plot contract
+            </p>
+          </div>
+          <button type="button" className="quant-icon-btn" onClick={onClose} title="Close">
+            <IoCloseSharp />
+          </button>
+        </div>
+        <div className="quant-templatebar">
+          <span className="quant-label">Template</span>
+          <select
+            value={selectedTemplateId}
+            onChange={(e) => applyTemplate(e.target.value)}
+            className="quant-select"
+          >
+            <option value={CUSTOM_TEMPLATE_ID}>Current Custom Code</option>
+            {STRATEGY_EDITOR_TEMPLATES.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.label}
+              </option>
+            ))}
+          </select>
+          <span className="quant-label">Runtime</span>
+          <select
+            className="quant-select"
+            value={selectedRuntimeProfile}
+            onChange={(event) => {
+              setSelectedRuntimeProfile(event.target.value);
+              localStorage.setItem(RUNTIME_PROFILE_STORAGE_KEY, event.target.value);
+              if (onEdit) onEdit();
+            }}
+          >
+            {RUNTIME_PROFILES.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.label}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="chartlab-guide-btn" onClick={() => setIsGuideOpen(true)}>
+            <FaBookOpen size={11} />
+            Guide
+          </button>
+        </div>
+        <div className="quant-commandbar">
+          {DEBUG_ACTIONS.map(({ icon: Icon, label }) => (
+            <button
+              key={label}
+              type="button"
+              className="quant-icon-btn"
+              title={label}
+              disabled={label !== "Run" && label !== "Selection"}
             >
-              <Spinner />
+              <Icon size={12} />
+            </button>
+          ))}
+          <button type="button" className="quant-icon-btn" title="Terminal">
+            <FaTerminal size={12} />
+          </button>
+          <span className="quant-label">
+            {hasErrors ? "Diagnostics: errors found" : "Diagnostics: clean"}
+          </span>
+        </div>
+        <div className="quant-editor-shell">
+          <div className="quant-editor-main">
+            <div className="quant-editor-canvas">
+              <Editor
+                height="100%"
+                defaultLanguage="python"
+                theme={theme === "light" ? "light" : "vs-dark"}
+                value={editorCode}
+                onChange={handleChange}
+                onValidate={handleValidate}
+                onMount={handleEditorDidMount}
+                loading={
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      height: "100%",
+                    }}
+                  >
+                    <Spinner />
+                  </div>
+                }
+                options={{
+                  minimap: { enabled: true, scale: 0.75, showSlider: "mouseover" },
+                  fontSize: 14,
+                  lineHeight: 24,
+                  padding: { top: 16 },
+                  scrollBeyondLastLine: false,
+                  smoothScrolling: true,
+                  cursorBlinking: "smooth",
+                  fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                  renderLineHighlight: "all",
+                  folding: true,
+                  bracketPairColorization: { enabled: true },
+                  guides: { bracketPairs: true, indentation: true },
+                  lightbulb: { enabled: true },
+                  quickSuggestions: true,
+                  suggestOnTriggerCharacters: true,
+                  wordBasedSuggestions: "currentDocument",
+                }}
+              />
             </div>
-          }
-          options={{
-            minimap: { enabled: false },
-            fontSize: 14,
-            lineHeight: 24,
-            padding: { top: 16 },
-            scrollBeyondLastLine: false,
-            smoothScrolling: true,
-            cursorBlinking: "smooth",
-            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-            renderLineHighlight: "all",
-          }}
-        />
-      </div>
-      <div
-        style={{
-          padding: "12px 12px 14px",
-          borderTop: "1px solid var(--border-color)",
-          background:
-            "linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%)",
-          display: "flex",
-          gap: "10px",
-        }}
-      >
-        <button
-          onClick={() =>
-            onSave(editorCode, { requireStrategyName: isCustomStrategy })
-          }
-          disabled={isSaving || isDeploying || isUpdating || hasErrors}
-          style={{
-            flex: 1,
-            padding: "11px 16px",
-            background:
-              isSaving || isDeploying || isUpdating || hasErrors
-                ? "var(--bg-secondary)"
-                : "rgba(34,197,94,0.14)",
-            color:
-              isSaving || isDeploying || isUpdating || hasErrors
-                ? "var(--text-secondary)"
-                : "#86efac",
-            border:
-              isSaving || isDeploying || isUpdating || hasErrors
-                ? "1px solid var(--border-color)"
-                : "1px solid rgba(34,197,94,0.35)",
-            borderRadius: "6px",
-            cursor:
-              isSaving || isDeploying || isUpdating || hasErrors ? "not-allowed" : "pointer",
-            fontWeight: 600,
-            fontSize: "13px",
-            letterSpacing: "0.04em",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: "7px",
-            transition: "all 0.15s ease",
-            opacity: isSaving || isDeploying || isUpdating || hasErrors ? 0.7 : 1,
-          }}
-          title={hasErrors ? "Please fix syntax errors before saving" : ""}
-        >
-          {isSaving ? (
-            <>Saving...</>
-          ) : (
-            <>
-              <FaSave size={11} />
-              Save
-            </>
-          )}
-        </button>
+          </div>
+          <aside className="quant-editor-sidebar">
+            <section className="quant-sidebar-section">
+              <p className="quant-sidebar-title">Platform Layers</p>
+              <div className="quant-layer-grid">
+                {PLATFORM_LAYERS.map(({ icon: Icon, label, value, accent }) => (
+                  <div key={label} className="quant-layer-card">
+                    <span className="quant-layer-icon" style={{ color: accent }}>
+                      <Icon size={13} />
+                    </span>
+                    <span>
+                      <span className="quant-layer-label">{label}</span>
+                      <span className="quant-layer-value">{value}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+            <section className="quant-sidebar-section">
+              <p className="quant-sidebar-title">Sandbox Policy</p>
+              <div className="quant-kv"><span>CPU</span><strong>2 cores</strong></div>
+              <div className="quant-kv"><span>Memory</span><strong>2048 MB</strong></div>
+              <div className="quant-kv"><span>Timeout</span><strong>60 sec</strong></div>
+              <div className="quant-kv"><span>Network</span><strong>Off</strong></div>
+            </section>
+            <section className="quant-sidebar-section">
+              <p className="quant-sidebar-title">Variable Explorer</p>
+              <table className="quant-var-table">
+                <thead>
+                  <tr><th>Name</th><th>Type</th><th>Shape</th></tr>
+                </thead>
+                <tbody>
+                  {VARIABLE_ROWS.map(([name, type, shape, memory]) => (
+                    <tr key={name} title={memory}>
+                      <td>{name}</td><td>{type}</td><td>{shape}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+            <section className="quant-sidebar-section">
+              <p className="quant-sidebar-title">Plot Contract</p>
+              <div className="quant-kv"><span>Trading chart</span><strong>Lightweight</strong></div>
+              <div className="quant-kv"><span>Scientific</span><strong>Plotly</strong></div>
+              <div className="quant-kv"><span>Huge data</span><strong>LOD buckets</strong></div>
+            </section>
+          </aside>
+        </div>
+        <div className="quant-actions">
+          <button
+            onClick={() => onSave(editorCode, runtimeOptions)}
+            disabled={isSaving || isDeploying || isUpdating || hasErrors}
+            className="quant-action-btn quant-action-btn--save"
+            title={hasErrors ? "Please fix syntax errors before saving" : ""}
+          >
+            <FaSave size={11} />
+            {isSaving ? "Saving..." : "Save"}
+          </button>
         {canShowUpdate && (
           <button
-            onClick={() => onUpdate(editorCode)}
+            onClick={() => onUpdate(editorCode, runtimeOptions)}
             disabled={!canUpdate || isSaving || isDeploying || isUpdating || hasErrors}
-            style={{
-              flex: 1,
-              padding: "11px 16px",
-              background:
-                !canUpdate || isSaving || isDeploying || isUpdating || hasErrors
-                  ? "var(--bg-secondary)"
-                  : "rgba(245,158,11,0.14)",
-              color:
-                !canUpdate || isSaving || isDeploying || isUpdating || hasErrors
-                  ? "var(--text-secondary)"
-                  : "#fbbf24",
-              border:
-                !canUpdate || isSaving || isDeploying || isUpdating || hasErrors
-                  ? "1px solid var(--border-color)"
-                  : "1px solid rgba(245,158,11,0.35)",
-              borderRadius: "6px",
-              cursor:
-                !canUpdate || isSaving || isDeploying || isUpdating || hasErrors ? "not-allowed" : "pointer",
-              fontWeight: 600,
-              fontSize: "13px",
-              letterSpacing: "0.04em",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              gap: "7px",
-              transition: "all 0.15s ease",
-              opacity: !canUpdate || isSaving || isDeploying || isUpdating || hasErrors ? 0.7 : 1,
-            }}
+            className="quant-action-btn quant-action-btn--update"
             title={
               hasErrors
                 ? "Please fix syntax errors before updating"
@@ -1830,47 +2418,14 @@ const CodeEditorPanel = ({
                   : "Update saved strategy"
             }
           >
-            {isUpdating ? (
-              <>Updating...</>
-            ) : (
-              <>
-                <FaSyncAlt size={11} />
-                Update
-              </>
-            )}
+            <FaSyncAlt size={11} />
+            {isUpdating ? "Updating..." : "Update"}
           </button>
         )}
         {isDeployed ? (
           <button
             onClick={onClear}
-            style={{
-              flex: 1,
-              padding: "11px 16px",
-              background: "transparent",
-              color: "#ef4444",
-              border: "1px solid rgba(239,68,68,0.35)",
-              borderRadius: "6px",
-              cursor: "pointer",
-              fontWeight: 600,
-              fontSize: "13px",
-              letterSpacing: "0.04em",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              gap: "7px",
-              transition: "all 0.15s ease",
-              boxShadow: "0 0 0 0 rgba(239,68,68,0)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "rgba(239,68,68,0.12)";
-              e.currentTarget.style.borderColor = "rgba(239,68,68,0.7)";
-              e.currentTarget.style.boxShadow = "0 0 14px rgba(239,68,68,0.15)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.borderColor = "rgba(239,68,68,0.35)";
-              e.currentTarget.style.boxShadow = "0 0 0 0 rgba(239,68,68,0)";
-            }}
+            className="quant-action-btn quant-action-btn--danger"
           >
             <FaTrash size={11} />
             Clear
@@ -1878,64 +2433,14 @@ const CodeEditorPanel = ({
         ) : (
           <button
             onClick={() =>
-              onDeploy(editorCode, { requireStrategyName: isCustomStrategy })
+              onDeploy(editorCode, runtimeOptions)
             }
             disabled={isDeploying || hasErrors}
-            style={{
-              flex: 1,
-              padding: "11px 16px",
-              background:
-                isDeploying || hasErrors
-                  ? "var(--bg-secondary)"
-                  : "linear-gradient(135deg, var(--accent-color) 0%, #1a4fd6 100%)",
-              color:
-                isDeploying || hasErrors ? "var(--text-secondary)" : "#fff",
-              border:
-                isDeploying || hasErrors
-                  ? "1px solid var(--border-color)"
-                  : "1px solid rgba(41,98,255,0.6)",
-              borderRadius: "6px",
-              cursor: isDeploying || hasErrors ? "not-allowed" : "pointer",
-              fontWeight: 600,
-              fontSize: "13px",
-              letterSpacing: "0.04em",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              gap: "7px",
-              transition: "all 0.15s ease",
-              boxShadow:
-                isDeploying || hasErrors
-                  ? "none"
-                  : "0 2px 12px rgba(41,98,255,0.25), inset 0 1px 0 rgba(255,255,255,0.1)",
-              opacity: isDeploying || hasErrors ? 0.7 : 1,
-            }}
+            className="quant-action-btn quant-action-btn--deploy"
             title={hasErrors ? "Please fix syntax errors before deploying" : ""}
-            onMouseEnter={(e) => {
-              if (isDeploying || hasErrors) return;
-              e.currentTarget.style.background =
-                "linear-gradient(135deg, #3d74ff 0%, var(--accent-color) 100%)";
-              e.currentTarget.style.boxShadow =
-                "0 4px 20px rgba(41,98,255,0.4), inset 0 1px 0 rgba(255,255,255,0.15)";
-              e.currentTarget.style.transform = "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              if (isDeploying || hasErrors) return;
-              e.currentTarget.style.background =
-                "linear-gradient(135deg, var(--accent-color) 0%, #1a4fd6 100%)";
-              e.currentTarget.style.boxShadow =
-                "0 2px 12px rgba(41,98,255,0.25), inset 0 1px 0 rgba(255,255,255,0.1)";
-              e.currentTarget.style.transform = "translateY(0)";
-            }}
           >
-            {isDeploying ? (
-              <>Deploying...</>
-            ) : (
-              <>
-                <FaPlay size={11} />
-                Deploy
-              </>
-            )}
+            <FaPlay size={11} />
+            {isDeploying ? "Deploying..." : "Deploy"}
           </button>
         )}
       </div>

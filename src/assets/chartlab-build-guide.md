@@ -8,7 +8,8 @@ This guide focuses on the ChartLab execution model used by the editor:
 - Use `@indicator(...)` to register one runnable script.
 - Read market data from `ctx`.
 - Use `ctx.ta` helpers for aligned calculations.
-- Emit visuals with `plot`, `fill`, `hline`, `barcolor`, and related helpers.
+- Emit visuals with `plot`, `fill`, `hline`, `barcolor`, drawing helpers, and related helpers.
+- Emit backtest events with `signal(...)` when your script finds entries or exits.
 
 ## Minimal Script
 
@@ -248,6 +249,68 @@ def run(ctx):
     plot_scatter(buy_points, title="Buy Dots", color="#22c55e")
 ```
 
+## Backtestable Signals
+
+Use `signal(...)` for events that should become strategy markers and backtest rows. Scatter dots are visual only; signals are the trade/event contract.
+
+```python
+from chartlab import indicator, plot, signal
+
+@indicator(name="EMA Cross Signals", pane="overlay")
+def run(ctx):
+    fast = ctx.ta.ema(ctx.close, length=9)
+    slow = ctx.ta.ema(ctx.close, length=21)
+    buy = ctx.ta.crossover(fast, slow)
+    sell = ctx.ta.crossunder(fast, slow)
+
+    plot(fast, title="EMA 9", color="#22c55e", width=2)
+    plot(slow, title="EMA 21", color="#f59e0b", width=2)
+
+    for i in range(len(ctx.close)):
+        if buy[i]:
+            signal(ctx.time[i], side="BUY", label="EMA Cross Buy", price=ctx.close[i])
+        if sell[i]:
+            signal(ctx.time[i], side="SELL", label="EMA Cross Sell", price=ctx.close[i])
+```
+
+For pattern scripts, emit the signal only on the candle where the pattern is confirmed. Avoid marking earlier anchor candles as entries, because that creates lookahead bias in backtests.
+
+```python
+from chartlab import indicator, input_int, line_segment, pattern, signal
+
+@indicator(name="Confirmed Pattern", pane="overlay")
+def run(ctx):
+    lookback = input_int("Lookback", 20, min=5, max=200)
+    n = len(ctx.close)
+    if n <= lookback:
+        return
+
+    for i in range(lookback, n):
+        recent_high = max(ctx.high[i - lookback:i])
+        breakout = ctx.close[i] > recent_high
+        if not breakout:
+            continue
+
+        signal(ctx.time[i], side="BUY", label="Breakout", price=ctx.close[i])
+        pattern(
+            "Breakout",
+            ctx.time[i - lookback],
+            ctx.time[i],
+            outcome="BUY",
+            price=ctx.close[i],
+            color="#22c55e",
+        )
+        line_segment(
+            ctx.time[i - lookback],
+            recent_high,
+            ctx.time[i],
+            recent_high,
+            title="Breakout Level",
+            color="#22c55e",
+            lineStyle="dashed",
+        )
+```
+
 ## Horizontal Levels
 
 Use `hline(...)` for fixed reference levels.
@@ -428,6 +491,7 @@ def run(ctx):
 ## Good Habits
 
 - Keep scripts candle-length aligned.
+- For backtests, emit `signal(...)` events at confirmed entry/exit candles.
 - Use `ctx.ta` before writing manual rolling logic.
 - Use clear plot titles because they appear in the legend.
 - Use separate panes for oscillators and volume-style studies.
@@ -437,6 +501,8 @@ def run(ctx):
 
 - Using pandas dataframe code directly in the ChartLab editor.
 - Returning arrays with the wrong length.
+- Drawing a pattern without emitting `signal(...)`, which makes it visible but not backtestable.
+- Emitting a signal on the first anchor of a pattern instead of the later confirmation candle.
 - Comparing against moving-average values before checking for `None`.
 - Calling a TA helper with unsupported argument names.
 - Plotting volume or oscillator values on `overlay` when a separate pane is better.

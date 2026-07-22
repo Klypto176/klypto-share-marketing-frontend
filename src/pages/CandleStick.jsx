@@ -29,7 +29,9 @@ import {
   SINGLE_VALUE_CHARTS,
   chartSeriesStyles,
   convertToHeikinAshi,
+  formatTimeframeForDisplay,
   getIndicatorChartProperties,
+  normalizeChartTimeframe,
 } from "../util/common";
 import SourceCodePanel from "../components/indicator/SourceCodePanel";
 import IndicatorAlert from "../components/indicator/IndicatorAlert";
@@ -52,6 +54,7 @@ import { getStrategySocket } from "../services/websocket/socket";
 import { toast } from "react-toastify";
 import useAlerts from "../util/useAlerts";
 import CodeEditorPanel, {
+  DEFAULT_RUNTIME_PROFILE_ID,
   DEFAULT_EDITOR_CODE,
 } from "../components/layout/CodeEditorPanel";
 import StrategyAgentPanel from "../components/layout/StrategyAgentPanel";
@@ -87,12 +90,131 @@ const getTodayDateString = () => new Date().toISOString().split("T")[0];
 const SANDBOX_DEPLOYMENT_CODE = "SANDBOX_EXECUTION";
 const CHART_TIME_OFFSET_SECONDS = 19800;
 const SANDBOX_OVERLAY_KEY = "__sandbox_overlay__";
+const MAX_VISIBLE_SANDBOX_MARKERS = 250;
 const createAgentMessage = (role, content, extras = {}) => ({
   id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   role,
   content,
   ...extras,
 });
+
+const limitVisibleMarkers = (markers, maxMarkers = MAX_VISIBLE_SANDBOX_MARKERS) => {
+  if (!Array.isArray(markers) || markers.length <= maxMarkers) {
+    return markers || [];
+  }
+
+  const step = markers.length / maxMarkers;
+  const limited = [];
+  const usedIndexes = new Set();
+
+  for (let i = 0; i < maxMarkers; i += 1) {
+    const index = Math.min(markers.length - 1, Math.floor(i * step));
+    if (!usedIndexes.has(index)) {
+      usedIndexes.add(index);
+      limited.push(markers[index]);
+    }
+  }
+
+  const lastMarker = markers[markers.length - 1];
+  if (limited[limited.length - 1]?.time !== lastMarker?.time) {
+    limited[limited.length - 1] = lastMarker;
+  }
+
+  return limited.sort((a, b) => a.time - b.time);
+};
+
+const getSandboxDependencies = (code) => {
+  const text = String(code || "");
+  const dependencies = [];
+
+  if (/\b(?:from|import)\s+ta_patterns\b/.test(text)) {
+    dependencies.push("ta-patterns");
+  }
+
+  return dependencies;
+};
+
+const TA_PATTERNS_CLASSIC_FALLBACK = `
+def _chartlab_wedge_line(points):
+    size = len(points)
+    if size < 2:
+        return 0.0, points[0][1] if points else 0.0
+    mean_x = sum(point[0] for point in points) / size
+    mean_y = sum(point[1] for point in points) / size
+    numerator = sum((point[0] - mean_x) * (point[1] - mean_y) for point in points)
+    denominator = sum((point[0] - mean_x) * (point[0] - mean_x) for point in points)
+    slope = numerator / denominator if denominator else 0.0
+    intercept = mean_y - (slope * mean_x)
+    return slope, intercept
+
+def _chartlab_pivots(values, pivot_n, is_high):
+    pivots = []
+    count = len(values)
+    for index in range(pivot_n, count - pivot_n):
+        window = values[index - pivot_n:index + pivot_n + 1]
+        value = values[index]
+        if is_high:
+            if value == max(window):
+                pivots.append((index, value))
+        elif value == min(window):
+            pivots.append((index, value))
+    return pivots
+
+def _chartlab_wedge_detect(o, h, l, c, mode="confirmed", window=80, pivot_n=5, pivot_pct=None, direction="falling"):
+    count = len(c)
+    result = [0] * count
+    if count < max(window, pivot_n * 4 + 8):
+        return result
+    highs = _chartlab_pivots(list(h), pivot_n, True)
+    lows = _chartlab_pivots(list(l), pivot_n, False)
+    for index in range(window, count):
+        start = max(0, index - window)
+        recent_highs = [point for point in highs if start <= point[0] <= index - pivot_n]
+        recent_lows = [point for point in lows if start <= point[0] <= index - pivot_n]
+        if len(recent_highs) < 2 or len(recent_lows) < 2:
+            continue
+        upper_points = recent_highs[-3:] if len(recent_highs) >= 3 else recent_highs[-2:]
+        lower_points = recent_lows[-3:] if len(recent_lows) >= 3 else recent_lows[-2:]
+        upper_slope, upper_intercept = _chartlab_wedge_line(upper_points)
+        lower_slope, lower_intercept = _chartlab_wedge_line(lower_points)
+        upper_start = (upper_slope * start) + upper_intercept
+        lower_start = (lower_slope * start) + lower_intercept
+        upper_now = (upper_slope * index) + upper_intercept
+        lower_now = (lower_slope * index) + lower_intercept
+        start_gap = upper_start - lower_start
+        end_gap = upper_now - lower_now
+        if start_gap <= 0 or end_gap <= 0 or end_gap >= start_gap:
+            continue
+        if direction == "falling":
+            if upper_slope >= 0 or lower_slope >= 0 or upper_slope >= lower_slope:
+                continue
+            if mode == "forming" or c[index] > upper_now:
+                result[index] = 1
+        else:
+            if upper_slope <= 0 or lower_slope <= 0 or lower_slope <= upper_slope:
+                continue
+            if mode == "forming" or c[index] < lower_now:
+                result[index] = -1
+    return result
+
+def falling_wedge(o, h, l, c, mode="confirmed", window=80, pivot_n=5, pivot_pct=None):
+    return _chartlab_wedge_detect(o, h, l, c, mode, window, pivot_n, pivot_pct, "falling")
+
+def rising_wedge(o, h, l, c, mode="confirmed", window=80, pivot_n=5, pivot_pct=None):
+    return _chartlab_wedge_detect(o, h, l, c, mode, window, pivot_n, pivot_pct, "rising")
+`.trim();
+
+const prepareSandboxCompatibleCode = (code) => {
+  const text = String(code || "");
+  const importPattern =
+    /^from\s+ta_patterns\.chart_patterns\.classic\s+import\s+falling_wedge\s*,\s*rising_wedge\s*$/m;
+
+  if (!importPattern.test(text)) {
+    return text;
+  }
+
+  return text.replace(importPattern, TA_PATTERNS_CLASSIC_FALLBACK);
+};
 
 const buildStrategyAgentPrompt = (editorCode, symbol, timeframe) =>
   `
@@ -102,7 +224,12 @@ Requirements:
 - Preserve the strategy intent from the editor code below.
 - Return only executable Python code, with no markdown fences or explanation.
 - Use ChartLab-compatible Python when needed.
-- Emit trade markers with signal(...) when possible.
+- Emit trade markers with signal(...) for every backtestable BUY/SELL/EXIT event.
+- For pattern scanners, emit signal(...) only on the confirmed breakout/entry/exit candle, not on earlier anchor candles.
+- Avoid lookahead bias: loops may inspect completed historical bars, but a signal must only use information available at that candle's confirmation point.
+- Prefer rich ChartLab visuals where helpful: plot, plot_area, plot_step, plot_scatter, fill, hline, barcolor, labels, zones, boxes, and separate panes.
+- Guard every advanced calculation against short history, None warmup values, and division by zero.
+- Keep outputs candle-length aligned so rendering is stable like a notebook cell output.
 - If the existing code is already runnable ChartLab-compatible Python, keep the logic and return the final code.
 - The chart symbol is ${symbol || "the selected symbol"} on timeframe ${timeframe || "the selected timeframe"}.
 
@@ -117,6 +244,110 @@ const isDirectChartLabScript = (code) => {
     /@indicator\s*\(/i.test(text) &&
     /def\s+run\s*\(\s*ctx\s*\)\s*:/i.test(text)
   );
+};
+
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
+const extractSandboxErrorText = (errorLike) => {
+  if (!errorLike) return "";
+  if (typeof errorLike === "string") return errorLike;
+  return (
+    errorLike?.message ||
+    errorLike?.detail ||
+    errorLike?.error ||
+    errorLike?.traceback ||
+    ""
+  );
+};
+
+const getChartLabDiagnosticSuggestions = (code, diagnostic = {}) => {
+  const text = String(code || "");
+  const message = String(diagnostic?.message || diagnostic?.error_message || "");
+  const suggestions = [];
+
+  if (/NameError/i.test(message) && /df/i.test(message)) {
+    suggestions.push("This sandbox uses ChartLab context data. Replace df columns with ctx.close, ctx.high, ctx.low, ctx.open, or ctx.volume.");
+  }
+  if (/NameError/i.test(message) && /plot/i.test(message)) {
+    suggestions.push("Import the helper before using it, for example: from chartlab import indicator, plot, plot_scatter, signal.");
+  }
+  if (/No module named|ModuleNotFoundError/i.test(message)) {
+    suggestions.push("Use ChartLab built-ins and safe Python libraries. Heavy packages must be supported by the backend sandbox before importing them.");
+  }
+  if (/indent|expected an indented block/i.test(message)) {
+    suggestions.push("Check indentation under def run(ctx):, if/for blocks, and multiline conditions.");
+  }
+  if (/invalid syntax|SyntaxError/i.test(message)) {
+    suggestions.push("Look near the highlighted line for a missing colon, unmatched bracket, unterminated string, or pasted markdown fence.");
+  }
+  if (/unsupported operand|can't multiply sequence|can only concatenate/i.test(message)) {
+    suggestions.push("ChartLab series are list-like. For element-wise math, build a list comprehension or use ctx.ta helpers such as ctx.ta.ema, ctx.ta.sma, or ctx.ta.atr.");
+  }
+  if (/list index out of range|IndexError/i.test(message)) {
+    suggestions.push("Guard lookbacks with if len(ctx.close) < required_bars: return, or start loops after enough candles exist.");
+  }
+  if (/NoneType|not supported between instances/i.test(message)) {
+    suggestions.push("Warmup values can be None. Skip None before comparisons or arithmetic.");
+  }
+  if (/\bdf\b/.test(text) && isDirectChartLabScript(text)) {
+    suggestions.push("This script is in ChartLab format, so df is not available unless you create it yourself from ctx data.");
+  }
+  if (/plot_scatter|plot\(/.test(text) && !/from\s+chartlab\s+import[\s\S]*(plot|plot_scatter)/i.test(text)) {
+    suggestions.push("Add the missing plot import from chartlab.");
+  }
+  if (/from\s+chartlab\s+import/i.test(text) && !/@indicator\s*\(/i.test(text)) {
+    suggestions.push("Add @indicator(name=\"Your Indicator\", pane=\"overlay\") above def run(ctx):.");
+  }
+
+  return Array.from(new Set(suggestions)).slice(0, 5);
+};
+
+const buildDiagnosticHtml = ({ title, diagnostic, code, fallback }) => {
+  const line = diagnostic?.line || diagnostic?.lineno;
+  const column = diagnostic?.column || diagnostic?.offset;
+  const message =
+    diagnostic?.message ||
+    diagnostic?.error_message ||
+    fallback ||
+    "The sandbox could not execute this code.";
+  const sourceLine =
+    line && String(code || "").split(/\r?\n/)[Number(line) - 1]
+      ? String(code || "").split(/\r?\n/)[Number(line) - 1]
+      : "";
+  const suggestions = [
+    ...(Array.isArray(diagnostic?.suggestions) ? diagnostic.suggestions : []),
+    ...getChartLabDiagnosticSuggestions(code, diagnostic),
+  ];
+
+  return `
+    <div style="text-align:left;line-height:1.5">
+      <div style="font-weight:700;margin-bottom:8px">${escapeHtml(title)}</div>
+      <div style="margin-bottom:8px;color:#fecaca">${escapeHtml(message)}</div>
+      ${
+        line
+          ? `<div style="margin-bottom:8px;color:#cbd5e1">Line ${escapeHtml(line)}${column ? `, column ${escapeHtml(column)}` : ""}</div>`
+          : ""
+      }
+      ${
+        sourceLine
+          ? `<pre style="white-space:pre-wrap;background:var(--bg-primary);padding:10px;border-radius:6px;color:var(--text-primary);max-height:180px;overflow:auto">${escapeHtml(sourceLine)}</pre>`
+          : ""
+      }
+      ${
+        suggestions.length
+          ? `<div style="margin-top:10px;font-weight:700">Suggestions</div><ul style="padding-left:18px;margin:6px 0 0">${suggestions
+              .map((item) => `<li>${escapeHtml(item)}</li>`)
+              .join("")}</ul>`
+          : ""
+      }
+    </div>
+  `;
 };
 
 const normalizeChartTime = (rawTime) => {
@@ -335,6 +566,7 @@ export default function Candlestick() {
   const historyBackfillInFlightRef = useRef(false);
   const lastAutoBackfillFromRef = useRef(null);
   const lastAutoForwardToRef = useRef(null);
+  const earliestHistoricalBoundaryRef = useRef(new Map());
   const [isDeployed, setIsDeployed] = useState(false);
 
   const applySandboxBarColorsToData = useCallback(
@@ -485,6 +717,34 @@ export default function Candlestick() {
     } catch (e) {}
     return [];
   });
+
+  const resolvePrimaryHistoricalSymbol = useCallback(
+    (symbolOverride = null) => {
+      if (symbolOverride) return symbolOverride;
+      return selectedCurrency?.symbol || selectedCurrency?.name || "";
+    },
+    [selectedCurrency],
+  );
+
+  const resolveAlternateHistoricalSymbol = useCallback(
+    (requestedSymbol) => {
+      const candidates = [selectedCurrency?.symbol, selectedCurrency?.name]
+        .filter(Boolean)
+        .map((value) => String(value).trim())
+        .filter(Boolean);
+
+      const normalizedRequested = String(requestedSymbol || "")
+        .trim()
+        .toUpperCase();
+
+      return (
+        candidates.find(
+          (candidate) => candidate.toUpperCase() !== normalizedRequested,
+        ) || null
+      );
+    },
+    [selectedCurrency],
+  );
   const [rangeValue, setRangeValue] = useState("1000");
   const [chartType, setChartType] = useState("candlestick");
   const [isMarketOpen, setIsMarketOpen] = useState(false);
@@ -656,7 +916,8 @@ export default function Candlestick() {
     };
   }, []);
 
-  const handleClearCode = useCallback(() => {
+  const handleClearCode = useCallback((options = {}) => {
+    const preserveDeploymentState = Boolean(options?.preserveDeploymentState);
     const removedSeries = new Set();
     if (customScriptSeriesRef.current && chartRef.current) {
       if (Array.isArray(customScriptSeriesRef.current)) {
@@ -762,10 +1023,12 @@ export default function Candlestick() {
       scannerIntervalRef.current = null;
     }
 
-    setCustomSignals([]);
-    setDashboardSignals([]);
-    setDeployedStrategyCode(null);
-    setIsDeployed(false);
+    if (!preserveDeploymentState) {
+      setCustomSignals([]);
+      setDashboardSignals([]);
+      setDeployedStrategyCode(null);
+      setIsDeployed(false);
+    }
     sandboxLegendGroupsRef.current = {};
     setSandboxLegendGroups({});
   }, [chartType]);
@@ -846,9 +1109,13 @@ export default function Candlestick() {
             token: selectedCurrency?.token || null,
             exchange:
               selectedCurrency?.exchange || selectedCurrency?.segment || "NSE",
-            timeframe: timeframeValue,
+            timeframe: normalizeChartTimeframe(timeframeValue),
             fromDate,
             toDate,
+            runtimeProfile:
+              options?.runtimeProfile ||
+              activeStrategyRecord?.config?.runtimeProfile ||
+              DEFAULT_RUNTIME_PROFILE_ID,
           },
           isActive: false,
           isDeployed: Boolean(isDeployed),
@@ -885,6 +1152,7 @@ export default function Candlestick() {
       }
     },
     [
+      activeStrategyRecord?.config?.runtimeProfile,
       activeStrategyRecord?.name,
       draftStrategyName,
       fromDate,
@@ -896,7 +1164,7 @@ export default function Candlestick() {
   );
 
   const handleUpdateStrategy = useCallback(
-    async (code) => {
+    async (code, options = {}) => {
       if (!activeStrategyRecord?.id) {
         Swal.fire({
           icon: "warning",
@@ -963,9 +1231,13 @@ export default function Candlestick() {
             token: selectedCurrency?.token || null,
             exchange:
               selectedCurrency?.exchange || selectedCurrency?.segment || "NSE",
-            timeframe: timeframeValue,
+            timeframe: normalizeChartTimeframe(timeframeValue),
             fromDate,
             toDate,
+            runtimeProfile:
+              options?.runtimeProfile ||
+              activeStrategyRecord?.config?.runtimeProfile ||
+              DEFAULT_RUNTIME_PROFILE_ID,
           },
           isActive: Boolean(activeStrategyRecord?.isActive),
           isDeployed: Boolean(isDeployed),
@@ -1014,11 +1286,20 @@ export default function Candlestick() {
   );
 
   const ensureStrategyName = useCallback(
-    async ({ requireStrategyName } = {}) => {
-      let strategyName =
-        activeStrategyRecord?.name?.trim() || draftStrategyName?.trim() || "";
+    async (runtimeContext = {}) => {
+      const contextStrategyName =
+        runtimeContext?.strategyName?.trim() ||
+        runtimeContext?.name?.trim() ||
+        runtimeContext?.savedStrategyName?.trim() ||
+        "";
 
-      if (strategyName) {
+      let strategyName =
+        contextStrategyName ||
+        activeStrategyRecord?.name?.trim() ||
+        draftStrategyName?.trim() ||
+        "";
+
+      if (strategyName || !runtimeContext?.requireStrategyName) {
         return strategyName;
       }
 
@@ -1058,6 +1339,50 @@ export default function Candlestick() {
     const legendGroupsMeta = {};
     const isStrategyVisualVisible = (baseVisible = true) =>
       baseVisible !== false && areStrategyVisualsVisibleRef.current !== false;
+    const candleTimes = new Set(
+      (Array.isArray(candlesRef.current) ? candlesRef.current : [])
+        .map((candle) => normalizeChartTime(candle?.time))
+        .filter((time) => time !== null),
+    );
+
+    const toSandboxChartTimestamp = (rawTime) => {
+      const time = normalizeChartTime(rawTime);
+      if (time === null) return null;
+
+      if (candleTimes.has(time)) return time;
+
+      const shiftedForward = time + CHART_TIME_OFFSET_SECONDS;
+      if (candleTimes.has(shiftedForward)) return shiftedForward;
+
+      const shiftedBackward = time - CHART_TIME_OFFSET_SECONDS;
+      if (candleTimes.has(shiftedBackward)) return shiftedBackward;
+
+      return shiftedForward;
+    };
+
+    const toSandboxSeriesValue = (point) => {
+      const time = toSandboxChartTimestamp(point?.time);
+      const value =
+        typeof point?.value === "number" && Number.isFinite(point.value)
+          ? point.value
+          : null;
+
+      if (time === null) return null;
+      if (value === null) return { time };
+      return { time, value };
+    };
+
+    const sortUniqueByTime = (points) => {
+      if (!Array.isArray(points) || points.length === 0) return [];
+
+      const byTime = new Map();
+      points.forEach((point) => {
+        if (!point || !Number.isFinite(Number(point.time))) return;
+        byTime.set(Number(point.time), { ...point, time: Number(point.time) });
+      });
+
+      return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
+    };
 
     const normalizeSandboxPane = (value) =>
       String(value || chartContract?.pane || "overlay")
@@ -1210,9 +1535,9 @@ export default function Candlestick() {
 
       const plotType = String(plot?.type || "line").toLowerCase();
       if (plotType === "candle") {
-        return plot.data
+        return sortUniqueByTime(plot.data
           .map((point) => {
-            const time = toChartTimestamp(point?.time);
+            const time = toSandboxChartTimestamp(point?.time);
             const open = Number(point?.open);
             const high = Number(point?.high);
             const low = Number(point?.low);
@@ -1239,12 +1564,12 @@ export default function Candlestick() {
               ...(point?.wickColor ? { wickColor: point.wickColor } : {}),
             };
           })
-          .filter(Boolean);
+          .filter(Boolean));
       }
 
-      return plot.data
+      return sortUniqueByTime(plot.data
         .map((point, index) => {
-          const normalized = toSeriesValue(point);
+          const normalized = toSandboxSeriesValue(point);
           if (!normalized) return null;
           if (!("value" in normalized)) return normalized;
           const dynamicColor = getIndexedPlotColor(plot, index);
@@ -1280,7 +1605,7 @@ export default function Candlestick() {
                 : {}),
           };
         })
-        .filter(Boolean);
+        .filter(Boolean));
     };
 
     const plots = Array.isArray(chartContract?.plots) ? chartContract.plots : [];
@@ -1322,7 +1647,16 @@ export default function Candlestick() {
       );
       const seriesData = getSeriesData(plot);
 
-      if (series && seriesData.length > 0) {
+      if (seriesData.length === 0) {
+        try {
+          chartRef.current?.removeSeries(series);
+        } catch (error) {
+          console.warn("Unable to remove empty sandbox series:", error);
+        }
+        return;
+      }
+
+      if (series) {
         series.setData(seriesData);
       }
 
@@ -1407,14 +1741,14 @@ export default function Candlestick() {
       }
 
       const points = Array.isArray(drawing?.points) ? drawing.points : [];
-      const seriesData = points
+      const seriesData = sortUniqueByTime(points
         .map((point) => {
-          const time = toChartTimestamp(point?.time);
+          const time = toSandboxChartTimestamp(point?.time);
           const value = Number(point?.value ?? point?.price);
           if (time === null || !Number.isFinite(value)) return null;
           return { time, value };
         })
-        .filter(Boolean);
+        .filter(Boolean));
 
       if (seriesData.length < 2) return;
 
@@ -1617,7 +1951,7 @@ export default function Candlestick() {
             Math.floor((TIMEFRAME_TO_SECONDS[timeframeValue] || 300) / 2),
           );
           items.forEach((item) => {
-            const time = toChartTimestamp(item?.time);
+            const time = toSandboxChartTimestamp(item?.time);
             const color = getIndexedStyleString(item?.color, 0, null);
             if (time === null || !color) return;
 
@@ -1836,7 +2170,7 @@ export default function Candlestick() {
             ) {
               const upperPoints = zoneItem.upper
                 .map((point) => {
-                  const time = toChartTimestamp(point?.time);
+                  const time = toSandboxChartTimestamp(point?.time);
                   const value = getNumberValue(point?.value);
                   if (time === null || value === null) return null;
                   const x = chartRef.current.timeScale().timeToCoordinate(time);
@@ -1847,7 +2181,7 @@ export default function Candlestick() {
                 .filter(Boolean);
               const lowerPoints = zoneItem.lower
                 .map((point) => {
-                  const time = toChartTimestamp(point?.time);
+                  const time = toSandboxChartTimestamp(point?.time);
                   const value = getNumberValue(point?.value);
                   if (time === null || value === null) return null;
                   const x = chartRef.current.timeScale().timeToCoordinate(time);
@@ -1906,8 +2240,8 @@ export default function Candlestick() {
         paneKey,
         ({ ctx }) => {
           items.forEach((boxItem) => {
-            const start = toChartTimestamp(boxItem?.start ?? boxItem?.from);
-            const end = toChartTimestamp(boxItem?.end ?? boxItem?.to);
+            const start = toSandboxChartTimestamp(boxItem?.start ?? boxItem?.from);
+            const end = toSandboxChartTimestamp(boxItem?.end ?? boxItem?.to);
             const topValue = getNumberValue(boxItem?.top, boxItem?.high);
             const bottomValue = getNumberValue(boxItem?.bottom, boxItem?.low);
             if (
@@ -1951,9 +2285,43 @@ export default function Candlestick() {
       );
     });
 
-    const labels = Array.isArray(chartContract?.labels)
-      ? chartContract.labels
+    const patternLabels = Array.isArray(chartContract?.patterns)
+      ? chartContract.patterns
+          .map((patternItem) => {
+            const points = Array.isArray(patternItem?.points)
+              ? patternItem.points
+              : [];
+            const lastPoint = points[points.length - 1] || {};
+            const time =
+              patternItem?.endTime ||
+              patternItem?.time ||
+              lastPoint?.time;
+            const value = getNumberValue(
+              patternItem?.price,
+              patternItem?.value,
+              lastPoint?.price,
+              lastPoint?.value,
+            );
+            const name = String(patternItem?.name || "Pattern").trim();
+            if (!time || value === null || !name) return null;
+
+            return {
+              time,
+              value,
+              text: name,
+              color: patternItem?.color || "#f8fafc",
+              backgroundColor:
+                patternItem?.backgroundColor || "rgba(15,23,42,0.82)",
+              position: patternItem?.position || "abovebar",
+              pane: patternItem?.pane,
+            };
+          })
+          .filter(Boolean)
       : [];
+    const labels = [
+      ...(Array.isArray(chartContract?.labels) ? chartContract.labels : []),
+      ...patternLabels,
+    ];
     groupByPane(labels).forEach(({ paneKey, items }) => {
       const series = getPrimarySeriesForPane(paneKey);
       if (!series) return;
@@ -1964,7 +2332,7 @@ export default function Candlestick() {
           ctx.font = "12px sans-serif";
           ctx.textBaseline = "middle";
           items.forEach((labelItem) => {
-            const time = toChartTimestamp(labelItem?.time);
+            const time = toSandboxChartTimestamp(labelItem?.time);
             const value = getNumberValue(
               labelItem?.value,
               labelItem?.price,
@@ -2447,6 +2815,11 @@ export default function Candlestick() {
 
     const markersToSet = [];
     const newSignals = [];
+    const isSandboxDeployment = deployedStrategyCode === SANDBOX_DEPLOYMENT_CODE;
+    const signalCount = Array.isArray(dashboardSignals)
+      ? dashboardSignals.length
+      : 0;
+    const shouldUseCompactMarkers = isSandboxDeployment && signalCount > 40;
 
     if (dashboardSignals && dashboardSignals.length > 0) {
       console.log("Processing dashboardSignals for markers:", dashboardSignals);
@@ -2494,13 +2867,17 @@ export default function Candlestick() {
             isSameSymbolName(item.symbol, selectedCurrency?.symbol);
 
           if (isCurrentStock) {
+            const markerText =
+              shouldUseCompactMarkers
+                ? ""
+                : item.label || item.response?.label || type.toUpperCase();
             markersToSet.push({
               time: chartTime,
               position: isBuy ? "belowBar" : "aboveBar",
               color: isBuy ? "#22c55e" : "#ef4444",
               shape: isBuy ? "arrowUp" : "arrowDown",
-              text: type.toUpperCase(),
-              size: 1,
+              text: markerText,
+              size: shouldUseCompactMarkers ? 0.45 : 1,
             });
           } else {
             console
@@ -2530,20 +2907,25 @@ export default function Candlestick() {
       }
     }
 
-    lastDeployedMarkersRef.current = markersToSet;
+    const visibleMarkersToSet =
+      isSandboxDeployment && markersToSet.length > MAX_VISIBLE_SANDBOX_MARKERS
+        ? limitVisibleMarkers(markersToSet)
+        : markersToSet;
+
+    lastDeployedMarkersRef.current = visibleMarkersToSet;
     const shouldShowStrategyVisuals =
       areStrategyVisualsVisibleRef.current !== false;
 
-    if (markersToSet?.length > 0 && seriesRef.current) {
+    if (visibleMarkersToSet?.length > 0 && seriesRef.current) {
       if (!customScriptMarkersRef.current) {
         customScriptMarkersRef.current = createSeriesMarkers(
           seriesRef.current,
-          shouldShowStrategyVisuals ? markersToSet : [],
+          shouldShowStrategyVisuals ? visibleMarkersToSet : [],
         );
         seriesRef.current.attachPrimitive(customScriptMarkersRef.current);
       } else {
         customScriptMarkersRef.current.setMarkers(
-          shouldShowStrategyVisuals ? markersToSet : [],
+          shouldShowStrategyVisuals ? visibleMarkersToSet : [],
         );
       }
     } else if (customScriptMarkersRef.current) {
@@ -2556,6 +2938,8 @@ export default function Candlestick() {
     isDeployed,
     selectedCurrency,
     areStrategyVisualsVisible,
+    deployedStrategyCode,
+    timeframeValue,
   ]);
 
   const handleDeployCode = useCallback(
@@ -2578,13 +2962,28 @@ export default function Candlestick() {
         runtimeContext?.exchange ||
         selectedCurrency?.exchange ||
         selectedCurrency?.segment;
-      const effectiveTimeframe = runtimeContext?.timeframe || timeframeValue;
+      const effectiveTimeframe = normalizeChartTimeframe(
+        runtimeContext?.timeframe || timeframeValue,
+      );
+      const effectiveTimeframeLabel = formatTimeframeForDisplay(
+        effectiveTimeframe,
+      );
       const effectiveFromDate = runtimeContext?.fromDate || fromDate;
       const requestedToDate = runtimeContext?.toDate || toDate;
       const effectiveToDate = requestedToDate || getTodayDateString();
+      const effectiveRuntimeProfile =
+        runtimeContext?.runtimeProfile ||
+        activeStrategyRecord?.config?.runtimeProfile ||
+        DEFAULT_RUNTIME_PROFILE_ID;
+      const shouldPreserveChartState = Boolean(runtimeContext?.preserveChartState);
+      const rangeBeforeDeploy =
+        runtimeContext?.preserveVisibleRange ||
+        (shouldPreserveChartState
+          ? chartRef.current?.timeScale().getVisibleLogicalRange()
+          : null);
 
       // 1. Clear previous
-      handleClearCode();
+      handleClearCode({ preserveDeploymentState: shouldPreserveChartState });
       deploymentSignalsRef.current = [];
 
       if (!code || code.trim() === "") {
@@ -2689,16 +3088,29 @@ import json
 import sys
 import traceback
 
-result = { "success": True, "error_type": None, "error_message": None, "output": "", "markers": [] }
+result = { "success": True, "error_type": None, "error_message": None, "output": "", "markers": [], "line": None, "column": None, "suggestions": [] }
 
 try:
-    ast.parse(__code_to_validate)
+    tree = ast.parse(__code_to_validate)
+    compile(tree, "<chartlab-editor>", "exec")
 except SyntaxError as e:
     result["success"] = False
     result["error_type"] = "SyntaxError"
+    result["line"] = e.lineno
+    result["column"] = e.offset
     exc_type, exc_value, exc_traceback = sys.exc_info()
     tb_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-    result["error_message"] = "".join(tb_lines).strip()
+    result["error_message"] = str(e) or "".join(tb_lines).strip()
+    if "expected ':'" in str(e):
+        result["suggestions"].append("Add a colon at the end of the def, if, elif, else, for, while, or with line.")
+    if "was never closed" in str(e) or "unexpected EOF" in str(e):
+        result["suggestions"].append("Close the matching parenthesis, bracket, brace, or quote before deploying.")
+    if "invalid non-printable character" in str(e):
+        result["suggestions"].append("Remove hidden copied characters and retype the highlighted line.")
+except Exception as e:
+    result["success"] = False
+    result["error_type"] = type(e).__name__
+    result["error_message"] = str(e)
 
 json.dumps(result)
         `);
@@ -2723,10 +3135,16 @@ json.dumps(result)
         if (!result.success) {
           Swal.fire({
             icon: "error",
-            title: `Execution Error (${result.error_type})`,
-            text: result.error_message,
+            title: `Code Diagnostic (${result.error_type})`,
+            html: buildDiagnosticHtml({
+              title: "Python validation failed",
+              diagnostic: result,
+              code: sanitizedCode,
+              fallback: "Invalid Python syntax.",
+            }),
             background: "var(--bg-secondary)",
             color: "var(--text-primary)",
+            width: 720,
           });
           setIsDeploying(false);
           return;
@@ -2763,9 +3181,15 @@ json.dumps(result)
         Swal.fire({
           icon: "error",
           title: "Syntax Error",
-          text: shortError,
+          html: buildDiagnosticHtml({
+            title: "Python validation failed",
+            diagnostic: { message: shortError },
+            code,
+            fallback: "Invalid Python syntax.",
+          }),
           background: "var(--bg-secondary)",
           color: "var(--text-primary)",
+          width: 720,
         });
         setIsDeploying(false);
         return;
@@ -2813,7 +3237,7 @@ json.dumps(result)
             prompt: buildStrategyAgentPrompt(
               code,
               effectiveLookupSymbol || effectiveSymbol,
-              effectiveTimeframe,
+              effectiveTimeframeLabel,
             ),
             session_id: strategyAgentSessionIdRef.current,
             user_id: userId,
@@ -2821,12 +3245,13 @@ json.dumps(result)
             current_editor_code: code,
             project_summary:
               "ChartLab Python strategy editor. Convert editor strategies into runnable sandbox code and preserve signal behavior.",
-            timeframe: effectiveTimeframe,
+            timeframe: effectiveTimeframeLabel,
             market: effectiveLookupSymbol || effectiveSymbol,
             constraints: [
               "Return only executable Python code.",
               "Use ChartLab-compatible Python.",
-              "Emit BUY/SELL markers with signal(...) when possible.",
+              "Emit BUY/SELL/EXIT events with signal(...) so patterns can be backtested.",
+              "For pattern detection, signal only on the confirmation candle to avoid lookahead bias.",
             ],
           });
 
@@ -2862,20 +3287,36 @@ json.dumps(result)
           setEditorCode(runnableCode);
         }
 
+        const sandboxCode = prepareSandboxCompatibleCode(runnableCode);
+
         const sandboxResponse = await executeIndicatorSandbox({
           sessionId: sandboxSessionIdRef.current,
           resetBeforeExecution: Boolean(sandboxSessionIdRef.current),
-          timeoutSeconds: 120,
+          timeoutSeconds: 300,
           mode: "indicator",
-          code: runnableCode,
+          runtimeProfile: effectiveRuntimeProfile,
+          resourcePolicy: {
+            cpu_cores: 4,
+            memory_mb: 4096,
+            disk_mb: 4096,
+            timeout_seconds: 420,
+            max_processes: 32,
+            network_access: false,
+            gpu_access: false,
+          },
+          dependencies: getSandboxDependencies(sandboxCode),
+          code: sandboxCode,
           inputs: {
             symbol: effectiveSymbol,
             lookupSymbol: effectiveLookupSymbol,
             token: effectiveToken,
             timeframe: effectiveTimeframe,
+            timeframeLabel: effectiveTimeframeLabel,
+            chartTimeframe: effectiveTimeframe,
             exchange: effectiveExchange,
             fromDate: effectiveFromDate,
             toDate: effectiveToDate,
+            datasetVersion: `${effectiveSymbol || "symbol"}:${effectiveTimeframe}:${effectiveFromDate || "start"}:${effectiveToDate || "end"}`,
             settings: {
               use_historical_only: !isMarketOpen,
               pane: null,
@@ -2892,16 +3333,26 @@ json.dumps(result)
           const fetchError =
             sandboxResponse?.result?.settings?.backendCandleFetchError ||
             sandboxResponse?.settings?.backendCandleFetchError;
+          const diagnostic = {
+            ...firstError,
+            message:
+              fetchError ||
+              extractSandboxErrorText(firstError) ||
+              generationReply ||
+              "The strategy code could not be executed in the sandbox.",
+          };
           Swal.fire({
             icon: "error",
             title: "Sandbox Execution Error",
-            text:
-              fetchError ||
-              firstError?.message ||
-              generationReply ||
-              "The strategy code could not be executed in the sandbox.",
+            html: buildDiagnosticHtml({
+              title: "Runtime execution failed",
+              diagnostic,
+              code: sandboxCode,
+              fallback: "The strategy code could not be executed in the sandbox.",
+            }),
             background: "var(--bg-secondary)",
             color: "var(--text-primary)",
+            width: 760,
           });
           setIsDeploying(false);
           toast.dismiss("compiling");
@@ -2936,6 +3387,18 @@ json.dumps(result)
           .filter(Boolean);
 
         renderSandboxPlots(sandboxResponse?.result?.chart);
+        if (rangeBeforeDeploy) {
+          try {
+            chartRef.current?.timeScale().setVisibleLogicalRange(rangeBeforeDeploy);
+          } catch (rangeError) {
+            if (!rangeError.message?.includes("Object is disposed")) {
+              console.warn(
+                "Unable to restore chart range after sandbox repaint:",
+                rangeError,
+              );
+            }
+          }
+        }
         setApiBacktestRows(apiRows);
         setDashboardSignals(normalizedSignals);
         setCustomSignals(normalizedSignals);
@@ -2953,19 +3416,28 @@ json.dumps(result)
         Swal.fire({
           icon: "error",
           title: "Python Execution Error",
-          text:
-            err?.response?.data?.detail ||
-            err?.response?.data?.message ||
-            err?.message ||
-            "An error occurred",
+          html: buildDiagnosticHtml({
+            title: "Sandbox request failed",
+            diagnostic: {
+              message:
+                err?.response?.data?.detail ||
+                err?.response?.data?.message ||
+                err?.message ||
+                "An error occurred",
+            },
+            code,
+            fallback: "An error occurred",
+          }),
           background: "var(--bg-secondary)",
           color: "var(--text-primary)",
+          width: 760,
         });
         toast.dismiss("compiling");
         setIsDeploying(false);
       }
     },
     [
+      activeStrategyRecord?.config?.runtimeProfile,
       handleClearCode,
       ensureStrategyName,
       fromDate,
@@ -2983,7 +3455,7 @@ json.dumps(result)
         typeof strategy?.code === "string" && strategy.code.trim()
           ? strategy.code
           : DEFAULT_EDITOR_CODE;
-      const savedTimeframe = strategy?.config?.timeframe;
+      const savedTimeframe = normalizeChartTimeframe(strategy?.config?.timeframe);
       const savedConfig = strategy?.config || {};
 
       setEditorCode(strategyCode);
@@ -3004,9 +3476,12 @@ json.dumps(result)
           savedConfig?.exchange ||
           selectedCurrency?.exchange ||
           selectedCurrency?.segment,
-        timeframe: savedConfig?.timeframe || timeframeValue,
+        timeframe:
+          normalizeChartTimeframe(savedConfig?.timeframe) ||
+          normalizeChartTimeframe(timeframeValue),
         fromDate: savedConfig?.fromDate || fromDate,
         toDate: savedConfig?.toDate || toDate,
+        runtimeProfile: savedConfig?.runtimeProfile || DEFAULT_RUNTIME_PROFILE_ID,
       });
     },
     [fromDate, handleDeployCode, selectedCurrency, timeframeValue, toDate],
@@ -3381,6 +3856,12 @@ json.dumps(result)
     historyBackfillInFlightRef.current = false;
     lastAutoBackfillFromRef.current = null;
     lastAutoForwardToRef.current = null;
+    earliestHistoricalBoundaryRef.current.delete(
+      [
+        selectedCurrency?.name || selectedCurrency?.symbol || "",
+        timeframeValue,
+      ].join("|"),
+    );
   }, [selectedCurrency?.name, timeframeValue]);
 
   const lastSelectedCurrencyRef = useRef(selectedCurrency?.name);
@@ -5144,8 +5625,11 @@ json.dumps(result)
     (force = false, overrides = {}, options = {}) => {
       if (!selectedCurrency || !timeframeValue) return;
       setNoDataAvailable(false);
+      const requestedSymbol = resolvePrimaryHistoricalSymbol(
+        overrides.symbol || options.symbolOverride || null,
+      );
       const historicalPayloadBase = {
-        symbol: selectedCurrency?.name,
+        symbol: requestedSymbol,
         interval: timeframeValue,
         fromDate: fromDate,
         toDate: toDate,
@@ -5164,12 +5648,22 @@ json.dumps(result)
       const requestId = `hist-${now}-${Math.random().toString(36).slice(2, 8)}`;
       const historicalPayload = {
         ...historicalPayloadBase,
+        pendingFromDate: options.pendingFromDate || null,
         pendingToDate: options.pendingToDate || null,
         preserveVisibleRange: options.preserveVisibleRange || null,
-        symbol: selectedCurrency?.name,
+        symbol: requestedSymbol,
         timeframe: timeframeValue,
         requestId,
       };
+      historicalRequestOptionsRef.current.set(requestId, {
+        ...options,
+        symbol: requestedSymbol,
+        displaySymbol: selectedCurrency?.name || selectedCurrency?.symbol || "",
+        requestedSymbol,
+        timeframe: timeframeValue,
+        fromDate: historicalPayloadBase.fromDate,
+        toDate: historicalPayloadBase.toDate,
+      });
       if ((options.mergeMode || "replace") === "replace") {
         latestReplaceRequestIdRef.current = requestId;
       }
@@ -5180,7 +5674,13 @@ json.dumps(result)
       }
       return true;
     },
-    [selectedCurrency, timeframeValue, fromDate, toDate],
+    [
+      selectedCurrency,
+      timeframeValue,
+      fromDate,
+      toDate,
+      resolvePrimaryHistoricalSymbol,
+    ],
   );
 
   const requestLiveTick = useCallback(
@@ -5218,6 +5718,19 @@ json.dumps(result)
     const visibleRange = chartRef.current.timeScale().getVisibleLogicalRange();
     const firstLoadedCandle = candlesRef.current[0];
     const firstLoadedTime = Number(firstLoadedCandle?.time);
+    const boundaryKey = [
+      selectedCurrency?.name || selectedCurrency?.symbol || "",
+      timeframeValue,
+    ].join("|");
+    const earliestBoundaryTime = earliestHistoricalBoundaryRef.current.get(boundaryKey);
+    if (
+      Number.isFinite(firstLoadedTime) &&
+      Number.isFinite(earliestBoundaryTime) &&
+      firstLoadedTime <= earliestBoundaryTime
+    ) {
+      return false;
+    }
+
     const currentFrom = Number.isFinite(firstLoadedTime)
       ? new Date((firstLoadedTime - IST_OFFSET) * 1000)
       : new Date(fromDate);
@@ -5531,6 +6044,24 @@ json.dumps(result)
       const raw = response?.data || [];
 
       if (raw.length === 0) {
+        const alternateSymbol =
+          !requestMeta?.symbolFallbackTried && mergeMode === "replace"
+            ? resolveAlternateHistoricalSymbol(requestMeta?.requestedSymbol)
+            : null;
+
+        if (alternateSymbol) {
+          requestHistoricalData(
+            true,
+            { symbol: alternateSymbol },
+            {
+              ...requestMeta,
+              symbolOverride: alternateSymbol,
+              symbolFallbackTried: true,
+            },
+          );
+          return;
+        }
+
         historicalMergeModeRef.current = "replace";
         pendingHistoricalFromDateRef.current = null;
         historyBackfillInFlightRef.current = false;
@@ -5886,11 +6417,8 @@ json.dumps(result)
       currentCandleRef.current = mergedData[mergedData?.length - 1];
 
       setTimeout(() => {
-        const last = mergedData[mergedData?.length - 1];
-        writeOhlcvDisplay(last);
-        writeActionButtonPrices(last);
-
         try {
+          try{
           if (mergeMode === "prepend" && requestMeta?.preserveVisibleRange) {
             chartRef.current?.timeScale().setVisibleLogicalRange({
               from: requestMeta.preserveVisibleRange.from + addedPoints,
@@ -5911,68 +6439,186 @@ json.dumps(result)
           if (!e?.message?.includes("Object is disposed")) console.error("timeScale error:", e);
         }
 
-        if (
-          selectedIndicatorRef.current &&
-          selectedIndicatorRef.current.length > 0
-        ) {
-          const fetchFrom =
+          try {
+            if (mergeMode === "prepend" && requestMeta?.preserveVisibleRange) {
+              chartRef.current?.timeScale().setVisibleLogicalRange({
+                from: requestMeta.preserveVisibleRange.from + addedPoints,
+                to: requestMeta.preserveVisibleRange.to + addedPoints,
+              });
+            } else if (
+              mergeMode === "append" &&
+              requestMeta?.preserveVisibleRange
+            ) {
+              chartRef.current?.timeScale().setVisibleLogicalRange({
+                from: requestMeta.preserveVisibleRange.from,
+                to: requestMeta.preserveVisibleRange.to,
+              });
+            } else if (mergeMode === "replace" && !requestMeta?.preserveVisibleRange) {
+              chartRef.current?.timeScale().fitContent();
+            } else if (mergeMode === "replace" && requestMeta?.preserveVisibleRange) {
+              chartRef.current?.timeScale().setVisibleLogicalRange(
+                requestMeta.preserveVisibleRange,
+              );
+            }
+          } catch (e) {
+            if (!e.message?.includes("Object is disposed")) {
+              console.error("timeScale error:", e);
+            }
+          }
+
+          if (
+            selectedIndicatorRef.current &&
+            selectedIndicatorRef.current.length > 0
+          ) {
+            const fetchFrom = mergedData[0]?.time
+              ? new Date((Number(mergedData[0].time) - IST_OFFSET) * 1000)
+                  .toISOString()
+                  .split("T")[0]
+              : requestMeta?.pendingFromDate ||
+                pendingHistoricalFromDateRef.current ||
+                fromDate;
+            const fetchTo = mergedData[mergedData.length - 1]?.time
+              ? new Date(
+                  (Number(mergedData[mergedData.length - 1].time) - IST_OFFSET) *
+                    1000,
+                )
+                  .toISOString()
+                  .split("T")[0]
+              : requestMeta?.pendingToDate ||
+                pendingHistoricalToDateRef.current ||
+                toDate;
+            fetchIndicatorData(
+              selectedIndicatorRef.current,
+              selectedCurrency,
+              timeframeValue,
+              fetchFrom,
+              fetchTo,
+            );
+          }
+
+          const effectiveFetchFrom =
             requestMeta?.pendingFromDate ||
             pendingHistoricalFromDateRef.current ||
             fromDate;
-          const fetchTo =
+          const effectiveFetchTo =
             requestMeta?.pendingToDate ||
             pendingHistoricalToDateRef.current ||
             toDate;
-          fetchIndicatorData(
-            selectedIndicatorRef.current,
-            selectedCurrency,
-            timeframeValue,
-            fetchFrom,
-            fetchTo,
-          );
-        }
 
-        const effectiveFetchFrom =
-          requestMeta?.pendingFromDate ||
-          pendingHistoricalFromDateRef.current ||
-          fromDate;
-        const effectiveFetchTo =
-          requestMeta?.pendingToDate ||
-          pendingHistoricalToDateRef.current ||
-          toDate;
+          if (
+            (mergeMode === "prepend" || mergeMode === "append") &&
+            isDeployed &&
+            deployedStrategyCode === SANDBOX_DEPLOYMENT_CODE &&
+            !isDeploying &&
+            editorCode?.trim()
+          ) {
+            const paginationDeployKey = [
+              mergeMode,
+              effectiveFetchFrom,
+              effectiveFetchTo,
+              timeframeValue,
+              selectedCurrency?.symbol || selectedCurrency?.name || "",
+              mergedData.length,
+            ].join("|");
 
-        if (
-          (mergeMode === "prepend" || mergeMode === "append") &&
-          isDeployed &&
-          deployedStrategyCode === SANDBOX_DEPLOYMENT_CODE &&
-          !isDeploying &&
-          editorCode?.trim()
-        ) {
-          const paginationDeployKey = [
-            mergeMode,
-            effectiveFetchFrom,
-            effectiveFetchTo,
-            timeframeValue,
-            selectedCurrency?.symbol || selectedCurrency?.name || "",
-            mergedData.length,
-          ].join("|");
-
-          if (lastPaginationAutoDeployKeyRef.current !== paginationDeployKey) {
-            lastPaginationAutoDeployKeyRef.current = paginationDeployKey;
-            handleDeployCode(editorCode, {
-              fromDate: effectiveFetchFrom,
-              toDate: effectiveFetchTo,
-              timeframe: timeframeValue,
-            });
+            if (lastPaginationAutoDeployKeyRef.current !== paginationDeployKey) {
+              lastPaginationAutoDeployKeyRef.current = paginationDeployKey;
+              handleDeployCode(editorCode, {
+                fromDate: effectiveFetchFrom,
+                toDate: effectiveFetchTo,
+                timeframe: timeframeValue,
+                symbol: selectedCurrency?.name,
+                lookupSymbol: selectedCurrency?.symbol,
+                token: selectedCurrency?.token,
+                exchange:
+                  selectedCurrency?.exchange || selectedCurrency?.segment,
+                runtimeProfile:
+                  activeStrategyRecord?.config?.runtimeProfile ||
+                  DEFAULT_RUNTIME_PROFILE_ID,
+                preserveChartState: true,
+                preserveVisibleRange: chartRef.current
+                  ?.timeScale()
+                  .getVisibleLogicalRange(),
+              });
+            }
           }
+        } catch (error) {
+          console.error("Historical chart finalization error:", error);
+        } finally {
+          setMainChartLoading(false);
+          symbolTransitioningRef.current = false;
+          setSymbolTransitioning(false);
         }
-
-        setMainChartLoading(false);
-        symbolTransitioningRef.current = false;
-        setSymbolTransitioning(false);
       }, 150);
     },
     handleHistoricalError: (err) => {
+      const requestId =
+        err?.meta?.requestId || err?.requestId || err?.data?.requestId || null;
+      const requestMeta = requestId
+        ? historicalRequestOptionsRef.current.get(requestId)
+        : null;
+      if (requestId) {
+        historicalRequestOptionsRef.current.delete(requestId);
+      }
+
+      const message = String(
+        err?.message ||
+          err?.error ||
+          err?.data?.message ||
+          err?.data?.error ||
+          "",
+      );
+      const isNoHistoricalCandles =
+        /no candles found|no historical candles|backend db/i.test(message);
+      const isOlderBackfillError =
+        requestMeta?.mergeMode === "prepend" ||
+        (historyBackfillInFlightRef.current && isNoHistoricalCandles);
+
+      if (isNoHistoricalCandles && isOlderBackfillError) {
+        const firstLoadedTime = Number(candlesRef.current?.[0]?.time);
+        if (Number.isFinite(firstLoadedTime)) {
+          const boundaryKey = [
+            selectedCurrency?.name || selectedCurrency?.symbol || "",
+            timeframeValue,
+          ].join("|");
+          earliestHistoricalBoundaryRef.current.set(boundaryKey, firstLoadedTime);
+        }
+
+        historicalMergeModeRef.current = "replace";
+        pendingHistoricalFromDateRef.current = null;
+        pendingHistoricalToDateRef.current = null;
+        historyBackfillInFlightRef.current = false;
+        setMainChartLoading(false);
+        return;
+      }
+
+      if (isNoHistoricalCandles && requestMeta?.mergeMode !== "prepend") {
+        const alternateSymbol = !requestMeta?.symbolFallbackTried
+          ? resolveAlternateHistoricalSymbol(requestMeta?.requestedSymbol)
+          : null;
+
+        if (alternateSymbol) {
+          requestHistoricalData(
+            true,
+            { symbol: alternateSymbol },
+            {
+              ...requestMeta,
+              symbolOverride: alternateSymbol,
+              symbolFallbackTried: true,
+            },
+          );
+          return;
+        }
+
+        historicalMergeModeRef.current = "replace";
+        pendingHistoricalFromDateRef.current = null;
+        pendingHistoricalToDateRef.current = null;
+        historyBackfillInFlightRef.current = false;
+        setNoDataAvailable(true);
+        setMainChartLoading(false);
+        return;
+      }
+
       historicalMergeModeRef.current = "replace";
       pendingHistoricalFromDateRef.current = null;
       pendingHistoricalToDateRef.current = null;
@@ -7630,60 +8276,6 @@ json.dumps(result)
                             })}
                         </>
                       )}
-
-                      {areStrategyVisualsVisible &&
-                        sandboxLegendGroups?.__sandbox_overlay__?.items
-                          ?.length > 0 && (
-                          <div
-                            style={{
-                              position: "absolute",
-                              top: 62,
-                              left: 8,
-                              zIndex: 55,
-                              pointerEvents: "none",
-                            }}
-                          >
-                            {renderSandboxLegend(
-                              sandboxLegendGroups.__sandbox_overlay__,
-                            )}
-                          </div>
-                        )}
-
-                      {areStrategyVisualsVisible &&
-                        Object.values(sandboxLegendGroups)
-                          .filter(
-                            (group) =>
-                              group?.paneKey &&
-                              group.paneKey !== null &&
-                              group.items?.length > 0,
-                          )
-                          .map((group) => {
-                            const paneDiv =
-                              panesRef.current[group.paneKey]?.pane?.getHTMLElement();
-
-                            if (!paneDiv) return null;
-                            const portalTarget =
-                              paneDiv.tagName?.toLowerCase() === "tr"
-                                ? paneDiv.querySelector("td") || paneDiv
-                                : paneDiv;
-
-                            portalTarget.style.position = "relative";
-
-                            return createPortal(
-                              <div
-                                style={{
-                                  position: "absolute",
-                                  top: 5,
-                                  left: 8,
-                                  zIndex: 55,
-                                  pointerEvents: "none",
-                                }}
-                              >
-                                {renderSandboxLegend(group)}
-                              </div>,
-                              portalTarget,
-                            );
-                          })}
 
                       {/* -----------------OLD INDICATOR BAR (COMMENTED)------------------- */}
 
