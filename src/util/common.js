@@ -601,7 +601,12 @@ export const normalizeData = (data) => {
 //   }
 // };
 
-export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instanceId) => {
+export const getRowsByIndicator = (
+  indicator,
+  maType,
+  indicatorConfigs,
+  instanceId,
+) => {
   const baseIndicator = indicator.startsWith("CUSTOM_")
     ? indicator.replace("CUSTOM_", "")
     : indicator;
@@ -1021,12 +1026,16 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instance
         { key: "upperChannel", label: "Upper Channel", type: "line" },
         { key: "lowerChannel", label: "Lower Channel", type: "line" },
         { key: "channelFill", label: "Channel Fill", type: "fill" },
-        { key: "sharpUpSignals", label: "Sharp Up", type: "line" },
-        { key: "sharpDownSignals", label: "Sharp Down", type: "line" },
-        { key: "extremeUpSignals", label: "Extreme Up", type: "line" },
-        { key: "extremeDownSignals", label: "Extreme Down", type: "line" },
-        { key: "highMoveBackground", label: "High Move Background", type: "fill" },
-        { key: "is915Markers", label: "9:15 Volatility Scan", type: "line" },
+        // { key: "sharpUpSignals", label: "Sharp Up", type: "line" },
+        // { key: "sharpDownSignals", label: "Sharp Down", type: "line" },
+        // { key: "extremeUpSignals", label: "Extreme Up", type: "line" },
+        // { key: "extremeDownSignals", label: "Extreme Down", type: "line" },
+        {
+          key: "highMoveBackground",
+          label: "High Move Background",
+          type: "fill",
+        },
+        { key: "is915Markers", label: "9:15 Volatility Scan", type: "fill" },
       ];
 
     case "MACD":
@@ -1741,8 +1750,17 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instance
       ];
 
     case "VWAP": {
-      const defaults = { band1: { enabled: true }, band2: { enabled: false }, band3: { enabled: false } };
-      const config = { ...defaults, ...(indicatorConfigs?.[instanceId] || indicatorConfigs?.[indicator] || {}) };
+      const defaults = {
+        band1: { enabled: true },
+        band2: { enabled: false },
+        band3: { enabled: false },
+      };
+      const config = {
+        ...defaults,
+        ...(indicatorConfigs?.[instanceId] ||
+          indicatorConfigs?.[indicator] ||
+          {}),
+      };
 
       const rows = [
         {
@@ -1836,7 +1854,7 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instance
 
       return rows;
     }
-    
+
     case "ZIGZAG":
       return [
         {
@@ -2153,6 +2171,100 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instance
           value: 0,
         },
       ];
+
+    case "SMA_RIBBON_DISTANCE":
+      return [
+        {
+          key: "oscillator",
+          label: "Ribbon Compression Score",
+          type: "line",
+
+          children: [
+            {
+              key: "color0",
+              parent: "oscillator",
+              label: "Color 0",
+              type: "fill",
+            },
+            {
+              key: "color1",
+              parent: "oscillator",
+              label: "Color 1",
+              type: "fill",
+            },
+            {
+              key: "color2",
+              parent: "oscillator",
+              label: "Color 2",
+              type: "fill",
+            },
+            {
+              key: "color3",
+              parent: "oscillator",
+              label: "Color 3",
+              type: "fill",
+            },
+          ],
+        },
+
+        {
+          key: "maxDistance",
+          label: "Maximum SMA Distance %",
+          type: "line",
+        },
+
+        {
+          key: "avgDistance",
+          label: "Average Pairwise Distance %",
+          type: "line",
+        },
+
+        {
+          key: "distance12",
+          label: "SMA 20-50 Distance %",
+          type: "line",
+        },
+
+        {
+          key: "distance23",
+          label: "SMA 50-100 Distance %",
+          type: "line",
+        },
+
+        {
+          key: "distance34",
+          label: "SMA 100-200 Distance %",
+          type: "line",
+        },
+
+        {
+          key: "perfectCompression",
+          label: "Perfect Compression",
+          type: "line",
+          value: 100,
+        },
+
+        {
+          key: "compressionThreshold",
+          label: "Tightly Packed Threshold",
+          type: "line",
+          value: 80,
+        },
+
+        {
+          key: "neutral",
+          label: "Neutral",
+          type: "line",
+          value: 50,
+        },
+
+        {
+          key: "zero",
+          label: "Wide Ribbon",
+          type: "line",
+          value: 0,
+        },
+      ];
     default:
       return [];
   }
@@ -2435,8 +2547,6 @@ export const getMarketStatus = () => {
   const isWeekday = day >= 1 && day <= 5;
 
   return (
-    isWeekday &&
-    currentMinutes >= marketStart &&
-    currentMinutes <= marketEnd
+    isWeekday && currentMinutes >= marketStart && currentMinutes <= marketEnd
   );
 };

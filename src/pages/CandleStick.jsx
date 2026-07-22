@@ -6045,13 +6045,14 @@ json.dumps(result)
         const rawData = tick?.raw || tick?.overview || {};
 
         let rawTickTime =
-          liveData?.datetime ??
+          tick?.raw?.datetime ??
+          tick?.overview?.datetime ??
+          tick?.raw?.exchange_timestamp ??
+          tick?.overview?.exchange_timestamp ??
           liveData?.time ??
           liveData?.tickTime ??
-          rawData?.exchange_timestamp ??
-          rawData?.last_update_time ??
-          tick?.overview?.exchange_trade_time ??
-          tick?.raw?.exchange_timestamp;
+          liveData?.datetime;
+
         let tickTime = Number(rawTickTime);
 
         if (!Number.isFinite(tickTime)) {
@@ -6063,14 +6064,14 @@ json.dumps(result)
         const normalizedTime =
           Math.floor(adjustedTime / intervalSec) * intervalSec;
 
-        // ─── FIX: Use LTP (last_traded_price) as the real current price ───
-        // liveData.close is the PREVIOUS DAY CLOSE (PDC), NOT the current candle close!
-        // The actual current price is last_traded_price / ltp
+        // Use LTP (last_traded_price) as the real current price
         const ltp = Number(
+          tick?.raw?.last_traded_price ??
+          tick?.overview?.ltp ??
+          tick?.overview?.last_traded_price ??
           liveData?.last_traded_price ??
-            rawData?.ltp ??
-            liveData?.ltp ??
-            liveData?.price,
+          liveData?.ltp ??
+          liveData?.price
         );
 
         if (!Number.isFinite(ltp) || ltp <= 0) {
@@ -6099,26 +6100,33 @@ json.dumps(result)
             ? candlesRef.current[candlesRef.current.length - 1]
             : null;
 
+        const rawOpen = rawData?.open != null ? Number(rawData.open) : undefined;
+        const rawHigh = rawData?.high != null ? Number(rawData.high) : undefined;
+        const rawLow = rawData?.low != null ? Number(rawData.low) : undefined;
+        const rawClose = rawData?.close != null ? Number(rawData.close) : undefined;
+        const rawVolume = tick?.raw?.volume != null ? Number(tick.raw.volume) : (tick?.overview?.volume != null ? Number(tick.overview.volume) : undefined);
+
         let updatedBar;
         if (existingCandle) {
-          // Update the existing live candle: extend high/low, move close to LTP
+          // Update the existing live candle using raw OHLC if available, fallback to LTP
           updatedBar = {
             ...existingCandle,
-            high: Math.max(Number(existingCandle.high), ltp),
-            low: Math.min(Number(existingCandle.low), ltp),
-            close: ltp,
-            volume: liveVolume || Number(existingCandle.volume || 0),
+            open: rawOpen !== undefined ? rawOpen : existingCandle.open,
+            high: rawHigh !== undefined ? rawHigh : Math.max(Number(existingCandle.high), ltp),
+            low: rawLow !== undefined ? rawLow : Math.min(Number(existingCandle.low), ltp),
+            close: rawClose !== undefined ? rawClose : ltp,
+            volume: rawVolume !== undefined ? rawVolume : (liveVolume || Number(existingCandle.volume || 0)),
           };
         } else if (!latestCandle || normalizedTime > latestCandle.time) {
-          // New candle: open = previous candle's close (LTP), not the day open
+          // New candle
           const newCandleOpen = latestCandle ? Number(latestCandle.close) : ltp;
           updatedBar = {
             time: normalizedTime,
-            open: Number.isFinite(newCandleOpen) ? newCandleOpen : ltp,
-            high: ltp,
-            low: ltp,
-            close: ltp,
-            volume: liveVolume,
+            open: rawOpen !== undefined ? rawOpen : (Number.isFinite(newCandleOpen) ? newCandleOpen : ltp),
+            high: rawHigh !== undefined ? rawHigh : ltp,
+            low: rawLow !== undefined ? rawLow : ltp,
+            close: rawClose !== undefined ? rawClose : ltp,
+            volume: rawVolume !== undefined ? rawVolume : liveVolume,
           };
         } else if (normalizedTime < latestCandle.time) {
           // Stale tick (older than current candle) — ignore
@@ -6127,10 +6135,11 @@ json.dumps(result)
           // Same time as latest candle, extend it
           updatedBar = {
             ...latestCandle,
-            high: Math.max(Number(latestCandle.high), ltp),
-            low: Math.min(Number(latestCandle.low), ltp),
-            close: ltp,
-            volume: liveVolume || Number(latestCandle.volume || 0),
+            open: rawOpen !== undefined ? rawOpen : latestCandle.open,
+            high: rawHigh !== undefined ? rawHigh : Math.max(Number(latestCandle.high), ltp),
+            low: rawLow !== undefined ? rawLow : Math.min(Number(latestCandle.low), ltp),
+            close: rawClose !== undefined ? rawClose : ltp,
+            volume: rawVolume !== undefined ? rawVolume : (liveVolume || Number(latestCandle.volume || 0)),
           };
         }
 
@@ -6195,6 +6204,12 @@ json.dumps(result)
     // Note: We've combined liveTick logic into a single handleLiveTick,
     handleLiveIndicator: (payload) => {
       if (!payload?.success || !payload?.type) return;
+
+
+      //check - to plot live values of that particular stock
+      const activeSymbol = normalize(selectedCurrency?.name);
+      const payloadSymbol = normalize(payload.symbol);
+      if (payload.symbol && !isSameSymbolName(payloadSymbol, activeSymbol)) return;
 
       // console.log(`[LiveIndicator] Payload:`, payload);
 
