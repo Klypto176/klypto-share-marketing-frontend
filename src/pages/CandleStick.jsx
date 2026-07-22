@@ -69,8 +69,19 @@ import { generateStrategyAgent } from "../services/strategyAgentService";
 import { executeIndicatorSandbox } from "../services/sandboxService";
 import { getUser } from "./auth/protected";
 import useDrawingTools from "../util/useDrawingTools";
+import useStrategyAgentChat from "../util/useStrategyAgentChat";
 import DrawingToolbar from "../components/tradingModals/DrawingToolbar";
 import DrawingToolbox from "../components/tradingModals/DrawingToolbox";
+import {
+  buildDiagnosticHtml,
+  extractSandboxErrorText,
+  getSandboxDependencies,
+  isDirectChartLabScript,
+  prepareSandboxCompatibleCode,
+} from "../util/sandboxCodeUtils";
+import {
+  buildStrategyAgentPrompt,
+} from "../util/strategyAgentUtils";
 
 const getInitialLookbackDate = (timeframe) => {
   const d = new Date();
@@ -91,12 +102,6 @@ const SANDBOX_DEPLOYMENT_CODE = "SANDBOX_EXECUTION";
 const CHART_TIME_OFFSET_SECONDS = 19800;
 const SANDBOX_OVERLAY_KEY = "__sandbox_overlay__";
 const MAX_VISIBLE_SANDBOX_MARKERS = 250;
-const createAgentMessage = (role, content, extras = {}) => ({
-  id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-  role,
-  content,
-  ...extras,
-});
 
 const limitVisibleMarkers = (markers, maxMarkers = MAX_VISIBLE_SANDBOX_MARKERS) => {
   if (!Array.isArray(markers) || markers.length <= maxMarkers) {
@@ -121,233 +126,6 @@ const limitVisibleMarkers = (markers, maxMarkers = MAX_VISIBLE_SANDBOX_MARKERS) 
   }
 
   return limited.sort((a, b) => a.time - b.time);
-};
-
-const getSandboxDependencies = (code) => {
-  const text = String(code || "");
-  const dependencies = [];
-
-  if (/\b(?:from|import)\s+ta_patterns\b/.test(text)) {
-    dependencies.push("ta-patterns");
-  }
-
-  return dependencies;
-};
-
-const TA_PATTERNS_CLASSIC_FALLBACK = `
-def _chartlab_wedge_line(points):
-    size = len(points)
-    if size < 2:
-        return 0.0, points[0][1] if points else 0.0
-    mean_x = sum(point[0] for point in points) / size
-    mean_y = sum(point[1] for point in points) / size
-    numerator = sum((point[0] - mean_x) * (point[1] - mean_y) for point in points)
-    denominator = sum((point[0] - mean_x) * (point[0] - mean_x) for point in points)
-    slope = numerator / denominator if denominator else 0.0
-    intercept = mean_y - (slope * mean_x)
-    return slope, intercept
-
-def _chartlab_pivots(values, pivot_n, is_high):
-    pivots = []
-    count = len(values)
-    for index in range(pivot_n, count - pivot_n):
-        window = values[index - pivot_n:index + pivot_n + 1]
-        value = values[index]
-        if is_high:
-            if value == max(window):
-                pivots.append((index, value))
-        elif value == min(window):
-            pivots.append((index, value))
-    return pivots
-
-def _chartlab_wedge_detect(o, h, l, c, mode="confirmed", window=80, pivot_n=5, pivot_pct=None, direction="falling"):
-    count = len(c)
-    result = [0] * count
-    if count < max(window, pivot_n * 4 + 8):
-        return result
-    highs = _chartlab_pivots(list(h), pivot_n, True)
-    lows = _chartlab_pivots(list(l), pivot_n, False)
-    for index in range(window, count):
-        start = max(0, index - window)
-        recent_highs = [point for point in highs if start <= point[0] <= index - pivot_n]
-        recent_lows = [point for point in lows if start <= point[0] <= index - pivot_n]
-        if len(recent_highs) < 2 or len(recent_lows) < 2:
-            continue
-        upper_points = recent_highs[-3:] if len(recent_highs) >= 3 else recent_highs[-2:]
-        lower_points = recent_lows[-3:] if len(recent_lows) >= 3 else recent_lows[-2:]
-        upper_slope, upper_intercept = _chartlab_wedge_line(upper_points)
-        lower_slope, lower_intercept = _chartlab_wedge_line(lower_points)
-        upper_start = (upper_slope * start) + upper_intercept
-        lower_start = (lower_slope * start) + lower_intercept
-        upper_now = (upper_slope * index) + upper_intercept
-        lower_now = (lower_slope * index) + lower_intercept
-        start_gap = upper_start - lower_start
-        end_gap = upper_now - lower_now
-        if start_gap <= 0 or end_gap <= 0 or end_gap >= start_gap:
-            continue
-        if direction == "falling":
-            if upper_slope >= 0 or lower_slope >= 0 or upper_slope >= lower_slope:
-                continue
-            if mode == "forming" or c[index] > upper_now:
-                result[index] = 1
-        else:
-            if upper_slope <= 0 or lower_slope <= 0 or lower_slope <= upper_slope:
-                continue
-            if mode == "forming" or c[index] < lower_now:
-                result[index] = -1
-    return result
-
-def falling_wedge(o, h, l, c, mode="confirmed", window=80, pivot_n=5, pivot_pct=None):
-    return _chartlab_wedge_detect(o, h, l, c, mode, window, pivot_n, pivot_pct, "falling")
-
-def rising_wedge(o, h, l, c, mode="confirmed", window=80, pivot_n=5, pivot_pct=None):
-    return _chartlab_wedge_detect(o, h, l, c, mode, window, pivot_n, pivot_pct, "rising")
-`.trim();
-
-const prepareSandboxCompatibleCode = (code) => {
-  const text = String(code || "");
-  const importPattern =
-    /^from\s+ta_patterns\.chart_patterns\.classic\s+import\s+falling_wedge\s*,\s*rising_wedge\s*$/m;
-
-  if (!importPattern.test(text)) {
-    return text;
-  }
-
-  return text.replace(importPattern, TA_PATTERNS_CLASSIC_FALLBACK);
-};
-
-const buildStrategyAgentPrompt = (editorCode, symbol, timeframe) =>
-  `
-Convert the current strategy editor content into runnable ChartLab-compatible Python for sandbox execution.
-
-Requirements:
-- Preserve the strategy intent from the editor code below.
-- Return only executable Python code, with no markdown fences or explanation.
-- Use ChartLab-compatible Python when needed.
-- Emit trade markers with signal(...) for every backtestable BUY/SELL/EXIT event.
-- For pattern scanners, emit signal(...) only on the confirmed breakout/entry/exit candle, not on earlier anchor candles.
-- Avoid lookahead bias: loops may inspect completed historical bars, but a signal must only use information available at that candle's confirmation point.
-- Prefer rich ChartLab visuals where helpful: plot, plot_area, plot_step, plot_scatter, fill, hline, barcolor, labels, zones, boxes, and separate panes.
-- Guard every advanced calculation against short history, None warmup values, and division by zero.
-- Keep outputs candle-length aligned so rendering is stable like a notebook cell output.
-- If the existing code is already runnable ChartLab-compatible Python, keep the logic and return the final code.
-- The chart symbol is ${symbol || "the selected symbol"} on timeframe ${timeframe || "the selected timeframe"}.
-
-Current editor code:
-${editorCode}
-`.trim();
-
-const isDirectChartLabScript = (code) => {
-  const text = String(code || "");
-  return (
-    /from\s+chartlab\s+import/i.test(text) &&
-    /@indicator\s*\(/i.test(text) &&
-    /def\s+run\s*\(\s*ctx\s*\)\s*:/i.test(text)
-  );
-};
-
-const escapeHtml = (value) =>
-  String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-
-const extractSandboxErrorText = (errorLike) => {
-  if (!errorLike) return "";
-  if (typeof errorLike === "string") return errorLike;
-  return (
-    errorLike?.message ||
-    errorLike?.detail ||
-    errorLike?.error ||
-    errorLike?.traceback ||
-    ""
-  );
-};
-
-const getChartLabDiagnosticSuggestions = (code, diagnostic = {}) => {
-  const text = String(code || "");
-  const message = String(diagnostic?.message || diagnostic?.error_message || "");
-  const suggestions = [];
-
-  if (/NameError/i.test(message) && /df/i.test(message)) {
-    suggestions.push("This sandbox uses ChartLab context data. Replace df columns with ctx.close, ctx.high, ctx.low, ctx.open, or ctx.volume.");
-  }
-  if (/NameError/i.test(message) && /plot/i.test(message)) {
-    suggestions.push("Import the helper before using it, for example: from chartlab import indicator, plot, plot_scatter, signal.");
-  }
-  if (/No module named|ModuleNotFoundError/i.test(message)) {
-    suggestions.push("Use ChartLab built-ins and safe Python libraries. Heavy packages must be supported by the backend sandbox before importing them.");
-  }
-  if (/indent|expected an indented block/i.test(message)) {
-    suggestions.push("Check indentation under def run(ctx):, if/for blocks, and multiline conditions.");
-  }
-  if (/invalid syntax|SyntaxError/i.test(message)) {
-    suggestions.push("Look near the highlighted line for a missing colon, unmatched bracket, unterminated string, or pasted markdown fence.");
-  }
-  if (/unsupported operand|can't multiply sequence|can only concatenate/i.test(message)) {
-    suggestions.push("ChartLab series are list-like. For element-wise math, build a list comprehension or use ctx.ta helpers such as ctx.ta.ema, ctx.ta.sma, or ctx.ta.atr.");
-  }
-  if (/list index out of range|IndexError/i.test(message)) {
-    suggestions.push("Guard lookbacks with if len(ctx.close) < required_bars: return, or start loops after enough candles exist.");
-  }
-  if (/NoneType|not supported between instances/i.test(message)) {
-    suggestions.push("Warmup values can be None. Skip None before comparisons or arithmetic.");
-  }
-  if (/\bdf\b/.test(text) && isDirectChartLabScript(text)) {
-    suggestions.push("This script is in ChartLab format, so df is not available unless you create it yourself from ctx data.");
-  }
-  if (/plot_scatter|plot\(/.test(text) && !/from\s+chartlab\s+import[\s\S]*(plot|plot_scatter)/i.test(text)) {
-    suggestions.push("Add the missing plot import from chartlab.");
-  }
-  if (/from\s+chartlab\s+import/i.test(text) && !/@indicator\s*\(/i.test(text)) {
-    suggestions.push("Add @indicator(name=\"Your Indicator\", pane=\"overlay\") above def run(ctx):.");
-  }
-
-  return Array.from(new Set(suggestions)).slice(0, 5);
-};
-
-const buildDiagnosticHtml = ({ title, diagnostic, code, fallback }) => {
-  const line = diagnostic?.line || diagnostic?.lineno;
-  const column = diagnostic?.column || diagnostic?.offset;
-  const message =
-    diagnostic?.message ||
-    diagnostic?.error_message ||
-    fallback ||
-    "The sandbox could not execute this code.";
-  const sourceLine =
-    line && String(code || "").split(/\r?\n/)[Number(line) - 1]
-      ? String(code || "").split(/\r?\n/)[Number(line) - 1]
-      : "";
-  const suggestions = [
-    ...(Array.isArray(diagnostic?.suggestions) ? diagnostic.suggestions : []),
-    ...getChartLabDiagnosticSuggestions(code, diagnostic),
-  ];
-
-  return `
-    <div style="text-align:left;line-height:1.5">
-      <div style="font-weight:700;margin-bottom:8px">${escapeHtml(title)}</div>
-      <div style="margin-bottom:8px;color:#fecaca">${escapeHtml(message)}</div>
-      ${
-        line
-          ? `<div style="margin-bottom:8px;color:#cbd5e1">Line ${escapeHtml(line)}${column ? `, column ${escapeHtml(column)}` : ""}</div>`
-          : ""
-      }
-      ${
-        sourceLine
-          ? `<pre style="white-space:pre-wrap;background:var(--bg-primary);padding:10px;border-radius:6px;color:var(--text-primary);max-height:180px;overflow:auto">${escapeHtml(sourceLine)}</pre>`
-          : ""
-      }
-      ${
-        suggestions.length
-          ? `<div style="margin-top:10px;font-weight:700">Suggestions</div><ul style="padding-left:18px;margin:6px 0 0">${suggestions
-              .map((item) => `<li>${escapeHtml(item)}</li>`)
-              .join("")}</ul>`
-          : ""
-      }
-    </div>
-  `;
 };
 
 const normalizeChartTime = (rawTime) => {
@@ -628,9 +406,6 @@ export default function Candlestick() {
   const [isPredicting, setIsPredicting] = useState(false);
   const [isDepthOpen, setIsDepthOpen] = useState(false);
   const [isAgentPanelOpen, setIsAgentPanelOpen] = useState(false);
-  const [agentMessages, setAgentMessages] = useState([]);
-  const [agentDraft, setAgentDraft] = useState("");
-  const [isAgentLoading, setIsAgentLoading] = useState(false);
   
   const deduplicateTrades = (trades) => {
     if (!trades || !Array.isArray(trades)) return [];
@@ -721,7 +496,15 @@ export default function Candlestick() {
   const resolvePrimaryHistoricalSymbol = useCallback(
     (symbolOverride = null) => {
       if (symbolOverride) return symbolOverride;
-      return selectedCurrency?.symbol || selectedCurrency?.name || "";
+      const symbol = String(selectedCurrency?.symbol || "").trim();
+      const name = String(selectedCurrency?.name || "").trim();
+      const symbolBase = symbol.replace(/-EQ$/i, "");
+
+      if (name && symbol && symbolBase.toUpperCase() === name.toUpperCase()) {
+        return name;
+      }
+
+      return symbol || name || "";
     },
     [selectedCurrency],
   );
@@ -757,6 +540,19 @@ export default function Candlestick() {
   const symbolTransitioningRef = useRef(false);
   const [noDataAvailable, setNoDataAvailable] = useState(false);
   const [editorCode, setEditorCode] = useState(DEFAULT_EDITOR_CODE);
+  const {
+    messages: agentMessages,
+    draft: agentDraft,
+    setDraft: setAgentDraft,
+    isLoading: isAgentLoading,
+    clear: handleClearAgentChat,
+    send: handleSendAgentMessage,
+  } = useStrategyAgentChat({
+    editorCode,
+    selectedCurrency,
+    strategyAgentSessionIdRef,
+    timeframeValue,
+  });
   const [openScannerTrigger, setOpenScannerTrigger] = useState(0);
   const [customSignals, setCustomSignals] = useState([]);
   const [isDeploying, setIsDeploying] = useState(false);
@@ -1026,6 +822,7 @@ export default function Candlestick() {
     if (!preserveDeploymentState) {
       setCustomSignals([]);
       setDashboardSignals([]);
+      setApiBacktestRows([]);
       setDeployedStrategyCode(null);
       setIsDeployed(false);
     }
@@ -1329,6 +1126,8 @@ export default function Candlestick() {
 
   const renderSandboxPlots = useCallback((chartContract) => {
     if (!chartRef.current) return;
+
+    handleClearCode({ preserveDeploymentState: true });
 
     const createdSeries = [];
     const createdPriceLines = [];
@@ -2468,6 +2267,7 @@ export default function Candlestick() {
   }, [
     applySandboxBarColorsToData,
     chartType,
+    handleClearCode,
     timeframeValue,
   ]);
 
@@ -5129,90 +4929,6 @@ json.dumps(result)
     toast.success("Agent code applied to the editor.");
   }, []);
 
-  const handleClearAgentChat = useCallback(() => {
-    setAgentMessages([]);
-    setAgentDraft("");
-  }, []);
-
-  const handleSendAgentMessage = useCallback(
-    async (promptText) => {
-      const prompt = String(promptText || "").trim();
-      if (!prompt || isAgentLoading) return;
-
-      const currentUser = getUser();
-      const userId = currentUser?.id || currentUser?._id || "123";
-
-      setAgentMessages((prev) => [
-        ...prev,
-        createAgentMessage("user", prompt),
-      ]);
-      setAgentDraft("");
-      setIsAgentLoading(true);
-
-      try {
-        const response = await generateStrategyAgent({
-          prompt,
-          session_id: strategyAgentSessionIdRef.current,
-          user_id: userId,
-          current_file_path: "strategy.py",
-          current_editor_code: editorCode,
-          open_files: [
-            {
-              path: "strategy.py",
-              content: editorCode || "",
-            },
-          ],
-          project_summary:
-            "ChartLab strategy workspace for chart-driven code generation and iteration.",
-          timeframe: timeframeValue,
-          market: selectedCurrency?.symbol || selectedCurrency?.name,
-          constraints: [
-            "Be concise and actionable.",
-            "When returning code, keep it runnable in ChartLab Python.",
-            "Mention strategy assumptions when they materially affect the result.",
-          ],
-        });
-
-        if (response?.session_id) {
-          strategyAgentSessionIdRef.current = response.session_id;
-        }
-
-        const replyText =
-          response?.reply ||
-          response?.message ||
-          "The strategy agent did not return a response.";
-        const generatedCode =
-          typeof response?.code === "string" && response.code.trim()
-            ? response.code.trim()
-            : "";
-
-        setAgentMessages((prev) => [
-          ...prev,
-          createAgentMessage("assistant", replyText, {
-            code: generatedCode || undefined,
-            replaceEditorCode: response?.replace_editor_code === true,
-          }),
-        ]);
-      } catch (error) {
-        console.error("Strategy agent chat failed:", error);
-        const errorMessage =
-          error?.response?.data?.detail ||
-          error?.response?.data?.message ||
-          error?.message ||
-          "Unable to reach the strategy agent right now.";
-
-        setAgentMessages((prev) => [
-          ...prev,
-          createAgentMessage("assistant", errorMessage),
-        ]);
-        toast.error("Strategy agent request failed.");
-      } finally {
-        setIsAgentLoading(false);
-      }
-    },
-    [editorCode, isAgentLoading, selectedCurrency, timeframeValue],
-  );
-
   const renderSandboxLegend = (group) => {
     if (!group || !Array.isArray(group.items) || group.items.length === 0) {
       return null;
@@ -6570,6 +6286,8 @@ json.dumps(result)
       );
       const isNoHistoricalCandles =
         /no candles found|no historical candles|backend db/i.test(message);
+      const isTokenLookupError =
+        /token not found|master list|symbol is invalid/i.test(message);
       const isOlderBackfillError =
         requestMeta?.mergeMode === "prepend" ||
         (historyBackfillInFlightRef.current && isNoHistoricalCandles);
@@ -6592,7 +6310,10 @@ json.dumps(result)
         return;
       }
 
-      if (isNoHistoricalCandles && requestMeta?.mergeMode !== "prepend") {
+      if (
+        (isNoHistoricalCandles || isTokenLookupError) &&
+        requestMeta?.mergeMode !== "prepend"
+      ) {
         const alternateSymbol = !requestMeta?.symbolFallbackTried
           ? resolveAlternateHistoricalSymbol(requestMeta?.requestedSymbol)
           : null;
