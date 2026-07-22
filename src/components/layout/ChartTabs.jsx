@@ -92,7 +92,7 @@ const ChartTabs = ({
     },
   };
 
-  const tabs = ["Chart", "Backtest", "Overview", "Option Chain", "OI Analytics"];
+  const tabs = ["Chart", "Overview", "Option Chain", "OI Analytics"];
 
   return (
     <div className="chart-tabs-container">

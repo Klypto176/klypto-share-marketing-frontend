@@ -473,7 +473,7 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0 }) => {
           <BsGrid style={styles.logoIcon} />
           <span>Algo</span>
         </div>
-        <div className="d-none d-md-flex" style={styles.indexData}>
+        <div className="d-none d-xl-flex" style={styles.indexData}>
           <div style={styles.indexName}>
             <span>{topIndexDisplay.name || "NIFTY"}</span>
             <span style={styles.expiryTag}>EXPIRY</span>
@@ -661,11 +661,11 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0 }) => {
         <div className="d-none d-md-flex" style={styles.navLinks}>
           {[
             // "Markets",
-            "TradeOne",
+            "Trade",
             // "Portfolio",
             "Orders",
             "Positions",
-            "Tools",
+            // "Tools",
           ].map((link) => (
             <div
               key={link}

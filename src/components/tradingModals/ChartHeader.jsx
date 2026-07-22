@@ -18,6 +18,7 @@ import { CgMaximizeAlt } from "react-icons/cg";
 import { MdOutlineFullscreenExit } from "react-icons/md";
 import { TbCalendarShare } from "react-icons/tb";
 import GoToDateDialog from "../layout/GoToDateDialog";
+import { BsFillAlarmFill } from "react-icons/bs";
 const d = {
   bar: {
     display: "flex", alignItems: "center", gap: 12,
@@ -74,7 +75,7 @@ const d = {
     padding: "0 8px",
   },
   divider: {
-    width: 1, height: 24, background: "var(--bg-secondary)", flexShrink: 0,
+    width: 1, height: 24, background: "var(--bg-secondary)", flexShrink: 0, 
   },
   dropdownContent: {
     background: "var(--bg-primary)",
@@ -200,6 +201,12 @@ export default function ChartHeader({
           flex-wrap: wrap;
         }
 
+        @media (max-width: 992px) {
+          .hide-text-md, .hide-below-lg {
+            display: none !important;
+          }
+        }
+
         .sleek-scroll::-webkit-scrollbar {
           width: 4px;
         }
@@ -240,9 +247,9 @@ export default function ChartHeader({
         {/* Timeframe dropdown */}
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
-            <button style={{ ...d.btn, width: 70, justifyContent: "space-between" }} title={timeframeValue || "5m"}>
+            <button style={{ ...d.btn, justifyContent: "space-between" }} title={timeframeValue || "5m"}>
               <span>{timeframeValue || "5m"}</span>
-              <FiChevronDown size={13} />
+              {/* <FiChevronDown size={13} /> */}
             </button>
           </DropdownMenu.Trigger>
           <DropdownMenu.Portal>
@@ -292,19 +299,17 @@ export default function ChartHeader({
           </DropdownMenu.Portal>
         </DropdownMenu.Root>
 
-        <div style={d.divider} />
-
         {/* Chart type dropdown */}
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
-            <button style={d.btn}>
+            <button style={d.btn} title={active?.label}>
               {active?.icon && <active.icon size={15} />}
-              <span>{active?.label}</span>
-              <FiChevronDown size={13} />
+              {/* <span>{active?.label}</span> */}
+              {/* <FiChevronDown size={13} /> */}
             </button>
           </DropdownMenu.Trigger>
           <DropdownMenu.Portal>
-            <DropdownMenu.Content sideOffset={6} style={d.dropdownContent}>
+            <DropdownMenu.Content align="start" sideOffset={6} style={d.dropdownContent}>
               {chartOptions?.map((item) => (
                 <DropdownMenu.Item key={item.value} asChild>
                   <button
@@ -318,7 +323,7 @@ export default function ChartHeader({
                     onMouseLeave={(e) => { if (chartType !== item.value) e.currentTarget.style.background = "transparent"; }}
                   >
                     <item.icon size={15} />
-                    <span style={{ flex: 1 }}>{item.label}</span>
+                    <span style={{ flex: 1, textAlign: "left" }}>{item.label}</span>
                     {chartType === item.value && <span style={{ color: "var(--accent-color)", fontSize: "0.7rem" }}>✓</span>}
                   </button>
                 </DropdownMenu.Item>
@@ -327,17 +332,17 @@ export default function ChartHeader({
           </DropdownMenu.Portal>
         </DropdownMenu.Root>
 
-        <div style={d.divider} />
+        <div className="hide-below-lg" style={d.divider} />
 
         {/* Indicators */}
         <button title="Indicators" onClick={() => openModal("Indicators")} style={d.btn}>
           <VscGraphLine size={15} />
-          <span>Indicators</span>
+          <span className="hide-text-md">Indicators</span>
         </button>
 
         <button title="Strategies" onClick={() => openModal("Strategies")} style={d.btn}>
           <LuLibrary size={15} />
-          <span>Strategies</span>
+          <span className="hide-text-md">Strategies</span>
         </button>
 
         {hasActiveStrategy && (
@@ -382,7 +387,8 @@ export default function ChartHeader({
         {/* Spacer */}
         {/* <div style={{ flex: 1 }} /> */}
         <button title="Create Alert" onClick={onOpenScanner} style={d.btn}>
-          Create Alert
+          <BsFillAlarmFill style={{ marginRight: 4 }} size={14} />
+          <span className="hide-text-md">Create Alert</span>
         </button>
 
         {/* Auth button

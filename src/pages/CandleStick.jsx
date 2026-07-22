@@ -375,7 +375,7 @@ export default function Candlestick() {
   const { matchedCoins, addAlert, clearAllCoins, scanner, removeCoin } =
     useAlerts();
 
-  const [isWatchlistOpen, setIsWatchlistOpen] = useState(true);
+  const [isWatchlistOpen, setIsWatchlistOpen] = useState(window.innerWidth >= 768);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
