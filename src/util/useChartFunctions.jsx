@@ -1,6 +1,6 @@
 import apiService from "../services/apiServices";
 import { getRowsByIndicator } from "./common";
-import socket from "../services/websocket/socket";
+import { normalizeIndicatorType } from "./indicatorFunctions";
 
 const IST_OFFSET = 19800;
 
@@ -26,7 +26,9 @@ export default function useChartFunctions({
       selectedIndicator.map(async (indItem) => {
         // Support both {id, type} objects and legacy plain strings
         const id = typeof indItem === "object" ? indItem.id : indItem;
-        const type = typeof indItem === "object" ? indItem.type : indItem;
+        const type = normalizeIndicatorType(
+          typeof indItem === "object" ? indItem.type : indItem,
+        );
         try {
           const result = await fetchDataForIndicators(
             candlesRef.current,
@@ -49,11 +51,16 @@ export default function useChartFunctions({
   function processIndicatorResponse(id, type, result) {
     if (!result) return;
 
-    const config = indicatorConfigs?.[id] || indicatorConfigs?.[type] || {};
+    const indicatorType = normalizeIndicatorType(type);
+    const config =
+      indicatorConfigs?.[id] ||
+      indicatorConfigs?.[indicatorType] ||
+      indicatorConfigs?.[type] ||
+      {};
     const { maType } = config;
-    const rows = getRowsByIndicator(type, maType, indicatorConfigs);
+    const rows = getRowsByIndicator(indicatorType, maType, indicatorConfigs);
 
-    switch (type) {
+    switch (indicatorType) {
       case "RSI": {
         const rsiData = result?.data?.rsi ?? [];
         const smoothingMA = result?.data?.smoothingMA ?? [];
@@ -670,6 +677,33 @@ export default function useChartFunctions({
         break;
       }
 
+      case "SMA_RIBBON_DISTANCE": {
+        const smaRibbonDistance =
+          result?.data?.smaRibbonDistance ??
+          result?.data?.compressionScore ??
+          [];
+        const maximumRibbonDistance =
+          result?.data?.maximumRibbonDistance ?? [];
+        const priceDistanceFromRibbonCenter =
+          result?.data?.priceDistanceFromRibbonCenter ?? [];
+
+        indicatorDataRef.current[id] = { result, rows };
+
+        latestIndicatorValuesRef.current[id] = {
+          smaRibbonDistance:
+            smaRibbonDistance[smaRibbonDistance.length - 1]?.value ?? null,
+          maximumRibbonDistance:
+            maximumRibbonDistance[maximumRibbonDistance.length - 1]?.value ??
+            null,
+          priceDistanceFromRibbonCenter:
+            priceDistanceFromRibbonCenter[
+              priceDistanceFromRibbonCenter.length - 1
+            ]?.value ?? null,
+        };
+
+        break;
+      }
+
       case "SUPERSMOOTHER": {
         const oscillator = result?.data?.oscillator ?? [];
         const signalLine = result?.data?.signalLine ?? [];
@@ -803,6 +837,7 @@ async function fetchDataForIndicators(
   toDate,
   socketRef,
 ) {
+  const indicatorType = normalizeIndicatorType(type);
   const isValidChartValue = (v) => {
     const num = Number(v);
 
@@ -810,59 +845,74 @@ async function fetchDataForIndicators(
   };
   try {
     const response = await new Promise((resolve, reject) => {
-      indicatorFetchQueue = indicatorFetchQueue.then(() => {
+      indicatorFetchQueue = indicatorFetchQueue.catch(() => undefined).then(() => {
         return new Promise((innerResolve) => {
-          if (!socketRef.current || !socket.connected) {
+          const activeSocket = socketRef.current;
+          if (!activeSocket || activeSocket.connected === false) {
             innerResolve();
             return reject(new Error("Socket disconnected"));
           }
 
-          socketRef.current?.emit("getIndicatorDetails", {
+          const requestId = `indicator_${indicatorType}_${Date.now()}_${Math.random()
+            .toString(36)
+            .slice(2)}`;
+          let settled = false;
+
+          const cleanup = () => {
+            activeSocket.off("indicatorDetailsError", onError);
+            activeSocket.off("indicatorDetailsResponse", onResponse);
+            clearTimeout(timeoutId);
+          };
+
+          const settle = (fn, value) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            innerResolve();
+            fn(value);
+          };
+
+          const onResponse = (data) => {
+            settle(resolve, data);
+          };
+
+          const onError = (err) => {
+            console.error("fetchDataForIndicators error:", err);
+            settle(reject, err);
+          };
+
+          const timeoutId = setTimeout(() => {
+            settle(
+              reject,
+              new Error(`Timeout fetching indicator data for ${indicatorType}`),
+            );
+          }, 30000);
+
+          activeSocket.once("indicatorDetailsResponse", onResponse);
+          activeSocket.once("indicatorDetailsError", onError);
+
+          console.log("[Indicator] request", {
+            type: indicatorType,
+            requestId,
+            symbol: selectedCurrency?.name,
+            interval: timeframeValue,
+            candles: Array.isArray(candles) ? candles.length : 0,
+          });
+
+          activeSocket.emit("getIndicatorDetails", {
             symbol: selectedCurrency?.name,
             interval: timeframeValue,
             fromDate: fromDate,
             toDate: toDate,
-            type,
+            type: indicatorType,
             candles,
+            requestId,
           });
-
-          const timeoutId = setTimeout(() => {
-            socketRef.current?.off("indicatorDetailsError", onError);
-            socketRef.current?.off("indicatorDetailsResponse", onResponse);
-            innerResolve();
-            reject(new Error("Timeout fetching indicator data"));
-          }, 15000);
-
-          const onResponse = (data) => {
-            clearTimeout(timeoutId);
-            socketRef.current?.off("indicatorDetailsError", onError);
-            innerResolve();
-            resolve(data);
-          };
-
-          const onError = (err) => {
-            clearTimeout(timeoutId);
-            console.error("fetchDataForIndicators error:", err);
-            socketRef.current?.off("indicatorDetailsResponse", onResponse);
-            innerResolve();
-            reject(err);
-          };
-
-          socketRef.current?.once("indicatorDetailsResponse", onResponse);
-          socketRef.current?.once("indicatorDetailsError", onError);
-
-          // Fail-safe timeout to prevent hanging the queue
-          setTimeout(() => {
-            socketRef.current?.off("indicatorDetailsResponse", onResponse);
-            socketRef.current?.off("indicatorDetailsError", onError);
-            innerResolve();
-            resolve(null);
-          }, 10000);
         });
       });
     });
 
-    console.log("Raw indicator data for", type, ":", response);
+    console.log("Raw indicator data for", indicatorType, ":", response);
     console.log("Raw first point:", response?.data?.[0]);
     console.log(
       "Raw last point:",
@@ -879,7 +929,7 @@ async function fetchDataForIndicators(
 
     console.log("mapped conversion", response?.data, "conversionLine");
 
-    switch (type) {
+    switch (indicatorType) {
       /* ---------------- SINGLE VALUE ---------------- */
 
       case "VWAP": {
@@ -2251,6 +2301,68 @@ async function fetchDataForIndicators(
                 })) ?? [],
           },
         };
+
+      case "SMA_RIBBON_DISTANCE": {
+        const rows = Array.isArray(response?.data) ? response.data : [];
+
+        const firstNumber = (row, keys) => {
+          for (const key of keys) {
+            const value = row?.[key];
+            if (value === null || value === undefined || value === "") continue;
+
+            const numeric = Number(value);
+            if (Number.isFinite(numeric)) return numeric;
+          }
+
+          return null;
+        };
+
+        const mapLine = (keys) =>
+          rows
+            .map((d) => ({
+              time: Number(d.time) + IST_OFFSET,
+              value: firstNumber(d, keys),
+            }))
+            .filter((d) => Number.isFinite(d.time) && d.value !== null);
+
+        const smaRibbonDistance = mapLine([
+          "compressionScore",
+          "smaRibbonDistance",
+          "sma_ribbon_distance",
+          "SmaRibbonPriceDistanceOscillator",
+          "smaRibbonPriceDistanceOscillator",
+          "sma_ribbon_price_distance_oscillator",
+          "value",
+        ]);
+        const maximumRibbonDistance = mapLine(["maximumRibbonDistance"]);
+        const priceDistanceFromRibbonCenter = mapLine([
+          "priceDistanceFromRibbonCenter",
+        ]);
+        const compressionThreshold = mapLine(["compressionThreshold"]);
+
+        const timeSource =
+          smaRibbonDistance.length > 0
+            ? smaRibbonDistance
+            : maximumRibbonDistance.length > 0
+              ? maximumRibbonDistance
+              : priceDistanceFromRibbonCenter;
+
+        return {
+          type: "multi",
+          data: {
+            smaRibbonDistance,
+            compressionScore: smaRibbonDistance,
+            maximumRibbonDistance,
+            priceDistanceFromRibbonCenter,
+            compressionThreshold:
+              compressionThreshold.length > 0
+                ? compressionThreshold
+                : timeSource.map((d) => ({ time: d.time, value: 80 })),
+            midLine: timeSource.map((d) => ({ time: d.time, value: 50 })),
+            zeroLine: timeSource.map((d) => ({ time: d.time, value: 0 })),
+          },
+        };
+      }
 
       case "SUPERSMOOTHER": {
         const rows = Array.isArray(response?.data) ? response.data : [];

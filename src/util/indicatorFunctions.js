@@ -1,7 +1,42 @@
+const INDICATOR_TYPE_ALIASES = {
+  ma_ribbon: "MA_RIBBON",
+  MARIBBON: "MA_RIBBON",
+  sma_ribbon_distance: "SMA_RIBBON_DISTANCE",
+  SMARIBBONDISTANCE: "SMA_RIBBON_DISTANCE",
+  SmaRibbonPriceDistanceOscillator: "SMA_RIBBON_DISTANCE",
+  SMARIBBONPRICEDISTANCEOSCILLATOR: "SMA_RIBBON_DISTANCE",
+  sma_ribbon_price_distance_oscillator: "SMA_RIBBON_DISTANCE",
+  hma60_box_distance: "HMA60_BOX_DISTANCE",
+  HMA60BOXDISTANCE: "HMA60_BOX_DISTANCE",
+  supersmoother: "SUPERSMOOTHER",
+  SUPERSMOOTHERMAOSCILLATOR: "SUPERSMOOTHER",
+  healthy_box: "HEALTHY_BOX",
+  HEALTHYCANDLEBOXOSCILLATOR: "HEALTHY_BOX",
+  body915dna: "BODY915DNA",
+  BODY915DNAOSCILLATOR: "BODY915DNA",
+};
+
+export function normalizeIndicatorType(type) {
+  if (!type) return type;
+
+  const raw = String(type).trim();
+  const underscored = raw.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "").toUpperCase();
+  const compact = raw.replace(/[^A-Za-z0-9]+/g, "").toUpperCase();
+
+  return (
+    INDICATOR_TYPE_ALIASES[raw] ||
+    INDICATOR_TYPE_ALIASES[raw.toLowerCase()] ||
+    INDICATOR_TYPE_ALIASES[underscored] ||
+    INDICATOR_TYPE_ALIASES[compact] ||
+    raw
+  );
+}
+
 export function resolvePaneKey(type) {
-  const baseType = type.startsWith("CUSTOM_")
-    ? type.replace("CUSTOM_", "")
-    : type;
+  const normalizedType = normalizeIndicatorType(type);
+  const baseType = normalizedType.startsWith("CUSTOM_")
+    ? normalizedType.replace("CUSTOM_", "")
+    : normalizedType;
 
   switch (baseType) {
     case "RSI":
@@ -38,9 +73,10 @@ export function resolvePaneKey(type) {
     case "SUPERSMOOTHER":
     case "HEALTHY_BOX":
     case "HMA60_BOX_DISTANCE":
+    case "SMA_RIBBON_DISTANCE":
     case "BODY915DNA":
     case "TR":
-      return type; // Return full type to keep panes separate
+      return normalizedType; // Return full type to keep panes separate
     default:
       return "Main"; // Plot overlay indicators on the main chart
   }
@@ -84,6 +120,7 @@ export const PANE_INDICATORS = new Set([
   "HEALTHY_BOX",
   "BODY915DNA",
   "HMA60_BOX_DISTANCE",
+  "SMA_RIBBON_DISTANCE",
 ]);
 
 export let indicatorConfigDefault = {
@@ -422,6 +459,21 @@ export let indicatorConfigDefault = {
     minTick: 0.05,
     upperZone: 5.0,
     lowerZone: -5.0,
+  },
+  SMA_RIBBON_DISTANCE: {
+    source: "close",
+    sma1Length: 20,
+    sma2Length: 50,
+    sma3Length: 100,
+    sma4Length: 200,
+    tightDistancePercent: 0.5,
+    compressionThreshold: 80,
+    useAdaptiveThreshold: false,
+    adaptiveLookback: 500,
+    adaptivePercentile: 20,
+    minimumTightBars: 20,
+    requirePriceInsideRibbon: false,
+    minTick: 0.05,
   },
 };
 
@@ -1920,6 +1972,52 @@ export let indicatorStyleDefault = {
       color: "rgba(128,128,128,1)",
       width: 1,
       visible: true,
+    },
+  },
+  SMA_RIBBON_DISTANCE: {
+    smaRibbonDistance: {
+      color: "rgba(0,188,212,1)",
+      width: 2,
+      lineStyle: 0,
+      visible: true,
+    },
+
+    maximumRibbonDistance: {
+      color: "rgba(255,152,0,1)",
+      width: 1,
+      lineStyle: 0,
+      visible: true,
+    },
+
+    priceDistanceFromRibbonCenter: {
+      color: "rgba(233,30,99,1)",
+      width: 1,
+      lineStyle: 0,
+      visible: true,
+    },
+
+    compressionThreshold: {
+      color: "rgba(156,39,176,1)",
+      width: 1,
+      lineStyle: 2,
+      visible: true,
+      value: 80,
+    },
+
+    midLine: {
+      color: "rgba(158,158,158,0.8)",
+      width: 1,
+      lineStyle: 2,
+      visible: true,
+      value: 50,
+    },
+
+    zeroLine: {
+      color: "rgba(128,128,128,1)",
+      width: 1,
+      lineStyle: 2,
+      visible: true,
+      value: 0,
     },
   },
   VOLATILITY_MOMENTUM_PRO: {

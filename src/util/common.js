@@ -2137,6 +2137,48 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs) => {
           value: 0,
         },
       ];
+    case "SMA_RIBBON_DISTANCE":
+      return [
+        {
+          key: "smaRibbonDistance",
+          label: "Compression Score",
+          type: "line",
+          showValue: true,
+        },
+        {
+          key: "maximumRibbonDistance",
+          label: "Max Ribbon Distance %",
+          type: "line",
+          showValue: true,
+        },
+        {
+          key: "priceDistanceFromRibbonCenter",
+          label: "Price Distance From Center %",
+          type: "line",
+          showValue: true,
+        },
+        {
+          key: "compressionThreshold",
+          label: "Compression Threshold",
+          type: "line",
+          showValue: true,
+          value: 80,
+        },
+        {
+          key: "midLine",
+          label: "Mid Line",
+          type: "line",
+          showValue: true,
+          value: 50,
+        },
+        {
+          key: "zeroLine",
+          label: "Zero Line",
+          type: "line",
+          showValue: true,
+          value: 0,
+        },
+      ];
     default:
       return [];
   }

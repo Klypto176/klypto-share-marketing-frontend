@@ -44,6 +44,7 @@ import OptionChain from "../components/tradingModals/OptionChain";
 import LeftAlertListing from "../components/layout/LeftAlertListing";
 import {
   indicatorConfigDefault,
+  normalizeIndicatorType,
   resolvePaneKey,
   indicatorStyleDefault,
   PANE_INDICATORS,
@@ -120,14 +121,14 @@ export default function Candlestick() {
     };
   });
 
-  const { 
-    activeTool, 
-    setActiveTool, 
-    clearAllDrawings, 
-    selectedLine, 
-    toolboxPos, 
+  const {
+    activeTool,
+    setActiveTool,
+    clearAllDrawings,
+    selectedLine,
+    toolboxPos,
     updateLine,
-    deleteLine, 
+    deleteLine,
     closeToolbox,
     onDragLine,
     getAnchorY
@@ -175,7 +176,7 @@ plot_markers(markers)`,
     setIsWatchlistOpen(false);
     setIsDetailsOpen(false);
     if (activeTab === "Alerts") setActiveTab("Chart");
-    
+
     setPredictResultData([]);
     setPredictionStatus(null);
   };
@@ -233,19 +234,19 @@ plot_markers(markers)`,
         customScriptSeriesRef.current.forEach((series) => {
           try {
             chartRef.current.removeSeries(series);
-          } catch (e) {}
+          } catch (e) { }
         });
       } else {
         try {
           chartRef.current.removeSeries(customScriptSeriesRef.current);
-        } catch (e) {}
+        } catch (e) { }
       }
       customScriptSeriesRef.current = null;
     }
     if (customScriptMarkersRef.current) {
       try {
         customScriptMarkersRef.current.setMarkers([]);
-      } catch (e) {}
+      } catch (e) { }
     }
     lastDeployedMarkersRef.current = null;
 
@@ -335,7 +336,7 @@ plot_markers(markers)`,
         toast.dismiss("compiling");
         toast.success(
           response?.message ||
-            "Scanner triggered successfully! Waiting for results...",
+          "Scanner triggered successfully! Waiting for results...",
         );
         setIsDeploying(false);
         console.log(
@@ -385,7 +386,7 @@ plot_markers(markers)`,
 
     const handleAiPredictionStatus = (data) => {
       console.log(`[STRATEGY SOCKET] ${EVENTS.STRATEGY.AI_PREDICTION_STATUS}:`, data);
-      
+
       setPredictionStatus(data);
       if (data.status === "running") {
         setIsPredicting(true);
@@ -428,10 +429,10 @@ plot_markers(markers)`,
           segment: "SCRIPT",
         }
       ]);
-      
+
       setIsDeployed(true);
       setDeployedStrategyCode("API_PREDICTION");
-      
+
       // Optional: play notification sound
       // playNotificationSound();
     };
@@ -439,7 +440,7 @@ plot_markers(markers)`,
     strategySocket.onAny((eventName, ...args) => {
       // console.log(`[STRATEGY SOCKET] ${eventName}:`, args);
     });
-    
+
     strategySocket.on(EVENTS.STRATEGY.PROGRESS, handleScannerProgress);
     strategySocket.on(EVENTS.STRATEGY.COMPLETE, handleScannerComplete);
     strategySocket.on(EVENTS.STRATEGY.NEW_SIGNAL, handleNewScannerSignal);
@@ -957,9 +958,11 @@ json.dumps(result)
   void indicatorUpdateTrigger; // keep this — forces re-eval when data arrives (ref reads don't re-render)
   const hasPaneIndicators = selectedIndicator.some(
     (ind) =>
-      PANE_INDICATORS.has(typeof ind === "object" ? ind.type : ind) &&
+      PANE_INDICATORS.has(
+        normalizeIndicatorType(typeof ind === "object" ? ind.type : ind),
+      ) &&
       indicatorDataRef.current?.[typeof ind === "object" ? ind.id : ind] !==
-        undefined,
+      undefined,
   );
 
   const fetchStrategyMarkers = async () => {
@@ -1118,8 +1121,8 @@ json.dumps(result)
   //  GET PANE INDEX
   // Instance ids look like "RSI_1747xxx_abc12" — extract base type for pane check
   const getBaseTypeFromId = (instanceId) => {
-    const match = instanceId.match(/^([A-Z0-9_]+?)_\d/);
-    return match ? match[1] : instanceId;
+    const match = String(instanceId).match(/^(.+?)_\d/);
+    return normalizeIndicatorType(match ? match[1] : instanceId);
   };
 
   const getPaneIndex = (indicator) => {
@@ -1295,13 +1298,13 @@ json.dumps(result)
         if (typeof series.setData !== "function") return;
         try {
           chart.removeSeries(series);
-        } catch {}
+        } catch { }
       });
     } else {
       /* SINGLE SERIES */
       try {
         chart.removeSeries(entry);
-      } catch {}
+      } catch { }
     }
 
     delete indicatorSeriesRef.current[instanceId];
@@ -1332,13 +1335,14 @@ json.dumps(result)
 
   // kept for compatibility — ListingModal now directly calls setSelectedIndicator
   const toggleIndicator = useCallback((type) => {
-    const id = `${type}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    const newInst = { id, type };
+    const indicatorType = normalizeIndicatorType(type);
+    const id = `${indicatorType}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const newInst = { id, type: indicatorType };
 
     // Initialize instance-specific config from defaults
     setIndicatorConfigs((prev) => ({
       ...prev,
-      [id]: { ...indicatorConfigDefault[type] },
+      [id]: { ...indicatorConfigDefault[indicatorType] },
     }));
 
     setSelectedIndicator((prev) => [...prev, newInst]);
@@ -1347,27 +1351,28 @@ json.dumps(result)
   // RENDER INDICATOR VALUE
 
   const renderValue = (id, type, value) => {
+    const indicatorType = normalizeIndicatorType(type);
     const emptySymbol = "Ø";
     if (value == null) return emptySymbol;
 
-    const showPercent = type === "AROON"; // Only show % for Aroon
+    const showPercent = indicatorType === "AROON"; // Only show % for Aroon
 
     /* ================= NUMBER VALUES ================= */
     if (typeof value === "number") {
       const style =
         indicatorStyle?.[id]?.sma ||
         indicatorStyle?.[id]?.ma ||
-        indicatorStyle?.[id]?.[type?.toLowerCase()] ||
-        indicatorStyle?.[type]?.sma ||
-        indicatorStyle?.[type]?.ma ||
-        indicatorStyle?.[type]?.[type?.toLowerCase()];
+        indicatorStyle?.[id]?.[indicatorType?.toLowerCase()] ||
+        indicatorStyle?.[indicatorType]?.sma ||
+        indicatorStyle?.[indicatorType]?.ma ||
+        indicatorStyle?.[indicatorType]?.[indicatorType?.toLowerCase()];
 
       if (style?.visible === false) return null;
 
       const color = style?.color || "#333";
 
       return (
-        <span style={{ color }} title={type}>
+        <span style={{ color }} title={indicatorType}>
           {Number(value).toFixed(2)}
           {showPercent ? "%" : ""}
         </span>
@@ -1378,7 +1383,7 @@ json.dumps(result)
     if (typeof value === "object") {
       let keysToShow;
 
-      switch (type) {
+      switch (indicatorType) {
         case "RSI":
           keysToShow = ["rsi", "smoothingMA", "bbUpper", "bbLower"];
           break;
@@ -1448,6 +1453,13 @@ json.dumps(result)
         case "SUPERTREND":
           keysToShow = ["upTrend", "downTrend", "bodyMiddle"];
           break;
+        case "SMA_RIBBON_DISTANCE":
+          keysToShow = [
+            "smaRibbonDistance",
+            "maximumRibbonDistance",
+            "priceDistanceFromRibbonCenter",
+          ];
+          break;
 
         default:
           keysToShow = Object.keys(value);
@@ -1456,7 +1468,7 @@ json.dumps(result)
       return keysToShow
         .filter((key) => {
           const style =
-            indicatorStyle?.[id]?.[key] || indicatorStyle?.[type]?.[key];
+            indicatorStyle?.[id]?.[key] || indicatorStyle?.[indicatorType]?.[key];
           if (style?.visible === false) return false;
           return value[key] != null;
         })
@@ -1464,7 +1476,7 @@ json.dumps(result)
           const val = value[key];
           const color =
             indicatorStyle?.[id]?.[key]?.color ||
-            indicatorStyle?.[type]?.[key]?.color ||
+            indicatorStyle?.[indicatorType]?.[key]?.color ||
             "#333";
 
           return (
@@ -1482,7 +1494,8 @@ json.dumps(result)
 
   const renderIndicators = () => {
     return selectedIndicator?.map((ind) => {
-      const { id, type } = ind;
+      const { id } = ind;
+      const type = normalizeIndicatorType(ind.type);
       const Component = indicatorComponents[type];
       if (!Component) return null;
 
@@ -1611,7 +1624,7 @@ json.dumps(result)
   // ATTACH CROSSHAIR
 
   const attachCrosshair = useCallback((chart) => {
-    if (!chart) return () => {};
+    if (!chart) return () => { };
     const handler = (param) => {
       const charts = [
         chartRef.current,
@@ -1733,7 +1746,7 @@ json.dumps(result)
         if (seriesRef.current) {
           try {
             chartRef.current.removeSeries(seriesRef.current);
-          } catch {}
+          } catch { }
           seriesRef.current = null;
         }
         return;
@@ -1815,7 +1828,7 @@ json.dumps(result)
       ) {
         try {
           chartRef.current.removeSeries(seriesRef.current);
-        } catch {}
+        } catch { }
         seriesRef.current = null;
         customScriptMarkersRef.current = null;
         strategyMarkersRef.current = null;
@@ -1826,7 +1839,7 @@ json.dumps(result)
       // the old Y range and the new candles appear off-screen.
       try {
         chartRef.current.priceScale("right").applyOptions({ autoScale: true });
-      } catch {}
+      } catch { }
 
       switch (chartType) {
         case "line":
@@ -2134,7 +2147,9 @@ json.dumps(result)
         if (activeIndicators?.length > 0) {
           const sentTypes = new Set();
           activeIndicators.forEach((ind) => {
-            const indType = typeof ind === "object" ? ind.type : ind;
+            const indType = normalizeIndicatorType(
+              typeof ind === "object" ? ind.type : ind,
+            );
             if (sentTypes.has(indType)) return;
             sentTypes.add(indType);
             emit(EVENTS.INDICATOR.LIVE, {
@@ -2154,7 +2169,7 @@ json.dumps(result)
 
       console.log(`[LiveIndicator] Payload:`, payload);
 
-      const indicatorType = payload.type;
+      const indicatorType = normalizeIndicatorType(payload.type);
       const dataArray = payload.data;
       if (!Array.isArray(dataArray) || dataArray.length === 0) return;
       const lastPoint = dataArray[dataArray.length - 1];
@@ -2166,7 +2181,9 @@ json.dumps(result)
       if (isNaN(pointTime)) return;
 
       selectedIndicatorRef.current.forEach((inst) => {
-        const instType = typeof inst === "object" ? inst.type : inst;
+        const instType = normalizeIndicatorType(
+          typeof inst === "object" ? inst.type : inst,
+        );
         const instId = typeof inst === "object" ? inst.id : inst;
         if (instType !== indicatorType) return;
         const seriesGroup = indicatorSeriesRef.current?.[instId];
@@ -2179,6 +2196,9 @@ json.dumps(result)
           "overboughtFill",
           "oversoldFill",
           "bandBackground",
+          "compressionThreshold",
+          "midLine",
+          "zeroLine",
         ];
 
         Object.entries(seriesGroup).forEach(([lineName, series]) => {
@@ -2200,6 +2220,15 @@ json.dumps(result)
               value = style?.middle?.value ?? 50;
             } else if (lineName === "lower" || lineName === "oversoldFill") {
               value = style?.lower?.value ?? 30;
+            } else if (lineName === "compressionThreshold") {
+              value =
+                lastPoint.compressionThreshold ??
+                style?.compressionThreshold?.value ??
+                80;
+            } else if (lineName === "midLine") {
+              value = style?.midLine?.value ?? 50;
+            } else if (lineName === "zeroLine") {
+              value = style?.zeroLine?.value ?? 0;
             }
           } else {
             value =
@@ -2566,10 +2595,10 @@ json.dumps(result)
                     overflowY: "hidden",
                   }}
                 >
-                  <DrawingToolbar 
-                    activeTool={activeTool} 
-                    setActiveTool={setActiveTool} 
-                    clearAllDrawings={clearAllDrawings} 
+                  <DrawingToolbar
+                    activeTool={activeTool}
+                    setActiveTool={setActiveTool}
+                    clearAllDrawings={clearAllDrawings}
                   />
                   <div
                     className="chart-and-panes-wrapper mobile-scrollable-chart"
@@ -2676,7 +2705,7 @@ json.dumps(result)
                                   {Math.round(
                                     (scannerProgressData.processed /
                                       scannerProgressData.total) *
-                                      100,
+                                    100,
                                   )}
                                   %
                                 </div>
@@ -3016,7 +3045,8 @@ json.dumps(result)
                             {selectedIndicator
                               .filter((ind) => getPaneIndex(ind.id) === 0)
                               .map((ind) => {
-                                const { id, type } = ind;
+                                const { id } = ind;
+                                const type = normalizeIndicatorType(ind.type);
                                 const value = liveIndicatorData[id];
                                 return (
                                   <IndicatorBar
@@ -3054,7 +3084,8 @@ json.dumps(result)
                           {selectedIndicator
                             .filter((ind) => getPaneIndex(ind.id) !== 0)
                             .map((ind) => {
-                              const { id, type } = ind;
+                              const { id } = ind;
+                              const type = normalizeIndicatorType(ind.type);
                               const value = liveIndicatorData[id];
                               const paneDiv =
                                 panesRef.current[id]?.pane?.getHTMLElement();
@@ -3142,7 +3173,8 @@ json.dumps(result)
 
                           {selectedIndicator &&
                             selectedIndicator.map((ind) => {
-                              const { id, type } = ind;
+                              const { id } = ind;
+                              const type = normalizeIndicatorType(ind.type);
                               const value = liveIndicatorData[id];
                               return (
                                 <div

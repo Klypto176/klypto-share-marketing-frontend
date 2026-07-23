@@ -97,8 +97,8 @@ class SocketManager {
     }
   }
 
-  emit(eventName, payload) {
-    this.socket.emit(eventName, payload);
+  emit(eventName, ...args) {
+    this.socket.emit(eventName, ...args);
   }
   
   once(eventName, callback) {

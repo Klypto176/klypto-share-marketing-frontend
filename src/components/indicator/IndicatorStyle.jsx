@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useState, useRef, useEffect } from "react";
 import ColorPalettePanel from "./ColorPalettePanel";
 import { getRowsByIndicator } from "../../util/common";
+import { normalizeIndicatorType } from "../../util/indicatorFunctions";
 
 export default function IndicatorStyle({
   indicatorStyle,
@@ -12,7 +13,11 @@ export default function IndicatorStyle({
 }) {
   // activeBarIndicator is now {id, type} â€” fall back to string for legacy compat
   const instanceId = typeof activeBarIndicator === "object" ? activeBarIndicator.id   : activeBarIndicator;
-  const normalizedType = typeof activeBarIndicator === "object" ? activeBarIndicator.type : activeBarIndicator.replace(/[\s/%]+/g, "");
+  const normalizedType = normalizeIndicatorType(
+    typeof activeBarIndicator === "object"
+      ? activeBarIndicator.type
+      : activeBarIndicator.replace(/[\s/%]+/g, ""),
+  );
 
   // Read style by instance id (so two RSIs are independent); fall back to type key
   const selectedStyle = indicatorStyle?.[instanceId] ?? indicatorStyle?.[normalizedType];

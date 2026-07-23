@@ -5,7 +5,10 @@ import useChartFunctions from "../../util/useChartFunctions";
 import { updateIndicatorFromInput } from "./IndicatorIndex";
 import React, { useEffect, useState } from "react";
 import socket from "../../services/websocket/socket";
-import { indicatorConfigDefault } from "../../util/indicatorFunctions";
+import {
+  indicatorConfigDefault,
+  normalizeIndicatorType,
+} from "../../util/indicatorFunctions";
 
 /* =========================
    BASE SETTINGS COMPONENT
@@ -190,9 +193,11 @@ export default function IndicatorPropertyDialog({
       ? activeBarIndicator.id
       : activeBarIndicator;
   const activeType =
-    typeof activeBarIndicator === "object"
-      ? activeBarIndicator.type
-      : activeBarIndicator;
+    normalizeIndicatorType(
+      typeof activeBarIndicator === "object"
+        ? activeBarIndicator.type
+        : activeBarIndicator,
+    );
 
   const currentConfig = {
     ...(indicatorConfigDefault[activeType] || {}),
@@ -441,6 +446,203 @@ export default function IndicatorPropertyDialog({
                 </div>
               </div>
             ))}
+          </>
+        );
+
+      case "SMA_RIBBON_DISTANCE":
+        return (
+          <>
+            <Form.Group as={Row} className="mb-3 align-items-center">
+              <Form.Label style={labelStyle} className="mb-0">
+                Source
+              </Form.Label>
+              <Col>
+                <Form.Select
+                  value={currentConfig?.source ?? "close"}
+                  onChange={(e) => updateProperty("source", e.target.value)}
+                >
+                  {["Close", "Open", "High", "Low", "HL2", "HLC3", "OHLC4"].map(
+                    (opt) => (
+                      <option key={opt} value={opt.toLowerCase()}>
+                        {opt}
+                      </option>
+                    ),
+                  )}
+                </Form.Select>
+              </Col>
+            </Form.Group>
+
+            {[
+              ["sma1Length", "SMA 1 Length"],
+              ["sma2Length", "SMA 2 Length"],
+              ["sma3Length", "SMA 3 Length"],
+              ["sma4Length", "SMA 4 Length"],
+            ].map(([key, label]) => (
+              <Form.Group
+                key={key}
+                as={Row}
+                className="mb-3 align-items-center"
+              >
+                <Form.Label style={labelStyle} className="mb-0">
+                  {label}
+                </Form.Label>
+                <Col>
+                  <Form.Control
+                    type="number"
+                    min={1}
+                    value={currentConfig?.[key]}
+                    onChange={(e) =>
+                      updateProperty(key, Math.max(1, Number(e.target.value)))
+                    }
+                  />
+                </Col>
+              </Form.Group>
+            ))}
+
+            <hr />
+
+            <Form.Group as={Row} className="mb-3 align-items-center">
+              <Form.Label style={labelStyle} className="mb-0">
+                Tight Distance %
+              </Form.Label>
+              <Col>
+                <Form.Control
+                  type="number"
+                  step="0.05"
+                  value={currentConfig?.tightDistancePercent}
+                  onChange={(e) =>
+                    updateProperty(
+                      "tightDistancePercent",
+                      Number(e.target.value),
+                    )
+                  }
+                />
+              </Col>
+            </Form.Group>
+
+            <Form.Group as={Row} className="mb-3 align-items-center">
+              <Form.Label style={labelStyle} className="mb-0">
+                Compression Threshold
+              </Form.Label>
+              <Col>
+                <Form.Control
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={currentConfig?.compressionThreshold}
+                  onChange={(e) =>
+                    updateProperty(
+                      "compressionThreshold",
+                      Number(e.target.value),
+                    )
+                  }
+                />
+              </Col>
+            </Form.Group>
+
+            <Form.Group as={Row} className="mb-3 align-items-center">
+              <Form.Label style={labelStyle} className="mb-0">
+                Minimum Tight Bars
+              </Form.Label>
+              <Col>
+                <Form.Control
+                  type="number"
+                  min={1}
+                  value={currentConfig?.minimumTightBars}
+                  onChange={(e) =>
+                    updateProperty(
+                      "minimumTightBars",
+                      Math.max(1, Number(e.target.value)),
+                    )
+                  }
+                />
+              </Col>
+            </Form.Group>
+
+            <Form.Group as={Row} className="mb-3 align-items-center">
+              <Form.Label style={labelStyle} className="mb-0">
+                Use Adaptive Threshold
+              </Form.Label>
+              <Col>
+                <Form.Check
+                  type="checkbox"
+                  checked={currentConfig?.useAdaptiveThreshold}
+                  onChange={(e) =>
+                    updateProperty("useAdaptiveThreshold", e.target.checked)
+                  }
+                />
+              </Col>
+            </Form.Group>
+
+            <Form.Group as={Row} className="mb-3 align-items-center">
+              <Form.Label style={labelStyle} className="mb-0">
+                Adaptive Lookback
+              </Form.Label>
+              <Col>
+                <Form.Control
+                  type="number"
+                  min={1}
+                  value={currentConfig?.adaptiveLookback}
+                  onChange={(e) =>
+                    updateProperty(
+                      "adaptiveLookback",
+                      Math.max(1, Number(e.target.value)),
+                    )
+                  }
+                />
+              </Col>
+            </Form.Group>
+
+            <Form.Group as={Row} className="mb-3 align-items-center">
+              <Form.Label style={labelStyle} className="mb-0">
+                Adaptive Percentile
+              </Form.Label>
+              <Col>
+                <Form.Control
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={currentConfig?.adaptivePercentile}
+                  onChange={(e) =>
+                    updateProperty(
+                      "adaptivePercentile",
+                      Number(e.target.value),
+                    )
+                  }
+                />
+              </Col>
+            </Form.Group>
+
+            <Form.Group as={Row} className="mb-3 align-items-center">
+              <Form.Label style={labelStyle} className="mb-0">
+                Require Price Inside Ribbon
+              </Form.Label>
+              <Col>
+                <Form.Check
+                  type="checkbox"
+                  checked={currentConfig?.requirePriceInsideRibbon}
+                  onChange={(e) =>
+                    updateProperty("requirePriceInsideRibbon", e.target.checked)
+                  }
+                />
+              </Col>
+            </Form.Group>
+
+            <Form.Group as={Row} className="mb-3 align-items-center">
+              <Form.Label style={labelStyle} className="mb-0">
+                Min Tick
+              </Form.Label>
+              <Col>
+                <Form.Control
+                  type="number"
+                  step="0.01"
+                  value={currentConfig?.minTick}
+                  onChange={(e) =>
+                    updateProperty("minTick", Number(e.target.value))
+                  }
+                />
+              </Col>
+            </Form.Group>
           </>
         );
 

@@ -5,6 +5,7 @@ import { Form, InputGroup, ListGroup } from "react-bootstrap";
 import { Spinner } from "./Spinner";
 import apiService from "../../services/apiServices";
 import { useDebounce } from "../../util/common";
+import { normalizeIndicatorType } from "../../util/indicatorFunctions";
 import { getStockLogo } from "../../util/stockSymbol/helper";
 import NSE from "../../assets/NSE.svg";
 import BSE from "../../assets/BSE.svg";
@@ -576,9 +577,12 @@ export const ListingModal = ({
                         key={index}
                         action
                         onClick={() => {
+                          const indicatorType = normalizeIndicatorType(
+                            item?.config?.type || item?.type || item.slug,
+                          );
                           const newInst = {
-                            id: `${item.slug}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-                            type: item.slug,
+                            id: `${indicatorType}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                            type: indicatorType,
                           };
                           setSelectedIndicator((prev) => [...prev, newInst]);
                           onClose();
