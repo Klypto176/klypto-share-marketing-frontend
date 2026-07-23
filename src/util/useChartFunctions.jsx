@@ -1289,6 +1289,8 @@ async function fetchDataForIndicators(
       return null;
     }
 
+    console.log("_________________________)987656787678", arr);
+
     const mapLine = (arr, field) =>
       arr
         ?.map((d) => ({
@@ -1297,7 +1299,13 @@ async function fetchDataForIndicators(
         }))
         .filter((d) => d.value !== null) ?? [];
 
-    console.log(type, "mapped conversion", response?.data, "conversionLine");
+    console.log(
+      type,
+      "mapped conversion",
+      response,
+      response?.data,
+      "conversionLine",
+    );
 
     switch (type) {
       /* ---------------- SINGLE VALUE ---------------- */
