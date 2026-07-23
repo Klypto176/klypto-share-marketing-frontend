@@ -275,10 +275,15 @@ export default function IndicatorPropertyDialog({
 
     const socketPayload = {
       ...payload,
+      config,
       type: activeType,
+      indicator: activeType,
+      id: instanceId,
       instanceId,
+      instance_id: instanceId,
+      indicatorId: instanceId,
       symbol: selectedCurrency?.name,
-      interval: timeframeValue,
+      interval: longInterval,
       fromDate: fromDate,
       toDate: toDate,
     };

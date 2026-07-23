@@ -4,6 +4,22 @@ import { normalizeIndicatorType } from "./indicatorFunctions";
 
 const IST_OFFSET = 19800;
 
+const BACKEND_INTERVAL_MAP = {
+  "1m": "ONE_MINUTE",
+  "3m": "THREE_MINUTE",
+  "5m": "FIVE_MINUTE",
+  "10m": "TEN_MINUTE",
+  "15m": "FIFTEEN_MINUTE",
+  "30m": "THIRTY_MINUTE",
+  "60m": "ONE_HOUR",
+  "1h": "ONE_HOUR",
+  "1d": "ONE_DAY",
+};
+
+function normalizeBackendInterval(interval) {
+  return BACKEND_INTERVAL_MAP[String(interval || "").toLowerCase()] || interval;
+}
+
 export default function useChartFunctions({
   indicatorSeriesRef,
   indicatorDataRef,
@@ -29,6 +45,10 @@ export default function useChartFunctions({
         const type = normalizeIndicatorType(
           typeof indItem === "object" ? indItem.type : indItem,
         );
+        const indicatorConfig =
+          indicatorConfigs?.[id] ||
+          indicatorConfigs?.[type] ||
+          {};
         try {
           const result = await fetchDataForIndicators(
             candlesRef.current,
@@ -38,6 +58,8 @@ export default function useChartFunctions({
             fromDate,
             toDate,
             socketRef,
+            id,
+            indicatorConfig,
           );
           processIndicatorResponse(id, type, result);
         } catch (error) {
@@ -836,8 +858,11 @@ async function fetchDataForIndicators(
   fromDate,
   toDate,
   socketRef,
+  instanceId,
+  indicatorConfig = {},
 ) {
   const indicatorType = normalizeIndicatorType(type);
+  const backendInterval = normalizeBackendInterval(timeframeValue);
   const isValidChartValue = (v) => {
     const num = Number(v);
 
@@ -873,10 +898,12 @@ async function fetchDataForIndicators(
           };
 
           const onResponse = (data) => {
+            if (data?.requestId && data.requestId !== requestId) return;
             settle(resolve, data);
           };
 
           const onError = (err) => {
+            if (err?.requestId && err.requestId !== requestId) return;
             console.error("fetchDataForIndicators error:", err);
             settle(reject, err);
           };
@@ -888,24 +915,31 @@ async function fetchDataForIndicators(
             );
           }, 30000);
 
-          activeSocket.once("indicatorDetailsResponse", onResponse);
-          activeSocket.once("indicatorDetailsError", onError);
+          activeSocket.on("indicatorDetailsResponse", onResponse);
+          activeSocket.on("indicatorDetailsError", onError);
 
           console.log("[Indicator] request", {
             type: indicatorType,
             requestId,
+            instanceId,
             symbol: selectedCurrency?.name,
-            interval: timeframeValue,
-            candles: Array.isArray(candles) ? candles.length : 0,
+            interval: backendInterval,
+            chartCandles: Array.isArray(candles) ? candles.length : 0,
           });
 
           activeSocket.emit("getIndicatorDetails", {
+            ...indicatorConfig,
+            config: indicatorConfig,
+            id: instanceId,
+            instanceId,
+            instance_id: instanceId,
+            indicatorId: instanceId,
+            indicator: indicatorType,
             symbol: selectedCurrency?.name,
-            interval: timeframeValue,
+            interval: backendInterval,
             fromDate: fromDate,
             toDate: toDate,
             type: indicatorType,
-            candles,
             requestId,
           });
         });

@@ -10,11 +10,32 @@ const LINE_KEYS = [
   "zeroLine",
 ];
 
+const HELPER_LINE_KEYS = new Set([
+  "maximumRibbonDistance",
+  "priceDistanceFromRibbonCenter",
+]);
+
 const DEFAULT_LEVELS = {
   compressionThreshold: 80,
   midLine: 50,
   zeroLine: 0,
 };
+
+const OSCILLATOR_SCALE = {
+  autoScale: true,
+  mode: 0,
+  scaleMargins: {
+    top: 0.1,
+    bottom: 0.1,
+  },
+};
+
+const oscillatorAutoscale = () => ({
+  priceRange: {
+    minValue: 0,
+    maxValue: 100,
+  },
+});
 
 export default function SmaRibbonDistancePlot({
   id,
@@ -25,7 +46,7 @@ export default function SmaRibbonDistancePlot({
   chart,
 }) {
   useEffect(() => {
-    if (!result) return;
+    if (!result || !chart) return;
 
     if (indicatorSeriesRef.current?.[id]) {
       Object.values(indicatorSeriesRef.current[id]).forEach((series) => {
@@ -48,16 +69,27 @@ export default function SmaRibbonDistancePlot({
 
     const createLine = (key) => {
       const styleConfig = style?.[key] || {};
+      const visible = HELPER_LINE_KEYS.has(key)
+        ? false
+        : styleConfig.visible ?? true;
       const series = addSeries(id, LineSeries, {
-        color: styleConfig.color,
-        lineWidth: styleConfig.width,
-        lineStyle: styleConfig.lineStyle,
-        visible: styleConfig.visible,
+        color: styleConfig.color || "#00bcd4",
+        lineWidth: styleConfig.width ?? 2,
+        lineStyle: styleConfig.lineStyle ?? 0,
+        visible,
         priceLineVisible: false,
-        lastValueVisible: !["compressionThreshold", "midLine", "zeroLine"].includes(key),
+        lastValueVisible:
+          visible && !["compressionThreshold", "midLine", "zeroLine"].includes(key),
+        priceFormat: {
+          type: "price",
+          precision: 2,
+          minMove: 0.01,
+        },
+        autoscaleInfoProvider: oscillatorAutoscale,
       });
 
       if (!series) return;
+      series.priceScale?.().applyOptions?.(OSCILLATOR_SCALE);
 
       const isLevelLine = Object.prototype.hasOwnProperty.call(
         DEFAULT_LEVELS,
@@ -80,7 +112,7 @@ export default function SmaRibbonDistancePlot({
     LINE_KEYS.forEach(createLine);
 
     indicatorSeriesRef.current[id] = groupedSeries;
-  }, [result]);
+  }, [result, chart]);
 
   useEffect(() => {
     const group = indicatorSeriesRef.current?.[id];
@@ -102,11 +134,16 @@ export default function SmaRibbonDistancePlot({
       const styleConfig = style?.[key] || {};
 
       series.applyOptions({
-        color: styleConfig.color,
-        lineWidth: styleConfig.width,
-        lineStyle: styleConfig.lineStyle,
-        visible: styleConfig.visible,
+        color: styleConfig.color || "#00bcd4",
+        lineWidth: styleConfig.width ?? 2,
+        lineStyle: styleConfig.lineStyle ?? 0,
+        visible: HELPER_LINE_KEYS.has(key)
+          ? false
+          : styleConfig.visible ?? true,
+        autoscaleInfoProvider: oscillatorAutoscale,
       });
+
+      series.priceScale?.().applyOptions?.(OSCILLATOR_SCALE);
 
       if (["compressionThreshold", "midLine", "zeroLine"].includes(key)) {
         const value = styleConfig.value ?? DEFAULT_LEVELS[key] ?? 0;

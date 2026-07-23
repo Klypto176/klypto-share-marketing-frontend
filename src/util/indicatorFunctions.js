@@ -1986,14 +1986,14 @@ export let indicatorStyleDefault = {
       color: "rgba(255,152,0,1)",
       width: 1,
       lineStyle: 0,
-      visible: true,
+      visible: false,
     },
 
     priceDistanceFromRibbonCenter: {
       color: "rgba(233,30,99,1)",
       width: 1,
       lineStyle: 0,
-      visible: true,
+      visible: false,
     },
 
     compressionThreshold: {

@@ -900,6 +900,8 @@ json.dumps(result)
   const prevTimeframeRef = useRef(timeframeValue);
   const prevCurrencyRef = useRef(selectedCurrency);
   const prevChartTypeRef = useRef(chartType);
+  const prevFromDateRef = useRef(fromDate);
+  const prevToDateRef = useRef(toDate);
   const currentCandleRef = useRef(null);
   const lastCandleTimeRef = useRef(null);
   const candlesRef = useRef([]);
@@ -1048,7 +1050,9 @@ json.dumps(result)
     const isContextChange =
       prevTimeframeRef.current !== timeframeValue ||
       prevCurrencyRef.current !== selectedCurrency?.name ||
-      prevChartTypeRef.current !== chartType;
+      prevChartTypeRef.current !== chartType ||
+      prevFromDateRef.current !== fromDate ||
+      prevToDateRef.current !== toDate;
 
     let indicatorsToFetch = selectedIndicator;
 
@@ -1084,11 +1088,10 @@ json.dumps(result)
     prevTimeframeRef.current = timeframeValue;
     prevCurrencyRef.current = selectedCurrency?.name;
     prevChartTypeRef.current = chartType;
-    // NOTE: fromDate and toDate are intentionally excluded — they affect candle data,
-    // not indicator fetching. Including them caused an infinite loop when GoToDate
-    // updated fromDate, which re-triggered this effect and set state repeatedly.
+    prevFromDateRef.current = fromDate;
+    prevToDateRef.current = toDate;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedIndicator, selectedCurrency?.name, timeframeValue, chartType]);
+  }, [selectedIndicator, selectedCurrency?.name, timeframeValue, chartType, fromDate, toDate]);
 
   const toggleIndicatorVisibility = (indicator) => {
     const currentVisible = indicatorVisibility[indicator] ?? true;
@@ -1454,11 +1457,7 @@ json.dumps(result)
           keysToShow = ["upTrend", "downTrend", "bodyMiddle"];
           break;
         case "SMA_RIBBON_DISTANCE":
-          keysToShow = [
-            "smaRibbonDistance",
-            "maximumRibbonDistance",
-            "priceDistanceFromRibbonCenter",
-          ];
+          keysToShow = ["smaRibbonDistance"];
           break;
 
         default:
@@ -1718,7 +1717,7 @@ json.dumps(result)
   }, [selectedCurrency, timeframeValue, fromDate, toDate]);
 
   // ── Central Socket Hook ──
-  const { emit, once, connect, connected, id, off } = useSocket({
+  const { emit, on, once, connect, connected, id, off } = useSocket({
     handleConnect: () => {
       console.log("✅ SOCKET CONNECTED", connected);
       requestHistoricalData();
@@ -2258,8 +2257,8 @@ json.dumps(result)
   // Keep emitRef and socketRef up to date
   useEffect(() => {
     emitRef.current = emit;
-    socketRef.current = { emit, once, off, connected };
-  }, [emit, once, off, connected]);
+    socketRef.current = { emit, on, once, off, connected };
+  }, [emit, on, once, off, connected]);
 
   // Main useEffect for chart type/data changes
   useEffect(() => {
