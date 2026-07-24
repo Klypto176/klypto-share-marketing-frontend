@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { LineSeries } from "lightweight-charts";
+import { LineSeries, HistogramSeries } from "lightweight-charts";
 
 export default function SMARibbonPlot({
   id,
@@ -21,12 +21,11 @@ export default function SMARibbonPlot({
     }
 
     const style = indicatorStyle?.[id] ?? indicatorStyle?.SMARIBBON;
-
     const groupedSeries = {};
 
     const seriesConfig = [
       {
-        key: "oscillator",
+        key: "compressionScore",
         color: "rgba(33,150,243,1)",
       },
       {
@@ -49,25 +48,94 @@ export default function SMARibbonPlot({
         key: "distance34",
         color: "rgba(244,67,54,1)",
       },
+      {
+        key: "effectiveDistanceThreshold",
+        color: "rgba(121,85,72,1)",
+      },
+      {
+        key: "consecutiveTightBars",
+        color: "rgba(63,81,181,1)",
+      },
+      {
+        key: "priceDistanceFromRibbonCenter",
+        color: "rgba(233,30,99,1)",
+      },
     ];
+
+    // Background Color Series
+    if (result.data.compressionScore) {
+      const bgSeries = addSeries(id, HistogramSeries, {
+        lastValueVisible: false,
+        priceLineVisible: false,
+        baseLineVisible: false,
+        autoscaleInfoProvider: () => null,
+      });
+
+      if (bgSeries) {
+        const bgData = result.data.compressionScore.map((d) => {
+          let bgColor = "transparent";
+          if (d.tightBarCount >= (d.minimumTightBars || 20)) {
+            bgColor = "rgba(255,0,255,0.13)"; // fuchsia 87% transparency
+          } else if (d.value >= (d.compressionThreshold || 80)) {
+            bgColor = "rgba(0,255,255,0.08)"; // aqua 92% transparency
+          }
+          return {
+            time: d.time,
+            value: bgColor !== "transparent" ? 100000 : 0,
+            color: bgColor,
+          };
+        });
+
+        bgSeries.setData(bgData);
+        try {
+          bgSeries.applyOptions({ base: -100000 });
+        } catch (e) {}
+
+        groupedSeries["_bg"] = bgSeries;
+      }
+    }
 
     seriesConfig.forEach(({ key, color }) => {
       const s = addSeries(id, LineSeries, {
         color: style?.[key]?.color || color,
-        lineWidth: style?.[key]?.width || 2,
+        lineWidth: style?.[key]?.width || (key === "compressionScore" ? 3 : 2),
         lineStyle: style?.[key]?.lineStyle || 0,
-        visible: style?.[key]?.visible ?? true,
+        visible: style?.[key]?.visible ?? (key === "compressionScore"),
         priceLineVisible: false,
         lastValueVisible: true,
       });
 
-      if (result.data[key]) s.setData(result.data[key]);
+      if (!s) return;
+
+      if (result.data[key]) {
+        let finalData = result.data[key];
+
+        if (key === "compressionScore") {
+          const c0 = style?.compressionScore?.color0 || "rgba(255,0,255,1)";
+          const c1 = style?.compressionScore?.color1 || "rgba(0,255,255,1)";
+          const c2 = style?.compressionScore?.color2 || "rgba(255,165,0,1)";
+          const c3 = style?.compressionScore?.color3 || "rgba(128,128,128,1)";
+
+          finalData = finalData.map((d) => {
+            let pointColor = c3;
+            if (d.tightBarCount >= (d.minimumTightBars || 20)) {
+              pointColor = c0;
+            } else if (d.value >= (d.compressionThreshold || 80)) {
+              pointColor = c1;
+            } else if (d.value >= 50) {
+              pointColor = c2;
+            }
+            return { time: d.time, value: d.value, color: pointColor };
+          });
+        }
+
+        s.setData(finalData);
+      }
 
       groupedSeries[key] = s;
     });
 
     // Reference lines
-
     const refLevels = [
       {
         key: "perfectCompression",
@@ -98,27 +166,23 @@ export default function SMARibbonPlot({
 
     if (refData.length) {
       refLevels.forEach((level) => {
+        const val = style?.[level.key]?.value !== undefined ? Number(style[level.key].value) : level.value;
+
         const s = addSeries(`${id}_${level.key}`, LineSeries, {
-          color:
-            style?.[level.key]?.color ||
-            level.defaultColor,
-          lineWidth:
-            style?.[level.key]?.width || 1,
-          lineStyle:
-            level.value === 50
-              ? 0
-              : 2,
-          visible:
-            style?.[level.key]?.visible ??
-            true,
+          color: style?.[level.key]?.color || level.defaultColor,
+          lineWidth: style?.[level.key]?.width || 1,
+          lineStyle: val === 50 ? 0 : 2,
+          visible: style?.[level.key]?.visible ?? true,
           priceLineVisible: false,
           lastValueVisible: false,
         });
 
+        if (!s) return;
+
         s.setData(
           refData.map((x) => ({
             time: x.time,
-            value: level.value,
+            value: val,
           }))
         );
 
@@ -127,25 +191,7 @@ export default function SMARibbonPlot({
     }
 
     indicatorSeriesRef.current[id] = groupedSeries;
-  }, [result]);
-
-  useEffect(() => {
-    const group = indicatorSeriesRef.current?.[id];
-    if (!group) return;
-
-    const style = indicatorStyle?.[id] ?? indicatorStyle?.SMARIBBON;
-
-    Object.entries(group).forEach(([key, series]) => {
-      if (!series?.applyOptions) return;
-
-      series.applyOptions({
-        color: style?.[key]?.color,
-        lineWidth: style?.[key]?.width,
-        lineStyle: style?.[key]?.lineStyle,
-        visible: style?.[key]?.visible,
-      });
-    });
-  }, [indicatorStyle]);
+  }, [result, indicatorStyle]); // Add indicatorStyle here so it completely re-renders when styles change
 
   return null;
 }

@@ -549,6 +549,7 @@ export default function Candlestick() {
   const lastPaginationAutoDeployKeyRef = useRef(null);
   const previousDateRangeRef = useRef({ fromDate, toDate });
   const lastDateRangeAutoDeployKeyRef = useRef(null);
+  const hasConnectedOnceRef = useRef(false);
 
   useEffect(() => {
     areStrategyVisualsVisibleRef.current = areStrategyVisualsVisible;
@@ -4597,6 +4598,7 @@ json.dumps(result)
         "oscillatorFill",
         "bbLowerBand",
         "bbUperBand",
+        "_bg"
       ];
 
       return keysToShow
@@ -5511,18 +5513,22 @@ json.dumps(result)
     },
     handleConnect: () => {
       console.log("✅ SOCKET CONNECTED", true);
-      requestHistoricalData(true);
       requestLiveTick(true);
 
-      if (
-        selectedIndicatorRef.current &&
-        selectedIndicatorRef.current.length > 0
-      ) {
-        fetchIndicatorData(
-          selectedIndicatorRef.current,
-          selectedCurrency,
-          timeframeValue,
-        );
+      if (!hasConnectedOnceRef.current) {
+        hasConnectedOnceRef.current = true;
+        requestHistoricalData(true);
+
+        if (
+          selectedIndicatorRef.current &&
+          selectedIndicatorRef.current.length > 0
+        ) {
+          fetchIndicatorData(
+            selectedIndicatorRef.current,
+            selectedCurrency,
+            timeframeValue,
+          );
+        }
       }
     },
     handleHistoricalData: (response) => {
@@ -6247,19 +6253,48 @@ json.dumps(result)
           "middleRSI",
           "lowerRSI",
           "zero",
+          "perfectCompression",
+          "compressionThreshold",
+          "neutral",
         ];
 
         Object.entries(seriesGroup).forEach(([lineName, series]) => {
-          if (lineName.startsWith("_")) return;
+          if (lineName.startsWith("_")) {
+            if (instType === "SMA_RIBBON_DISTANCE" && lineName === "_bg") {
+               try {
+                 const tightCount = lastPoint.tightBarCount ?? 0;
+                 const cScore = lastPoint.compressionScore ?? lastPoint.oscillator ?? 0;
+                 const minTight = 20; 
+                 const compThresh = 80;
+                 let bgColor = "transparent";
+                 if (tightCount >= minTight) bgColor = "rgba(255,0,255,0.13)";
+                 else if (cScore >= compThresh) bgColor = "rgba(0,255,255,0.08)";
+                 
+                 series.update({
+                   time: pointTime,
+                   value: bgColor !== "transparent" ? 100000 : 0,
+                   color: bgColor
+                 });
+               } catch (e) {}
+            }
+            return;
+          }
           if (!series || typeof series.update !== "function") return;
+
+          let mappedLineName = lineName;
+          if (instType === "SMA_RIBBON_DISTANCE") {
+            if (lineName === "compressionScore" && lastPoint.compressionScore === undefined) mappedLineName = "oscillator";
+            if (lineName === "maxDistance") mappedLineName = "maximumRibbonDistance";
+            if (lineName === "avgDistance") mappedLineName = "averagePairDistance";
+          }
 
           let value;
           // First, check if the payload provides a dynamic value for this line
           const dynamicValue =
-            lastPoint[lineName] ??
-            lastPoint[lineName + "Band"] ??
-            (lineName === indicatorType.toLowerCase()
-              ? lastPoint[lineName]
+            lastPoint[mappedLineName] ??
+            lastPoint[mappedLineName + "Band"] ??
+            (mappedLineName === indicatorType.toLowerCase()
+              ? lastPoint[mappedLineName]
               : undefined);
 
           if (dynamicValue !== undefined && dynamicValue !== null) {
@@ -6304,8 +6339,14 @@ json.dumps(result)
                   : instType === "RSI"
                   ? (style?.lowerRSI?.value ?? 30)
                   : (style?.lower?.value ?? 30);
-            } else if (lineName === "zeroLine") {
-              value = style?.zeroLine?.value ?? 0;
+            } else if (lineName === "zeroLine" || lineName === "zero") {
+              value = style?.zeroLine?.value ?? style?.zero?.value ?? 0;
+            } else if (lineName === "perfectCompression") {
+              value = style?.perfectCompression?.value ?? 100;
+            } else if (lineName === "compressionThreshold") {
+              value = style?.compressionThreshold?.value ?? 80;
+            } else if (lineName === "neutral") {
+              value = style?.neutral?.value ?? 50;
             }
           } else {
             // Check if it's explicitly configured as a static reference line
@@ -6341,6 +6382,31 @@ json.dumps(result)
             } else if (lineName === "oscillator" && instType === "SUPERSMOOTHER") {
               const isRising = Number(value) >= 0;
               updateObj.color = lastPoint.color || (isRising ? "rgba(0, 255, 0, 1)" : "rgba(255, 20, 147, 1)");
+            } else if (lineName === "compressionScore" && instType === "SMA_RIBBON_DISTANCE") {
+              const styleCfg =
+                indicatorStyleRef.current?.[instId]?.compressionScore ||
+                indicatorStyleRef.current?.[instType]?.compressionScore;
+              
+              const c0 = styleCfg?.color0 || "rgba(255,0,255,1)";
+              const c1 = styleCfg?.color1 || "rgba(0,255,255,1)";
+              const c2 = styleCfg?.color2 || "rgba(255,165,0,1)";
+              const c3 = styleCfg?.color3 || "rgba(128,128,128,1)";
+
+              const tightCount = lastPoint.tightBarCount ?? 0;
+              const indicatorConfig = indicatorConfigs[instId] || indicatorConfigDefault[instType];
+              const minTight = indicatorConfig?.minimumTightBars || 20;
+              const compThresh = indicatorConfig?.compressionThreshold || 80;
+
+              let pointColor = c3;
+              if (tightCount >= minTight) {
+                pointColor = c0;
+              } else if (Number(value) >= compThresh) {
+                pointColor = c1;
+              } else if (Number(value) >= 50) {
+                pointColor = c2;
+              }
+
+              updateObj.color = pointColor;
             } else if (lastPoint.color) {
               updateObj.color = lastPoint.color;
             }

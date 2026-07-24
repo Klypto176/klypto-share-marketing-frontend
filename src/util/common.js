@@ -44,7 +44,10 @@ export const ChartProprties = {
   handleScale: {
     mouseWheel: true,
     pinch: true,
-    axisPressedMouseMove: true,
+    axisPressedMouseMove: {
+      time: true,
+      price: true,
+    },
     axisDoubleClickReset: true,
   },
   kineticScroll: {
@@ -2175,34 +2178,38 @@ export const getRowsByIndicator = (
     case "SMA_RIBBON_DISTANCE":
       return [
         {
-          key: "oscillator",
+          key: "compressionScore",
           label: "Ribbon Compression Score",
           type: "line",
-
+          visible: true,
           children: [
             {
               key: "color0",
-              parent: "oscillator",
+              parent: "compressionScore",
               label: "Color 0",
               type: "fill",
+              color: "rgba(255,0,255,1)",
             },
             {
               key: "color1",
-              parent: "oscillator",
+              parent: "compressionScore",
               label: "Color 1",
               type: "fill",
+              color: "rgba(0,255,255,1)",
             },
             {
               key: "color2",
-              parent: "oscillator",
+              parent: "compressionScore",
               label: "Color 2",
               type: "fill",
+              color: "rgba(255,165,0,1)",
             },
             {
               key: "color3",
-              parent: "oscillator",
+              parent: "compressionScore",
               label: "Color 3",
               type: "fill",
+              color: "rgba(128,128,128,1)",
             },
           ],
         },
@@ -2211,30 +2218,35 @@ export const getRowsByIndicator = (
           key: "maxDistance",
           label: "Maximum SMA Distance %",
           type: "line",
+          visible: false,
         },
 
         {
           key: "avgDistance",
           label: "Average Pairwise Distance %",
           type: "line",
+          visible: false,
         },
 
         {
           key: "distance12",
           label: "SMA 20-50 Distance %",
           type: "line",
+          visible: false,
         },
 
         {
           key: "distance23",
           label: "SMA 50-100 Distance %",
           type: "line",
+          visible: false,
         },
 
         {
           key: "distance34",
           label: "SMA 100-200 Distance %",
           type: "line",
+          visible: false,
         },
 
         {
@@ -2242,6 +2254,7 @@ export const getRowsByIndicator = (
           label: "Perfect Compression",
           type: "line",
           value: 100,
+          visible: true,
         },
 
         {
@@ -2249,6 +2262,7 @@ export const getRowsByIndicator = (
           label: "Tightly Packed Threshold",
           type: "line",
           value: 80,
+          visible: true,
         },
 
         {
@@ -2256,6 +2270,7 @@ export const getRowsByIndicator = (
           label: "Neutral",
           type: "line",
           value: 50,
+          visible: true,
         },
 
         {
@@ -2263,9 +2278,32 @@ export const getRowsByIndicator = (
           label: "Wide Ribbon",
           type: "line",
           value: 0,
+          visible: true,
+        },
+
+        {
+          key: "effectiveDistanceThreshold",
+          label: "Effective Distance Threshold %",
+          type: "line",
+          visible: false,
+        },
+
+        {
+          key: "consecutiveTightBars",
+          label: "Consecutive Tight Bars",
+          type: "line",
+          visible: false,
+        },
+
+        {
+          key: "priceDistanceFromRibbonCenter",
+          label: "Price Distance from Ribbon Center %",
+          type: "line",
+          visible: false,
         },
       ];
-    default:
+    
+      default:
       return [];
   }
 };

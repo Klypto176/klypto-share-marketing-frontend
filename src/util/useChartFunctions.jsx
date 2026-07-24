@@ -84,8 +84,10 @@ export default function useChartFunctions({
     customFromDate,
     customToDate,
   ) {
-
-    console.log("DEBUG fetchIndicator:", { selectedIndicator, socketConnected: socketRef?.current?.socket?.connected });
+    console.log("DEBUG fetchIndicator:", {
+      selectedIndicator,
+      socketConnected: socketRef?.current?.socket?.connected,
+    });
     if (!selectedIndicator?.length) return;
 
     const actualFromDate = customFromDate || fromDate;
@@ -2994,12 +2996,16 @@ async function fetchDataForIndicators(
         return {
           type: "multi",
           data: {
-            oscillator:
+            compressionScore:
               response?.data
                 ?.filter((d) => d.compressionScore != null && d.time != null)
                 .map((d) => ({
                   time: Number(d.time) + IST_OFFSET,
                   value: Number(d.compressionScore),
+                  tightBarCount: Number(d.tightBarCount || 0),
+                  compressionThreshold:
+                    indicatorConfig?.compressionThreshold || 80,
+                  minimumTightBars: indicatorConfig?.minimumTightBars || 20,
                 })) ?? [],
 
             maxDistance:
@@ -3042,6 +3048,37 @@ async function fetchDataForIndicators(
                 .map((d) => ({
                   time: Number(d.time) + IST_OFFSET,
                   value: Number(d.distance34),
+                })) ?? [],
+
+            priceDistanceFromRibbonCenter:
+              response?.data
+                ?.filter(
+                  (d) =>
+                    d.priceDistanceFromRibbonCenter != null && d.time != null,
+                )
+                .map((d) => ({
+                  time: Number(d.time) + IST_OFFSET,
+                  value: Number(d.priceDistanceFromRibbonCenter),
+                })) ?? [],
+
+            consecutiveTightBars:
+              response?.data
+                ?.filter(
+                  (d) => d.consecutiveTightBars != null && d.time != null,
+                )
+                .map((d) => ({
+                  time: Number(d.time) + IST_OFFSET,
+                  value: Number(d.consecutiveTightBars),
+                })) ?? [],
+
+            effectiveDistanceThreshold:
+              response?.data
+                ?.filter(
+                  (d) => d.effectiveDistanceThreshold != null && d.time != null,
+                )
+                .map((d) => ({
+                  time: Number(d.time) + IST_OFFSET,
+                  value: Number(d.effectiveDistanceThreshold),
                 })) ?? [],
           },
         };

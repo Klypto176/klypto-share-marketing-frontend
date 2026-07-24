@@ -1985,32 +1985,95 @@ export let indicatorStyleDefault = {
     },
   },
   SMA_RIBBON_DISTANCE: {
-    sma1: {
+    compressionScore: {
       color: "rgba(33,150,243,1)",
       width: 2,
       lineStyle: 0,
       visible: true,
     },
 
-    sma2: {
+    maxDistance: {
       color: "rgba(76,175,80,1)",
       width: 2,
       lineStyle: 0,
-      visible: true,
+      visible: false,
     },
 
-    sma3: {
+    avgDistance: {
       color: "rgba(255,152,0,1)",
       width: 2,
       lineStyle: 0,
-      visible: true,
+      visible: false,
     },
 
-    sma4: {
+    distance12: {
       color: "rgba(244,67,54,1)",
       width: 2,
       lineStyle: 0,
+      visible: false,
+    },
+
+    distance23: {
+      color: "rgba(156,39,176,1)",
+      width: 2,
+      lineStyle: 0,
+      visible: false,
+    },
+
+    distance34: {
+      color: "rgba(0,188,212,1)",
+      width: 2,
+      lineStyle: 0,
+      visible: false,
+    },
+
+    perfectCompression: {
+      color: "rgba(76,175,80,1)",
+      width: 1,
+      lineStyle: 2,
       visible: true,
+    },
+
+    compressionThreshold: {
+      color: "rgba(255,193,7,1)",
+      width: 1,
+      lineStyle: 2,
+      visible: true,
+    },
+
+    neutral: {
+      color: "rgba(158,158,158,1)",
+      width: 1,
+      lineStyle: 2,
+      visible: true,
+    },
+
+    zero: {
+      color: "rgba(244,67,54,1)",
+      width: 1,
+      lineStyle: 2,
+      visible: true,
+    },
+
+    effectiveDistanceThreshold: {
+      color: "rgba(121,85,72,1)",
+      width: 1,
+      lineStyle: 0,
+      visible: false,
+    },
+
+    consecutiveTightBars: {
+      color: "rgba(63,81,181,1)",
+      width: 1,
+      lineStyle: 0,
+      visible: false,
+    },
+
+    priceDistanceFromRibbonCenter: {
+      color: "rgba(233,30,99,1)",
+      width: 1,
+      lineStyle: 0,
+      visible: false,
     },
   },
 };

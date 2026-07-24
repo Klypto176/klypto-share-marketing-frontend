@@ -9,12 +9,12 @@ const LeftDepth = ({
   isPredicting,
   predictionStatus,
 }) => {
-  console.log(
-    "[DEBUG LeftDepth] Rendered with predictionStatus:",
-    predictionStatus,
-    "isPredicting:",
-    isPredicting,
-  );
+  // console.log(
+  //   "[DEBUG LeftDepth] Rendered with predictionStatus:",
+  //   predictionStatus,
+  //   "isPredicting:",
+  //   isPredicting,
+  // );
 
   const progressPercent =
     Number(predictionStatus?.processed) > 0 && Number(predictionStatus?.total)
