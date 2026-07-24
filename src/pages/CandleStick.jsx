@@ -375,7 +375,7 @@ export default function Candlestick() {
   const { matchedCoins, addAlert, clearAllCoins, scanner, removeCoin } =
     useAlerts();
 
-  const [isWatchlistOpen, setIsWatchlistOpen] = useState(true);
+  const [isWatchlistOpen, setIsWatchlistOpen] = useState(window.innerWidth >= 768);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -402,15 +402,43 @@ export default function Candlestick() {
   
   const deduplicateTrades = (trades) => {
     if (!trades || !Array.isArray(trades)) return [];
-    const seen = new Set();
-    return trades.filter((trade) => {
+    
+    const bestVersions = new Map();
+    trades.forEach((trade) => {
       const sym = trade?.symbol;
-      const tStr = trade?.tick?.datetime || trade?.response?.entry_time || trade?.timestamp;
-      const key = `${sym}_${tStr}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
+      let tStr = trade?.tick?.datetime || trade?.response?.entry_time || trade?.timestamp;
+      let timeKey = tStr;
+      if (tStr) {
+        const d = new Date(tStr);
+        if (!isNaN(d.getTime())) timeKey = d.getTime();
+      }
+      const key = `${sym}_${timeKey}`;
+      
+      const existing = bestVersions.get(key);
+      if (!existing || (trade?.response?.rsi !== undefined && existing?.response?.rsi === undefined)) {
+        bestVersions.set(key, trade);
+      }
     });
+    
+    const seen = new Set();
+    const result = [];
+    trades.forEach((trade) => {
+      const sym = trade?.symbol;
+      let tStr = trade?.tick?.datetime || trade?.response?.entry_time || trade?.timestamp;
+      let timeKey = tStr;
+      if (tStr) {
+        const d = new Date(tStr);
+        if (!isNaN(d.getTime())) timeKey = d.getTime();
+      }
+      const key = `${sym}_${timeKey}`;
+      
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(bestVersions.get(key));
+      }
+    });
+    
+    return result;
   };
 
   const [predictResultData, setPredictResultData] = useState([]);
@@ -521,6 +549,7 @@ export default function Candlestick() {
   const lastPaginationAutoDeployKeyRef = useRef(null);
   const previousDateRangeRef = useRef({ fromDate, toDate });
   const lastDateRangeAutoDeployKeyRef = useRef(null);
+  const hasConnectedOnceRef = useRef(false);
 
   useEffect(() => {
     areStrategyVisualsVisibleRef.current = areStrategyVisualsVisible;
@@ -4569,6 +4598,7 @@ json.dumps(result)
         "oscillatorFill",
         "bbLowerBand",
         "bbUperBand",
+        "_bg"
       ];
 
       return keysToShow
@@ -5173,6 +5203,14 @@ json.dumps(result)
       if ((options.mergeMode || "replace") === "replace") {
         latestReplaceRequestIdRef.current = requestId;
       }
+      historicalRequestOptionsRef.current.set(requestId, {
+        mergeMode: options.mergeMode || "replace",
+        pendingFromDate: options.pendingFromDate || null,
+        pendingToDate: options.pendingToDate || null,
+        preserveVisibleRange: options.preserveVisibleRange || null,
+        symbol: historicalPayload.symbol,
+        timeframe: timeframeValue,
+      });
       console.log("📬 getManualHistoricalData Payload:", historicalPayload);
       historyBackfillInFlightRef.current = true;
       if (emitRef.current) {
@@ -5475,18 +5513,22 @@ json.dumps(result)
     },
     handleConnect: () => {
       console.log("✅ SOCKET CONNECTED", true);
-      requestHistoricalData(true);
       requestLiveTick(true);
 
-      if (
-        selectedIndicatorRef.current &&
-        selectedIndicatorRef.current.length > 0
-      ) {
-        fetchIndicatorData(
-          selectedIndicatorRef.current,
-          selectedCurrency,
-          timeframeValue,
-        );
+      if (!hasConnectedOnceRef.current) {
+        hasConnectedOnceRef.current = true;
+        requestHistoricalData(true);
+
+        if (
+          selectedIndicatorRef.current &&
+          selectedIndicatorRef.current.length > 0
+        ) {
+          fetchIndicatorData(
+            selectedIndicatorRef.current,
+            selectedCurrency,
+            timeframeValue,
+          );
+        }
       }
     },
     handleHistoricalData: (response) => {
@@ -6009,13 +6051,14 @@ json.dumps(result)
         const rawData = tick?.raw || tick?.overview || {};
 
         let rawTickTime =
-          liveData?.datetime ??
+          tick?.raw?.datetime ??
+          tick?.overview?.datetime ??
+          tick?.raw?.exchange_timestamp ??
+          tick?.overview?.exchange_timestamp ??
           liveData?.time ??
           liveData?.tickTime ??
-          rawData?.exchange_timestamp ??
-          rawData?.last_update_time ??
-          tick?.overview?.exchange_trade_time ??
-          tick?.raw?.exchange_timestamp;
+          liveData?.datetime;
+
         let tickTime = Number(rawTickTime);
 
         if (!Number.isFinite(tickTime)) {
@@ -6027,14 +6070,14 @@ json.dumps(result)
         const normalizedTime =
           Math.floor(adjustedTime / intervalSec) * intervalSec;
 
-        // ─── FIX: Use LTP (last_traded_price) as the real current price ───
-        // liveData.close is the PREVIOUS DAY CLOSE (PDC), NOT the current candle close!
-        // The actual current price is last_traded_price / ltp
+        // Use LTP (last_traded_price) as the real current price
         const ltp = Number(
+          tick?.raw?.last_traded_price ??
+          tick?.overview?.ltp ??
+          tick?.overview?.last_traded_price ??
           liveData?.last_traded_price ??
-            rawData?.ltp ??
-            liveData?.ltp ??
-            liveData?.price,
+          liveData?.ltp ??
+          liveData?.price
         );
 
         if (!Number.isFinite(ltp) || ltp <= 0) {
@@ -6063,26 +6106,33 @@ json.dumps(result)
             ? candlesRef.current[candlesRef.current.length - 1]
             : null;
 
+        const rawOpen = rawData?.open != null ? Number(rawData.open) : undefined;
+        const rawHigh = rawData?.high != null ? Number(rawData.high) : undefined;
+        const rawLow = rawData?.low != null ? Number(rawData.low) : undefined;
+        const rawClose = rawData?.close != null ? Number(rawData.close) : undefined;
+        const rawVolume = tick?.raw?.volume != null ? Number(tick.raw.volume) : (tick?.overview?.volume != null ? Number(tick.overview.volume) : undefined);
+
         let updatedBar;
         if (existingCandle) {
-          // Update the existing live candle: extend high/low, move close to LTP
+          // Update the existing live candle using raw OHLC if available, fallback to LTP
           updatedBar = {
             ...existingCandle,
-            high: Math.max(Number(existingCandle.high), ltp),
-            low: Math.min(Number(existingCandle.low), ltp),
-            close: ltp,
-            volume: liveVolume || Number(existingCandle.volume || 0),
+            open: rawOpen !== undefined ? rawOpen : existingCandle.open,
+            high: rawHigh !== undefined ? rawHigh : Math.max(Number(existingCandle.high), ltp),
+            low: rawLow !== undefined ? rawLow : Math.min(Number(existingCandle.low), ltp),
+            close: rawClose !== undefined ? rawClose : ltp,
+            volume: rawVolume !== undefined ? rawVolume : (liveVolume || Number(existingCandle.volume || 0)),
           };
         } else if (!latestCandle || normalizedTime > latestCandle.time) {
-          // New candle: open = previous candle's close (LTP), not the day open
+          // New candle
           const newCandleOpen = latestCandle ? Number(latestCandle.close) : ltp;
           updatedBar = {
             time: normalizedTime,
-            open: Number.isFinite(newCandleOpen) ? newCandleOpen : ltp,
-            high: ltp,
-            low: ltp,
-            close: ltp,
-            volume: liveVolume,
+            open: rawOpen !== undefined ? rawOpen : (Number.isFinite(newCandleOpen) ? newCandleOpen : ltp),
+            high: rawHigh !== undefined ? rawHigh : ltp,
+            low: rawLow !== undefined ? rawLow : ltp,
+            close: rawClose !== undefined ? rawClose : ltp,
+            volume: rawVolume !== undefined ? rawVolume : liveVolume,
           };
         } else if (normalizedTime < latestCandle.time) {
           // Stale tick (older than current candle) — ignore
@@ -6091,10 +6141,11 @@ json.dumps(result)
           // Same time as latest candle, extend it
           updatedBar = {
             ...latestCandle,
-            high: Math.max(Number(latestCandle.high), ltp),
-            low: Math.min(Number(latestCandle.low), ltp),
-            close: ltp,
-            volume: liveVolume || Number(latestCandle.volume || 0),
+            open: rawOpen !== undefined ? rawOpen : latestCandle.open,
+            high: rawHigh !== undefined ? rawHigh : Math.max(Number(latestCandle.high), ltp),
+            low: rawLow !== undefined ? rawLow : Math.min(Number(latestCandle.low), ltp),
+            close: rawClose !== undefined ? rawClose : ltp,
+            volume: rawVolume !== undefined ? rawVolume : (liveVolume || Number(latestCandle.volume || 0)),
           };
         }
 
@@ -6160,6 +6211,12 @@ json.dumps(result)
     handleLiveIndicator: (payload) => {
       if (!payload?.success || !payload?.type) return;
 
+
+      //check - to plot live values of that particular stock
+      const activeSymbol = normalize(selectedCurrency?.name);
+      const payloadSymbol = normalize(payload.symbol);
+      if (payload.symbol && !isSameSymbolName(payloadSymbol, activeSymbol)) return;
+
       // console.log(`[LiveIndicator] Payload:`, payload);
 
       const indicatorType = payload.type;
@@ -6196,19 +6253,48 @@ json.dumps(result)
           "middleRSI",
           "lowerRSI",
           "zero",
+          "perfectCompression",
+          "compressionThreshold",
+          "neutral",
         ];
 
         Object.entries(seriesGroup).forEach(([lineName, series]) => {
-          if (lineName.startsWith("_")) return;
+          if (lineName.startsWith("_")) {
+            if (instType === "SMA_RIBBON_DISTANCE" && lineName === "_bg") {
+               try {
+                 const tightCount = lastPoint.tightBarCount ?? 0;
+                 const cScore = lastPoint.compressionScore ?? lastPoint.oscillator ?? 0;
+                 const minTight = 20; 
+                 const compThresh = 80;
+                 let bgColor = "transparent";
+                 if (tightCount >= minTight) bgColor = "rgba(255,0,255,0.13)";
+                 else if (cScore >= compThresh) bgColor = "rgba(0,255,255,0.08)";
+                 
+                 series.update({
+                   time: pointTime,
+                   value: bgColor !== "transparent" ? 100000 : 0,
+                   color: bgColor
+                 });
+               } catch (e) {}
+            }
+            return;
+          }
           if (!series || typeof series.update !== "function") return;
+
+          let mappedLineName = lineName;
+          if (instType === "SMA_RIBBON_DISTANCE") {
+            if (lineName === "compressionScore" && lastPoint.compressionScore === undefined) mappedLineName = "oscillator";
+            if (lineName === "maxDistance") mappedLineName = "maximumRibbonDistance";
+            if (lineName === "avgDistance") mappedLineName = "averagePairDistance";
+          }
 
           let value;
           // First, check if the payload provides a dynamic value for this line
           const dynamicValue =
-            lastPoint[lineName] ??
-            lastPoint[lineName + "Band"] ??
-            (lineName === indicatorType.toLowerCase()
-              ? lastPoint[lineName]
+            lastPoint[mappedLineName] ??
+            lastPoint[mappedLineName + "Band"] ??
+            (mappedLineName === indicatorType.toLowerCase()
+              ? lastPoint[mappedLineName]
               : undefined);
 
           if (dynamicValue !== undefined && dynamicValue !== null) {
@@ -6253,8 +6339,14 @@ json.dumps(result)
                   : instType === "RSI"
                   ? (style?.lowerRSI?.value ?? 30)
                   : (style?.lower?.value ?? 30);
-            } else if (lineName === "zeroLine") {
-              value = style?.zeroLine?.value ?? 0;
+            } else if (lineName === "zeroLine" || lineName === "zero") {
+              value = style?.zeroLine?.value ?? style?.zero?.value ?? 0;
+            } else if (lineName === "perfectCompression") {
+              value = style?.perfectCompression?.value ?? 100;
+            } else if (lineName === "compressionThreshold") {
+              value = style?.compressionThreshold?.value ?? 80;
+            } else if (lineName === "neutral") {
+              value = style?.neutral?.value ?? 50;
             }
           } else {
             // Check if it's explicitly configured as a static reference line
@@ -6290,6 +6382,31 @@ json.dumps(result)
             } else if (lineName === "oscillator" && instType === "SUPERSMOOTHER") {
               const isRising = Number(value) >= 0;
               updateObj.color = lastPoint.color || (isRising ? "rgba(0, 255, 0, 1)" : "rgba(255, 20, 147, 1)");
+            } else if (lineName === "compressionScore" && instType === "SMA_RIBBON_DISTANCE") {
+              const styleCfg =
+                indicatorStyleRef.current?.[instId]?.compressionScore ||
+                indicatorStyleRef.current?.[instType]?.compressionScore;
+              
+              const c0 = styleCfg?.color0 || "rgba(255,0,255,1)";
+              const c1 = styleCfg?.color1 || "rgba(0,255,255,1)";
+              const c2 = styleCfg?.color2 || "rgba(255,165,0,1)";
+              const c3 = styleCfg?.color3 || "rgba(128,128,128,1)";
+
+              const tightCount = lastPoint.tightBarCount ?? 0;
+              const indicatorConfig = indicatorConfigs[instId] || indicatorConfigDefault[instType];
+              const minTight = indicatorConfig?.minimumTightBars || 20;
+              const compThresh = indicatorConfig?.compressionThreshold || 80;
+
+              let pointColor = c3;
+              if (tightCount >= minTight) {
+                pointColor = c0;
+              } else if (Number(value) >= compThresh) {
+                pointColor = c1;
+              } else if (Number(value) >= 50) {
+                pointColor = c2;
+              }
+
+              updateObj.color = pointColor;
             } else if (lastPoint.color) {
               updateObj.color = lastPoint.color;
             }

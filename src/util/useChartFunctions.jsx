@@ -13,9 +13,7 @@ const getIndicatorExchange = (selectedCurrency) =>
   selectedCurrency?.exchange || selectedCurrency?.segment || "NSE";
 
 const getActiveIndicatorSocket = (socketRef) =>
-  socketRef?.current?.indicatorSocket ||
-  socketRef?.current?.socket ||
-  socket;
+  socketRef?.current?.indicatorSocket || socketRef?.current?.socket || socket;
 
 const serializeIndicatorCandles = (candles) => {
   if (!Array.isArray(candles) || candles.length === 0) {
@@ -53,7 +51,12 @@ const serializeIndicatorCandles = (candles) => {
     .filter(Boolean);
 };
 
-const getIndicatorFetchContextKey = (selectedCurrency, timeframeValue, fromDate, toDate) =>
+const getIndicatorFetchContextKey = (
+  selectedCurrency,
+  timeframeValue,
+  fromDate,
+  toDate,
+) =>
   JSON.stringify({
     symbol: selectedCurrency?.name,
     interval: timeframeValue,
@@ -81,6 +84,10 @@ export default function useChartFunctions({
     customFromDate,
     customToDate,
   ) {
+    console.log("DEBUG fetchIndicator:", {
+      selectedIndicator,
+      socketConnected: socketRef?.current?.socket?.connected,
+    });
     if (!selectedIndicator?.length) return;
 
     const actualFromDate = customFromDate || fromDate;
@@ -131,7 +138,7 @@ export default function useChartFunctions({
           const type = result?.type;
           if (!id || !type) continue;
           const mappedResult = await fetchDataForIndicators(
-            null, // candles
+            null, //candles
             selectedCurrency,
             type,
             timeframeValue,
@@ -990,6 +997,35 @@ export default function useChartFunctions({
 
         break;
       }
+
+      case "SMA_RIBBON_DISTANCE": {
+        const oscillatorData = result?.data?.oscillator ?? [];
+        const maxDistanceData = result?.data?.maxDistance ?? [];
+        const avgDistanceData = result?.data?.avgDistance ?? [];
+        const distance12Data = result?.data?.distance12 ?? [];
+        const distance23Data = result?.data?.distance23 ?? [];
+        const distance34Data = result?.data?.distance34 ?? [];
+
+        indicatorDataRef.current[id] = { result, rows };
+
+        latestIndicatorValuesRef.current[id] = {
+          oscillator: oscillatorData[oscillatorData.length - 1]?.value ?? null,
+
+          maxDistance:
+            maxDistanceData[maxDistanceData.length - 1]?.value ?? null,
+
+          avgDistance:
+            avgDistanceData[avgDistanceData.length - 1]?.value ?? null,
+
+          distance12: distance12Data[distance12Data.length - 1]?.value ?? null,
+
+          distance23: distance23Data[distance23Data.length - 1]?.value ?? null,
+
+          distance34: distance34Data[distance34Data.length - 1]?.value ?? null,
+        };
+
+        break;
+      }
       default:
         indicatorDataRef.current[id] = { result, rows };
         break;
@@ -1204,6 +1240,7 @@ async function fetchDataForIndicators(
       preloadedResponse ||
       (await new Promise((resolve, reject) => {
         const activeSocket = getActiveIndicatorSocket(socketRef);
+        // console.log("Socket Status:", { hasRef: !!socketRef.current, isConnected: activeSocket?.connected });
         if (!socketRef.current || !activeSocket?.connected) {
           resolve({ data: [] });
           return;
@@ -1265,7 +1302,14 @@ async function fetchDataForIndicators(
         }))
         .filter((d) => d.value !== null) ?? [];
 
-    console.log(type, "mapped conversion", response?.data, "conversionLine");
+    console.log(
+      type,
+
+      "mapped conversion",
+      response,
+      response?.data,
+      "conversionLine",
+    );
 
     switch (type) {
       /* ---------------- SINGLE VALUE ---------------- */
@@ -2947,6 +2991,97 @@ async function fetchDataForIndicators(
           },
         };
       }
+
+      case "SMA_RIBBON_DISTANCE":
+        return {
+          type: "multi",
+          data: {
+            compressionScore:
+              response?.data
+                ?.filter((d) => d.compressionScore != null && d.time != null)
+                .map((d) => ({
+                  time: Number(d.time) + IST_OFFSET,
+                  value: Number(d.compressionScore),
+                  tightBarCount: Number(d.tightBarCount || 0),
+                  compressionThreshold:
+                    indicatorConfig?.compressionThreshold || 80,
+                  minimumTightBars: indicatorConfig?.minimumTightBars || 20,
+                })) ?? [],
+
+            maxDistance:
+              response?.data
+                ?.filter(
+                  (d) => d.maximumRibbonDistance != null && d.time != null,
+                )
+                .map((d) => ({
+                  time: Number(d.time) + IST_OFFSET,
+                  value: Number(d.maximumRibbonDistance),
+                })) ?? [],
+
+            avgDistance:
+              response?.data
+                ?.filter((d) => d.averagePairDistance != null && d.time != null)
+                .map((d) => ({
+                  time: Number(d.time) + IST_OFFSET,
+                  value: Number(d.averagePairDistance),
+                })) ?? [],
+
+            distance12:
+              response?.data
+                ?.filter((d) => d.distance12 != null && d.time != null)
+                .map((d) => ({
+                  time: Number(d.time) + IST_OFFSET,
+                  value: Number(d.distance12),
+                })) ?? [],
+
+            distance23:
+              response?.data
+                ?.filter((d) => d.distance23 != null && d.time != null)
+                .map((d) => ({
+                  time: Number(d.time) + IST_OFFSET,
+                  value: Number(d.distance23),
+                })) ?? [],
+
+            distance34:
+              response?.data
+                ?.filter((d) => d.distance34 != null && d.time != null)
+                .map((d) => ({
+                  time: Number(d.time) + IST_OFFSET,
+                  value: Number(d.distance34),
+                })) ?? [],
+
+            priceDistanceFromRibbonCenter:
+              response?.data
+                ?.filter(
+                  (d) =>
+                    d.priceDistanceFromRibbonCenter != null && d.time != null,
+                )
+                .map((d) => ({
+                  time: Number(d.time) + IST_OFFSET,
+                  value: Number(d.priceDistanceFromRibbonCenter),
+                })) ?? [],
+
+            consecutiveTightBars:
+              response?.data
+                ?.filter(
+                  (d) => d.consecutiveTightBars != null && d.time != null,
+                )
+                .map((d) => ({
+                  time: Number(d.time) + IST_OFFSET,
+                  value: Number(d.consecutiveTightBars),
+                })) ?? [],
+
+            effectiveDistanceThreshold:
+              response?.data
+                ?.filter(
+                  (d) => d.effectiveDistanceThreshold != null && d.time != null,
+                )
+                .map((d) => ({
+                  time: Number(d.time) + IST_OFFSET,
+                  value: Number(d.effectiveDistanceThreshold),
+                })) ?? [],
+          },
+        };
 
       default:
         return {

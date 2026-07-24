@@ -425,8 +425,8 @@ const Overview = ({ selectedCurrency, onBack }) => {
   const exchTradeTime =
     overview.exchange_trade_time ??  "--";
 
-  const lowerCircuit = overview.lower_circuit ?? "--";
-  const upperCircuit = overview.upper_circuit ?? "--";
+  const lowerCircuit = overview.lowerCircuit ?? "--";
+  const upperCircuit = overview.upperCircuit ?? "--";
   const week52Low =
     overview.fiftytwo_week_low ?? "--";
   const week52High =
@@ -578,7 +578,7 @@ const Overview = ({ selectedCurrency, onBack }) => {
         <div style={{ width: 1, background: "var(--border-color)" }} />
         <TopStat label="Prev Close" value={fmt(close)} />
         <div style={{ width: 1, background: "var(--border-color)" }} />
-        <TopStat label="Avg Price" value={fmt(raw.avgPrice || "--")} />
+        <TopStat label="Avg Price" value={fmt(overview.avgPrice || "--")} />
         <div style={{ width: 1, background: "var(--border-color)" }} />
         <TopStat label="Volume" value={fmt(tradeVolume, 0)} />
         <div style={{ width: 1, background: "var(--border-color)" }} />
@@ -847,14 +847,14 @@ const Overview = ({ selectedCurrency, onBack }) => {
         />
         <RangeWidget
           title="52 Week Range"
-          low={raw["52WeekLow"]}
-          high={raw["52WeekHigh"]}
+          low={overview["52WeekLow"]}
+          high={overview["52WeekHigh"]}
           current={ltp}
           icon={FiTrendingUp}
         />
         <BadgeWidget
           title="Lower Circuit"
-          value={fmt(raw.lowerCircuit)}
+          value={fmt(overview.lowerCircuit)}
           icon={FiShield}
           iconColor="#eab308"
           valueColor="var(--danger-color)"
@@ -862,21 +862,21 @@ const Overview = ({ selectedCurrency, onBack }) => {
 
         <BadgeWidget
           title="Upper Circuit"
-          value={fmt(raw.upperCircuit)}
+          value={fmt(overview.upperCircuit)}
           icon={FiShield}
           iconColor="#22c55e"
           valueColor="var(--success-color)"
         />
         <BadgeWidget
           title="Total Buy Qty"
-          value={fmt(raw.totBuyQuan, 0)}
+          value={fmt(overview.totBuyQuan, 0)}
           icon={FiClock}
           iconColor="#3b82f6"
           valueColor="var(--success-color)"
         />
         <BadgeWidget
           title="Total Sell Qty"
-          value={fmt(raw.totSellQuan, 0)}
+          value={fmt(overview.totSellQuan, 0)}
           icon={FiClock}
           iconColor="#ef4444"
           valueColor="var(--danger-color)"

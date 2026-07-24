@@ -40,6 +40,7 @@ export function resolvePaneKey(type) {
     case "HMA60_BOX_DISTANCE":
     case "BODY915DNA":
     case "TR":
+    case "SMA_RIBBON_DISTANCE":
       return type; // Return full type to keep panes separate
     default:
       return "Main"; // Plot overlay indicators on the main chart
@@ -84,6 +85,7 @@ export const PANE_INDICATORS = new Set([
   "HEALTHY_BOX",
   "BODY915DNA",
   "HMA60_BOX_DISTANCE",
+  "SMA_RIBBON_DISTANCE",
 ]);
 
 export let indicatorConfigDefault = {
@@ -422,6 +424,20 @@ export let indicatorConfigDefault = {
     minTick: 0.05,
     upperZone: 5.0,
     lowerZone: -5.0,
+  },
+  SMA_RIBBON_DISTANCE: {
+    source: "close",
+    sma1Length: 20,
+    sma2Length: 50,
+    sma3Length: 100,
+    sma4Length: 200,
+    adaptiveLookback: 500,
+    minimumTightBars: 20,
+    adaptivePercentile: 20,
+    compressionThreshold: 80,
+    tightDistancePercent: 0.5,
+    useAdaptiveThreshold: false,
+    requirePriceInsideRibbon: false,
   },
 };
 
@@ -1966,6 +1982,98 @@ export let indicatorStyleDefault = {
     is915Markers: {
       color: "rgba(255,165,0,1)", // Orange like the image
       visible: true,
+    },
+  },
+  SMA_RIBBON_DISTANCE: {
+    compressionScore: {
+      color: "rgba(33,150,243,1)",
+      width: 2,
+      lineStyle: 0,
+      visible: true,
+    },
+
+    maxDistance: {
+      color: "rgba(76,175,80,1)",
+      width: 2,
+      lineStyle: 0,
+      visible: false,
+    },
+
+    avgDistance: {
+      color: "rgba(255,152,0,1)",
+      width: 2,
+      lineStyle: 0,
+      visible: false,
+    },
+
+    distance12: {
+      color: "rgba(244,67,54,1)",
+      width: 2,
+      lineStyle: 0,
+      visible: false,
+    },
+
+    distance23: {
+      color: "rgba(156,39,176,1)",
+      width: 2,
+      lineStyle: 0,
+      visible: false,
+    },
+
+    distance34: {
+      color: "rgba(0,188,212,1)",
+      width: 2,
+      lineStyle: 0,
+      visible: false,
+    },
+
+    perfectCompression: {
+      color: "rgba(76,175,80,1)",
+      width: 1,
+      lineStyle: 2,
+      visible: true,
+    },
+
+    compressionThreshold: {
+      color: "rgba(255,193,7,1)",
+      width: 1,
+      lineStyle: 2,
+      visible: true,
+    },
+
+    neutral: {
+      color: "rgba(158,158,158,1)",
+      width: 1,
+      lineStyle: 2,
+      visible: true,
+    },
+
+    zero: {
+      color: "rgba(244,67,54,1)",
+      width: 1,
+      lineStyle: 2,
+      visible: true,
+    },
+
+    effectiveDistanceThreshold: {
+      color: "rgba(121,85,72,1)",
+      width: 1,
+      lineStyle: 0,
+      visible: false,
+    },
+
+    consecutiveTightBars: {
+      color: "rgba(63,81,181,1)",
+      width: 1,
+      lineStyle: 0,
+      visible: false,
+    },
+
+    priceDistanceFromRibbonCenter: {
+      color: "rgba(233,30,99,1)",
+      width: 1,
+      lineStyle: 0,
+      visible: false,
     },
   },
 };

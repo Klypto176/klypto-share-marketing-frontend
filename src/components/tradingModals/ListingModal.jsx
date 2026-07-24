@@ -59,6 +59,53 @@ export const ListingModal = ({
   const [searchIndicator, setSearchIndicator] = useState("");
   const [searchCurrency, setSearchCurrency] = useState("");
 
+  const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartPos = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (!isOpen) {
+      setDragPos({ x: 0, y: 0 });
+      setIsDragging(false);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isDragging) return;
+      
+      let newX = e.clientX - dragStartPos.current.x;
+      let newY = e.clientY - dragStartPos.current.y;
+      
+      // Clamp the Y coordinate so the modal header cannot be dragged completely off-screen
+      const maxY = window.innerHeight / 2 - 40; 
+      const minY = -(window.innerHeight / 2) + 40;
+      
+      if (newY > maxY) newY = maxY;
+      if (newY < minY) newY = minY;
+
+      setDragPos({ x: newX, y: newY });
+    };
+    const handleMouseUp = () => setIsDragging(false);
+
+    if (isDragging) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging]);
+
+  const handleMouseDown = (e) => {
+    setIsDragging(true);
+    dragStartPos.current = {
+      x: e.clientX - dragPos.x,
+      y: e.clientY - dragPos.y,
+    };
+  };
+
   const TABS = ["ALL", "EQUITY", "FUTURES", "INDICES"];
   const [activeTab, setActiveTab] = useState("ALL");
   const [equity, setEquity] = useState([]);
@@ -415,14 +462,28 @@ export const ListingModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60">
-      <div className="w-full px-5 py-4 max-w-2xl max-h-[85vh] rounded-md bg-[var(--bg-secondary)] text-[var(--text-primary)] border border-[var(--border-color)] shadow-lg flex flex-col">
+    <div 
+      className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 pointer-events-auto"
+      onClick={onClose}
+    >
+      <div 
+        className="w-full px-5 py-4 max-w-2xl max-h-[85vh] rounded-md bg-[var(--bg-secondary)] text-[var(--text-primary)] border border-[var(--border-color)] shadow-lg flex flex-col pointer-events-auto"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          transform: `translate(${dragPos.x}px, ${dragPos.y}px)`,
+          position: "relative",
+          zIndex: 10
+        }}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl text-[var(--text-primary)]">{title}</h2>
+        <div 
+          className="flex items-center justify-between cursor-move"
+          onMouseDown={handleMouseDown}
+        >
+          <h2 className="text-xl text-[var(--text-primary)] select-none">{title}</h2>
           <IoCloseSharp
             size={20}
-            onClick={onClose}
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
             className="cursor-pointer text-slate-400"
           />
         </div>
@@ -813,10 +874,10 @@ export const ListingModal = ({
                         }}
                       >
                         <div>
-                          <span style={{ fontWeight: 500, fontSize: 13 }}>
+                          <span className="capatalize " style={{ fontWeight: 500, fontSize: 13, textTransform: "capitalize" }}>
                             {item.label}
                           </span>
-                          <span
+                          {/* <span
                             style={{
                               marginLeft: 8,
                               fontSize: 11,
@@ -824,7 +885,7 @@ export const ListingModal = ({
                             }}
                           >
                             {item.slug}
-                          </span>
+                          </span> */}
                         </div>
                       </ListGroup.Item>
                     );

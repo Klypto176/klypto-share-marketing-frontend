@@ -118,6 +118,8 @@ import BodyDNAInput from "./Body915DNA/BodyDNAInput";
 import HMABoxInput from "./HMA60BOX/HMABoxInput";
 import VolatilityMomentumProInput from "./VolatilityMomentum/VolatilityMomentumProInput";
 import VolatilityMomentumProPlot from "./VolatilityMomentum/VolatilityMomentumProPlot";
+import SMARibbonPlot from "./SMARibbonDistance/SMARibbonPlot";
+import SMARibbonInput from "./SMARibbonDistance/SMARibbonInput";
 
 export const indicatorComponents = {
   VWAP: VWAPPlot,
@@ -183,6 +185,7 @@ export const indicatorComponents = {
   BODY915DNA: BodyDNAPlot,
   HMA60_BOX_DISTANCE: HMABoxPlot,
   VOLATILITY_MOMENTUM_PRO: VolatilityMomentumProPlot,
+  SMA_RIBBON_DISTANCE: SMARibbonPlot,
 };
 
 export const indicatorInputs = {
@@ -247,7 +250,7 @@ export const indicatorInputs = {
   BODY915DNA: BodyDNAInput,
   HMA60_BOX_DISTANCE: HMABoxInput,
   VOLATILITY_MOMENTUM_PRO: VolatilityMomentumProInput,
-  
+  SMA_RIBBON_DISTANCE: SMARibbonInput
 };
 
 export function updateIndicatorFromInput(

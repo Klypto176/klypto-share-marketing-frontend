@@ -44,7 +44,10 @@ export const ChartProprties = {
   handleScale: {
     mouseWheel: true,
     pinch: true,
-    axisPressedMouseMove: true,
+    axisPressedMouseMove: {
+      time: true,
+      price: true,
+    },
     axisDoubleClickReset: true,
   },
   kineticScroll: {
@@ -601,7 +604,12 @@ export const normalizeData = (data) => {
 //   }
 // };
 
-export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instanceId) => {
+export const getRowsByIndicator = (
+  indicator,
+  maType,
+  indicatorConfigs,
+  instanceId,
+) => {
   const baseIndicator = indicator.startsWith("CUSTOM_")
     ? indicator.replace("CUSTOM_", "")
     : indicator;
@@ -1021,12 +1029,16 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instance
         { key: "upperChannel", label: "Upper Channel", type: "line" },
         { key: "lowerChannel", label: "Lower Channel", type: "line" },
         { key: "channelFill", label: "Channel Fill", type: "fill" },
-        { key: "sharpUpSignals", label: "Sharp Up", type: "line" },
-        { key: "sharpDownSignals", label: "Sharp Down", type: "line" },
-        { key: "extremeUpSignals", label: "Extreme Up", type: "line" },
-        { key: "extremeDownSignals", label: "Extreme Down", type: "line" },
-        { key: "highMoveBackground", label: "High Move Background", type: "fill" },
-        { key: "is915Markers", label: "9:15 Volatility Scan", type: "line" },
+        // { key: "sharpUpSignals", label: "Sharp Up", type: "line" },
+        // { key: "sharpDownSignals", label: "Sharp Down", type: "line" },
+        // { key: "extremeUpSignals", label: "Extreme Up", type: "line" },
+        // { key: "extremeDownSignals", label: "Extreme Down", type: "line" },
+        {
+          key: "highMoveBackground",
+          label: "High Move Background",
+          type: "fill",
+        },
+        { key: "is915Markers", label: "9:15 Volatility Scan", type: "fill" },
       ];
 
     case "MACD":
@@ -1741,8 +1753,17 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instance
       ];
 
     case "VWAP": {
-      const defaults = { band1: { enabled: true }, band2: { enabled: false }, band3: { enabled: false } };
-      const config = { ...defaults, ...(indicatorConfigs?.[instanceId] || indicatorConfigs?.[indicator] || {}) };
+      const defaults = {
+        band1: { enabled: true },
+        band2: { enabled: false },
+        band3: { enabled: false },
+      };
+      const config = {
+        ...defaults,
+        ...(indicatorConfigs?.[instanceId] ||
+          indicatorConfigs?.[indicator] ||
+          {}),
+      };
 
       const rows = [
         {
@@ -1836,7 +1857,7 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instance
 
       return rows;
     }
-    
+
     case "ZIGZAG":
       return [
         {
@@ -2153,7 +2174,136 @@ export const getRowsByIndicator = (indicator, maType, indicatorConfigs, instance
           value: 0,
         },
       ];
-    default:
+
+    case "SMA_RIBBON_DISTANCE":
+      return [
+        {
+          key: "compressionScore",
+          label: "Ribbon Compression Score",
+          type: "line",
+          visible: true,
+          children: [
+            {
+              key: "color0",
+              parent: "compressionScore",
+              label: "Color 0",
+              type: "fill",
+              color: "rgba(255,0,255,1)",
+            },
+            {
+              key: "color1",
+              parent: "compressionScore",
+              label: "Color 1",
+              type: "fill",
+              color: "rgba(0,255,255,1)",
+            },
+            {
+              key: "color2",
+              parent: "compressionScore",
+              label: "Color 2",
+              type: "fill",
+              color: "rgba(255,165,0,1)",
+            },
+            {
+              key: "color3",
+              parent: "compressionScore",
+              label: "Color 3",
+              type: "fill",
+              color: "rgba(128,128,128,1)",
+            },
+          ],
+        },
+
+        {
+          key: "maxDistance",
+          label: "Maximum SMA Distance %",
+          type: "line",
+          visible: false,
+        },
+
+        {
+          key: "avgDistance",
+          label: "Average Pairwise Distance %",
+          type: "line",
+          visible: false,
+        },
+
+        {
+          key: "distance12",
+          label: "SMA 20-50 Distance %",
+          type: "line",
+          visible: false,
+        },
+
+        {
+          key: "distance23",
+          label: "SMA 50-100 Distance %",
+          type: "line",
+          visible: false,
+        },
+
+        {
+          key: "distance34",
+          label: "SMA 100-200 Distance %",
+          type: "line",
+          visible: false,
+        },
+
+        {
+          key: "perfectCompression",
+          label: "Perfect Compression",
+          type: "line",
+          value: 100,
+          visible: true,
+        },
+
+        {
+          key: "compressionThreshold",
+          label: "Tightly Packed Threshold",
+          type: "line",
+          value: 80,
+          visible: true,
+        },
+
+        {
+          key: "neutral",
+          label: "Neutral",
+          type: "line",
+          value: 50,
+          visible: true,
+        },
+
+        {
+          key: "zero",
+          label: "Wide Ribbon",
+          type: "line",
+          value: 0,
+          visible: true,
+        },
+
+        {
+          key: "effectiveDistanceThreshold",
+          label: "Effective Distance Threshold %",
+          type: "line",
+          visible: false,
+        },
+
+        {
+          key: "consecutiveTightBars",
+          label: "Consecutive Tight Bars",
+          type: "line",
+          visible: false,
+        },
+
+        {
+          key: "priceDistanceFromRibbonCenter",
+          label: "Price Distance from Ribbon Center %",
+          type: "line",
+          visible: false,
+        },
+      ];
+    
+      default:
       return [];
   }
 };
@@ -2435,8 +2585,6 @@ export const getMarketStatus = () => {
   const isWeekday = day >= 1 && day <= 5;
 
   return (
-    isWeekday &&
-    currentMinutes >= marketStart &&
-    currentMinutes <= marketEnd
+    isWeekday && currentMinutes >= marketStart && currentMinutes <= marketEnd
   );
 };

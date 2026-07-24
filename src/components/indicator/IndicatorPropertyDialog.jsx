@@ -198,6 +198,58 @@ export default function IndicatorPropertyDialog({
       ? activeBarIndicator.type
       : activeBarIndicator;
 
+  const [isDragging, setIsDragging] = React.useState(false);
+  const dragStartPos = React.useRef({ x: 0, y: 0 });
+  const currentTranslate = React.useRef({ x: 0, y: 0 });
+
+  React.useEffect(() => {
+    if (!indicatorProperty) {
+      currentTranslate.current = { x: 0, y: 0 };
+      const modalDialog = document.querySelector(".modal.show .modal-dialog");
+      if (modalDialog) modalDialog.style.transform = `translate(0px, 0px)`;
+    }
+  }, [indicatorProperty]);
+
+  React.useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isDragging) return;
+      const modalDialog = document.querySelector(".modal.show .modal-dialog");
+      if (modalDialog) {
+        let newX = e.clientX - dragStartPos.current.x;
+        let newY = e.clientY - dragStartPos.current.y;
+
+        const maxY = window.innerHeight / 2 - 40;
+        const minY = -(window.innerHeight / 2) + 40;
+        if (newY > maxY) newY = maxY;
+        if (newY < minY) newY = minY;
+
+        currentTranslate.current = { x: newX, y: newY };
+        modalDialog.style.transform = `translate(${newX}px, ${newY}px)`;
+        modalDialog.style.transition = "none";
+      }
+    };
+    const handleMouseUp = () => setIsDragging(false);
+
+    if (isDragging) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging]);
+
+  const handleMouseDown = (e) => {
+    // Only drag if clicking exactly on the header area (not inputs)
+    if (e.target.closest("button.btn-close")) return;
+    setIsDragging(true);
+    dragStartPos.current = {
+      x: e.clientX - currentTranslate.current.x,
+      y: e.clientY - currentTranslate.current.y,
+    };
+  };
+
   const currentConfig = {
     ...(indicatorConfigDefault[activeType] || {}),
     ...(indicatorConfigs[instanceId] || indicatorConfigs[activeType] || {}),
@@ -2631,6 +2683,221 @@ export default function IndicatorPropertyDialog({
           </>
         );
 
+      case "SMA_RIBBON_DISTANCE":
+        return (
+          <>
+            {/* 1. SMA Ribbon */}
+            <BaseSettings
+              currentConfig={currentConfig}
+              updateProperty={updateProperty}
+              showOffset={false}
+              showLength={false}
+            />
+
+            <Form.Group as={Row} className="mb-3 align-items-center">
+              <Form.Label style={labelStyle} className="mb-0">
+                SMA 1 Length
+              </Form.Label>
+              <Col>
+                <Form.Control
+                  type="number"
+                  value={currentConfig?.sma1Length || 20}
+                  onChange={(e) =>
+                    updateProperty("sma1Length", Number(e.target.value))
+                  }
+                />
+              </Col>
+            </Form.Group>
+
+            <Form.Group as={Row} className="mb-3 align-items-center">
+              <Form.Label style={labelStyle} className="mb-0">
+                SMA 2 Length
+              </Form.Label>
+              <Col>
+                <Form.Control
+                  type="number"
+                  value={currentConfig?.sma2Length || 50}
+                  onChange={(e) =>
+                    updateProperty("sma2Length", Number(e.target.value))
+                  }
+                />
+              </Col>
+            </Form.Group>
+
+            <Form.Group as={Row} className="mb-3 align-items-center">
+              <Form.Label style={labelStyle} className="mb-0">
+                SMA 3 Length
+              </Form.Label>
+              <Col>
+                <Form.Control
+                  type="number"
+                  value={currentConfig?.sma3Length || 100}
+                  onChange={(e) =>
+                    updateProperty("sma3Length", Number(e.target.value))
+                  }
+                />
+              </Col>
+            </Form.Group>
+
+            <Form.Group as={Row} className="mb-3 align-items-center">
+              <Form.Label style={labelStyle} className="mb-0">
+                SMA 4 Length
+              </Form.Label>
+              <Col>
+                <Form.Control
+                  type="number"
+                  value={currentConfig?.sma4Length || 200}
+                  onChange={(e) =>
+                    updateProperty("sma4Length", Number(e.target.value))
+                  }
+                />
+              </Col>
+            </Form.Group>
+
+            {/* 2. Tight Ribbon Threshold */}
+
+            <Form.Group as={Row} className="mb-3 align-items-center">
+              <Form.Label style={labelStyle} className="mb-0">
+                Maximum Ribbon Distance % of Price
+              </Form.Label>
+              <Col>
+                <Form.Control
+                  type="number"
+                  step="0.01"
+                  value={currentConfig?.tightDistancePercent || 0.5}
+                  onChange={(e) =>
+                    updateProperty(
+                      "tightDistancePercent",
+                      Number(e.target.value),
+                    )
+                  }
+                />
+              </Col>
+            </Form.Group>
+
+            <Form.Group as={Row} className="mb-3 align-items-center">
+              <Form.Label style={labelStyle} className="mb-0">
+                Compression Score Threshold
+              </Form.Label>
+              <Col>
+                <Form.Control
+                  type="number"
+                  value={currentConfig?.compressionThreshold || 80}
+                  onChange={(e) =>
+                    updateProperty(
+                      "compressionThreshold",
+                      Number(e.target.value),
+                    )
+                  }
+                />
+              </Col>
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Check
+                type="checkbox"
+                label="Use Adaptive Distance Threshold"
+                checked={currentConfig?.useAdaptiveThreshold || false}
+                onChange={(e) =>
+                  updateProperty("useAdaptiveThreshold", e.target.checked)
+                }
+              />
+            </Form.Group>
+
+            <Form.Group as={Row} className="mb-3 align-items-center">
+              <Form.Label style={labelStyle} className="mb-0">
+                Adaptive Lookback
+              </Form.Label>
+              <Col>
+                <Form.Control
+                  type="number"
+                  value={currentConfig?.adaptiveLookback || 500}
+                  onChange={(e) =>
+                    updateProperty("adaptiveLookback", Number(e.target.value))
+                  }
+                />
+              </Col>
+            </Form.Group>
+
+            <Form.Group as={Row} className="mb-3 align-items-center">
+              <Form.Label style={labelStyle} className="mb-0">
+                Tightest Distance Percentile
+              </Form.Label>
+              <Col>
+                <Form.Control
+                  type="number"
+                  value={currentConfig?.adaptivePercentile || 20}
+                  onChange={(e) =>
+                    updateProperty("adaptivePercentile", Number(e.target.value))
+                  }
+                />
+              </Col>
+            </Form.Group>
+
+            {/* 3. Additional Conditions */}
+
+            <Form.Group as={Row} className="mb-3 align-items-center">
+              <Form.Label style={labelStyle} className="mb-0">
+                Minimum Consecutive Tight Bars
+              </Form.Label>
+              <Col>
+                <Form.Control
+                  type="number"
+                  value={currentConfig?.minimumTightBars || 20}
+                  onChange={(e) =>
+                    updateProperty("minimumTightBars", Number(e.target.value))
+                  }
+                />
+              </Col>
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Check
+                type="checkbox"
+                label="Require Price Inside Ribbon"
+                checked={currentConfig?.requirePriceInsideRibbon || false}
+                onChange={(e) =>
+                  updateProperty("requirePriceInsideRibbon", e.target.checked)
+                }
+              />
+            </Form.Group>
+
+            {/* 4. Display */}
+
+            <Form.Group className="mb-2">
+              <Form.Check
+                type="checkbox"
+                label="Show Maximum SMA Distance %"
+                checked={currentConfig?.showMaximumDistance ?? true}
+                onChange={(e) =>
+                  updateProperty("showMaximumDistance", e.target.checked)
+                }
+              />
+            </Form.Group>
+
+            <Form.Group className="mb-2">
+              <Form.Check
+                type="checkbox"
+                label="Show Average Pairwise Distance %"
+                checked={currentConfig?.showAveragePairDistance ?? false}
+                onChange={(e) =>
+                  updateProperty("showAveragePairDistance", e.target.checked)
+                }
+              />
+            </Form.Group>
+
+            <Form.Group className="mb-2">
+              <Form.Check
+                type="checkbox"
+                label="Show Individual SMA Distances"
+                checked={currentConfig?.showIndividualDistances ?? false}
+                onChange={(e) =>
+                  updateProperty("showIndividualDistances", e.target.checked)
+                }
+              />
+            </Form.Group>
+          </>
+        );
       case "VWAP":
         return (
           <>
@@ -2934,7 +3201,11 @@ export default function IndicatorPropertyDialog({
       backdropClassName="indicator-modal-backdrop"
       enforceFocus={false}
     >
-      <Modal.Header closeButton className="border-0 pb-0 px-4 pt-4">
+      <Modal.Header
+        closeButton
+        className="border-0 pb-0 px-4 pt-4 cursor-move"
+        onMouseDown={handleMouseDown}
+      >
         <Modal.Title
           style={{
             fontSize: 17,
