@@ -84,6 +84,8 @@ export default function useChartFunctions({
     customFromDate,
     customToDate,
   ) {
+
+    console.log("DEBUG fetchIndicator:", { selectedIndicator, socketConnected: socketRef?.current?.socket?.connected });
     if (!selectedIndicator?.length) return;
 
     const actualFromDate = customFromDate || fromDate;
@@ -1236,6 +1238,7 @@ async function fetchDataForIndicators(
       preloadedResponse ||
       (await new Promise((resolve, reject) => {
         const activeSocket = getActiveIndicatorSocket(socketRef);
+        // console.log("Socket Status:", { hasRef: !!socketRef.current, isConnected: activeSocket?.connected });
         if (!socketRef.current || !activeSocket?.connected) {
           resolve({ data: [] });
           return;
@@ -1289,8 +1292,6 @@ async function fetchDataForIndicators(
       return null;
     }
 
-    console.log("_________________________)987656787678", arr);
-
     const mapLine = (arr, field) =>
       arr
         ?.map((d) => ({
@@ -1301,6 +1302,7 @@ async function fetchDataForIndicators(
 
     console.log(
       type,
+
       "mapped conversion",
       response,
       response?.data,

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { FiX, FiTrash2, FiMaximize2, FiSearch } from "react-icons/fi";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 const LeftAlertListing = ({
   onClose,
@@ -11,104 +11,6 @@ const LeftAlertListing = ({
 }) => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
-  const styles = {
-    container: {
-      display: "flex",
-      flexDirection: "column",
-      height: "calc(100vh - 60px)",
-      background: "var(--bg-primary)",
-      color: "var(--text-primary)",
-      borderRight: "1px solid var(--border-color)",
-      fontFamily:
-        "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-    },
-    header: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      padding: "12px 16px",
-      borderBottom: "1px solid var(--border-color)",
-      fontWeight: "600",
-      fontSize: "0.95rem",
-    },
-    headerActions: {
-      display: "flex",
-      gap: "12px",
-      alignItems: "center",
-    },
-    clearBtn: {
-      display: "flex",
-      alignItems: "center",
-      gap: "4px",
-      background: "transparent",
-      border: "none",
-      color: "var(--text-secondary)",
-      cursor: "pointer",
-      fontSize: "0.8rem",
-      padding: "4px 8px",
-      borderRadius: "4px",
-      transition: "background 0.2s",
-    },
-    searchInputContainer: {
-      padding: "8px 16px",
-      borderBottom: "1px solid var(--border-color)",
-      display: "flex",
-      alignItems: "center",
-      background: "var(--bg-secondary)",
-    },
-    searchInput: {
-      background: "transparent",
-      border: "none",
-      color: "var(--text-primary)",
-      outline: "none",
-      width: "100%",
-      fontSize: "0.85rem",
-      marginLeft: "8px",
-    },
-    listContainer: {
-      flex: 1,
-      overflowY: "auto",
-    },
-    listItem: {
-      display: "flex",
-      flexDirection: "column",
-      padding: "12px 16px",
-      borderBottom: "1px solid var(--bg-secondary)",
-      cursor: "pointer",
-      transition: "background 0.2s",
-    },
-    itemTop: {
-      display: "flex",
-      justifyContent: "space-between",
-      marginBottom: "4px",
-    },
-    stockName: {
-      fontWeight: "600",
-      fontSize: "0.85rem",
-      color: "var(--text-primary)",
-    },
-    rsiValue: {
-      fontWeight: "600",
-      fontSize: "0.85rem",
-      color: "#22ab94",
-    },
-    itemBottom: {
-      display: "flex",
-      justifyContent: "space-between",
-      fontSize: "0.75rem",
-      color: "var(--text-secondary)",
-    },
-    emptyState: {
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      height: "100%",
-      color: "var(--text-secondary)",
-      padding: "20px",
-      textAlign: "center",
-    },
-  };
 
   const handleClear = () => {
     setAlertResult([]);
@@ -134,7 +36,10 @@ const LeftAlertListing = ({
   };
 
   return (
-    <div style={styles.container}>
+    <div
+      className="flex flex-col bg-[var(--bg-primary)] text-[var(--text-primary)] border-r border-[var(--border-color)] font-sans"
+      style={{ height: "calc(100vh - 60px)" }}
+    >
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: var(--bg-primary); }
@@ -144,12 +49,12 @@ const LeftAlertListing = ({
         .clear-btn:hover { background-color: var(--border-color); color: var(--text-primary); }
       `}</style>
 
-      <div style={styles.header}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-color)] font-semibold text-[0.95rem]">
         <span>Script Signals</span>
-        <div style={styles.headerActions}>
+        <div className="flex items-center gap-3">
           <button
-            className="clear-btn"
-            style={styles.clearBtn}
+            className="clear-btn flex items-center gap-1 bg-transparent border-none text-[var(--text-secondary)] cursor-pointer text-[0.8rem] px-2 py-1 rounded transition-colors"
             onClick={() => {
               onClose();
               navigate("/signals");
@@ -160,8 +65,7 @@ const LeftAlertListing = ({
           </button>
           {results.length > 0 && (
             <button
-              className="clear-btn"
-              style={styles.clearBtn}
+              className="clear-btn flex items-center gap-1 bg-transparent border-none text-[var(--text-secondary)] cursor-pointer text-[0.8rem] px-2 py-1 rounded transition-colors"
               onClick={handleClear}
             >
               <FiTrash2 size={14} />
@@ -169,85 +73,63 @@ const LeftAlertListing = ({
             </button>
           )}
           <FiX
-            style={{ cursor: "pointer", color: "var(--text-secondary)" }}
+            className="cursor-pointer text-[var(--text-secondary)]"
             onClick={onClose}
           />
         </div>
       </div>
 
-      <div style={styles.searchInputContainer}>
+      {/* Search */}
+      <div className="flex items-center px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-secondary)]">
         <FiSearch color="var(--text-secondary)" size={14} />
         <input
           type="text"
           placeholder="Search alerts..."
-          style={styles.searchInput}
+          className="w-full ml-2 bg-transparent border-none text-[var(--text-primary)] outline-none text-[0.85rem] placeholder:text-[var(--text-secondary)]"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
       </div>
 
-      <div className="custom-scrollbar" style={styles.listContainer}>
+      {/* List */}
+      <div className="custom-scrollbar flex-1 overflow-y-auto">
         {filteredResults.length === 0 ? (
-          <div style={styles.emptyState}>
-            <div
-              style={{ fontSize: "2rem", marginBottom: "12px", opacity: 0.5 }}
-            >
-              🔔
-            </div>
-            <p
-              style={{
-                fontWeight: "600",
-                fontSize: "0.9rem",
-                color: "var(--text-primary)",
-              }}
-            >
+          <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] px-5 py-5 text-center">
+            <div className="text-[2rem] mb-3 opacity-50">🔔</div>
+            <p className="font-semibold text-[0.9rem] text-[var(--text-primary)]">
               No active alerts
             </p>
-            <p
-              style={{
-                fontSize: "0.75rem",
-                marginTop: "8px",
-                lineHeight: "1.4",
-              }}
-            >
+            <p className="text-[0.75rem] mt-2 leading-snug">
               Start a scan from the Alert modal to see matching stocks here.
             </p>
           </div>
         ) : (
           filteredResults.map((item, idx) => (
-            <div
-              key={idx}
-              className="alert-item-wrapper"
-              style={{
-                position: "relative",
-              }}
-            >
-              <div
-                style={{
-                  textDecoration: "none",
-                  color: "inherit",
-                }}
-              >
+            <div key={idx} className="relative">
+              <div className="no-underline text-inherit">
                 <div
-                  className="alert-item"
-                  style={styles.listItem}
+                  className="alert-item flex flex-col px-4 py-3 border-b border-[var(--bg-secondary)] cursor-pointer transition-colors"
                   onClick={() => handleItemClick(item)}
                 >
-                  <div style={styles.itemTop}>
-                    <span style={styles.stockName}>{item.symbol}</span>
+                  <div className="flex justify-between mb-1">
+                    <span className="font-semibold text-[0.85rem] text-[var(--text-primary)]">
+                      {item.symbol}
+                    </span>
 
                     {item.signalType && (
-                      <span style={{
-                        fontWeight: "600",
-                        fontSize: "0.85rem",
-                        color: item.signalType === "BUY" ? "#22ab94" : "var(--danger-color)",
-                      }}>
+                      <span
+                        className={`font-semibold text-[0.85rem] ${
+                          item.signalType === "BUY"
+                            ? "text-[#22ab94]"
+                            : "text-[var(--danger-color)]"
+                        }`}
+                      >
                         {item.signalType}
                       </span>
                     )}
                   </div>
 
-                  <div style={styles.itemBottom}>
+                  <div className="flex justify-between text-[0.75rem] text-[var(--text-secondary)]">
                     <span>
                       {item.timestamp || new Date().toLocaleTimeString()}
                     </span>
@@ -256,7 +138,6 @@ const LeftAlertListing = ({
                   </div>
                 </div>
               </div>
-
             </div>
           ))
         )}

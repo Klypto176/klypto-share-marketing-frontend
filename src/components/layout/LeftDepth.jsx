@@ -1,5 +1,5 @@
 import React from "react";
-import { FiX, FiSettings } from "react-icons/fi";
+import { FiX } from "react-icons/fi";
 import { Spinner } from "../tradingModals/Spinner";
 
 const LeftDepth = ({
@@ -16,122 +16,48 @@ const LeftDepth = ({
     isPredicting,
   );
 
-  const styles = {
-    container: {
-      display: "flex",
-      flexDirection: "column",
-      height: "calc(100vh - 60px)",
-      background: "var(--bg-primary)",
-      color: "var(--text-primary)",
-      borderRight: "1px solid var(--border-color)",
-      fontFamily:
-        "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-    },
-    header: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      padding: "12px 16px",
-      borderBottom: "1px solid var(--border-color)",
-      fontWeight: "600",
-      fontSize: "0.95rem",
-    },
-    progressContainer: {
-      padding: "16px",
-      borderBottom: "1px solid var(--border-color)",
-      background: "var(--bg-secondary)",
-    },
-    progressHeader: {
-      display: "flex",
-      justifyContent: "space-between",
-      fontSize: "0.85rem",
-      marginBottom: "8px",
-      fontWeight: "600",
-    },
-    progressBarBg: {
-      width: "100%",
-      height: "8px",
-      background: "var(--border-color)",
-      borderRadius: "4px",
-      overflow: "hidden",
-    },
-    progressBarFill: {
-      height: "100%",
-      background: "#22c55e",
-      transition: "width 0.3s ease",
-    },
-    listContainer: {
-      flex: 1,
-      overflowY: "auto",
-    },
-    listItem: {
-      padding: "12px 16px",
-      borderBottom: "1px solid var(--border-color)",
-      display: "flex",
-      flexDirection: "column",
-      gap: "6px",
-      cursor: "pointer",
-      transition: "background 0.2s",
-    },
-    itemTop: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-    },
-    symbol: {
-      fontWeight: "600",
-      fontSize: "0.9rem",
-      color: "var(--text-primary)",
-    },
-    badge: {
-      fontSize: "0.65rem",
-      fontWeight: "bold",
-      padding: "2px 6px",
-      borderRadius: "4px",
-    },
-    badgeCall: {
-      background: "rgba(34, 197, 94, 0.15)",
-      color: "#22c55e",
-      border: "1px solid rgba(34, 197, 94, 0.3)",
-    },
-    badgePut: {
-      background: "rgba(239, 68, 68, 0.15)",
-      color: "#ef4444",
-      border: "1px solid rgba(239, 68, 68, 0.3)",
-    },
-    time: {
-      fontSize: "0.75rem",
-      color: "var(--text-secondary)",
-    },
-  };
+  const progressPercent =
+    Number(predictionStatus?.processed) > 0 && Number(predictionStatus?.total)
+      ? Math.round(
+          (Number(predictionStatus.processed) / Number(predictionStatus.total)) * 100,
+        )
+      : 0;
+
+  const statusStr =
+    typeof predictionStatus === "string"
+      ? predictionStatus
+      : predictionStatus?.phase || predictionStatus?.status || "";
+
+  const isSuccess =
+    statusStr?.toLowerCase() === "complete" ||
+    statusStr?.toLowerCase() === "skipped" ||
+    statusStr?.toLowerCase() === "done";
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+    <div
+      className="flex flex-col bg-[var(--bg-primary)] text-[var(--text-primary)] border-r border-[var(--border-color)] font-sans"
+      style={{ height: "calc(100vh - 60px)" }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-color)] font-semibold text-[0.95rem]">
+        <div className="flex items-center gap-2">
           <span>Strategy Results</span>
           {predictResults && predictResults.length > 0 && (
-            <span
-              style={{
-                fontSize: "0.7rem",
-                fontWeight: "600",
-                padding: "2px 8px",
-                borderRadius: "12px",
-                backgroundColor: "rgba(59, 130, 246, 0.15)",
-                color: "#3b82f6",
-                border: "1px solid rgba(59, 130, 246, 0.3)",
-              }}
-            >
+            <span className="text-[0.7rem] font-semibold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-500 border border-blue-500/30">
               {predictResults.length}
             </span>
           )}
         </div>
-        <FiX style={{ cursor: "pointer" }} onClick={onClose} />
+        <FiX
+          className="cursor-pointer text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+          onClick={onClose}
+        />
       </div>
 
+      {/* Progress bar */}
       {predictionStatus?.status === "running" && (
-        <div style={styles.progressContainer}>
-          <div style={styles.progressHeader}>
+        <div className="px-4 py-4 border-b border-[var(--border-color)] bg-[var(--bg-secondary)]">
+          <div className="flex justify-between text-[0.85rem] mb-2 font-semibold">
             <span>
               {predictionStatus?.phase === "predicting"
                 ? "Predicting AI..."
@@ -139,36 +65,24 @@ const LeftDepth = ({
             </span>
             <span>
               {predictionStatus?.total
-                ? `${predictionStatus?.processed || 0} / ${predictionStatus?.total} (${Number(predictionStatus?.processed) > 0 ? Math.round((Number(predictionStatus.processed) / Number(predictionStatus.total)) * 100) : 0}%)`
+                ? `${predictionStatus?.processed || 0} / ${predictionStatus?.total} (${progressPercent}%)`
                 : "0 / 0 (0%)"}
             </span>
           </div>
-          <div style={styles.progressBarBg}>
+          <div className="w-full h-2 rounded-full overflow-hidden bg-[var(--border-color)]">
             <div
-              style={{
-                ...styles.progressBarFill,
-                width:
-                  Number(predictionStatus?.processed) > 0 &&
-                  Number(predictionStatus?.total)
-                    ? `${Math.round((Number(predictionStatus.processed) / Number(predictionStatus.total)) * 100)}%`
-                    : "0%",
-              }}
+              className="h-full bg-green-500 transition-[width] duration-300 ease-out rounded-full"
+              style={{ width: `${progressPercent}%` }}
             />
           </div>
         </div>
       )}
 
-      <div className="custom-scrollbar" style={styles.listContainer}>
+      {/* List */}
+      <div className="custom-scrollbar flex-1 overflow-y-auto">
         {isPredicting &&
         (!predictionStatus || predictionStatus.status !== "running") ? (
-          <div
-            style={{
-              display: "flex",
-              height: "100%",
-              justifyContent: "center",
-              alignItems: "center",
-            }}
-          >
+          <div className="flex h-full items-center justify-center">
             <Spinner />
           </div>
         ) : predictResults && predictResults.length > 0 ? (
@@ -176,17 +90,31 @@ const LeftDepth = ({
             const type = item.response?.type || "UNKNOWN";
             const isCall = type.toUpperCase() === "CALL";
 
+            const timeStr = item.tick?.datetime || item.response?.entry_time;
+            let displayTime = "N/A";
+            if (timeStr) {
+              try {
+                const d = new Date(timeStr);
+                displayTime = isNaN(d.getTime())
+                  ? timeStr
+                  : d.toLocaleString("en-IN", {
+                      timeZone: "Asia/Kolkata",
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    });
+              } catch (e) {
+                displayTime = timeStr;
+              }
+            }
+
             return (
               <div
                 key={item.uuid || idx}
-                style={styles.listItem}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.backgroundColor =
-                    "var(--bg-secondary)")
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.backgroundColor = "transparent")
-                }
+                className="flex flex-col gap-1.5 px-4 py-3 border-b border-[var(--border-color)] cursor-pointer transition-colors hover:bg-[var(--bg-secondary)]"
                 onClick={() => {
                   if (setSelectedCurrency && item.symbol) {
                     setSelectedCurrency({
@@ -199,92 +127,54 @@ const LeftDepth = ({
                 }}
               >
                 {/* Row 1: Symbol + Trade Type Badge */}
-                <div style={styles.itemTop}>
-                  <span style={styles.symbol}>{item?.symbol}</span>
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-[0.9rem] text-[var(--text-primary)]">
+                    {item?.symbol}
+                  </span>
                   <span
-                    style={{
-                      ...styles.badge,
-                      ...(isCall ? styles.badgeCall : styles.badgePut),
-                    }}
+                    className={`text-[0.65rem] font-bold px-1.5 py-0.5 rounded ${
+                      isCall
+                        ? "bg-green-500/15 text-green-500 "
+                        : "bg-red-500/15 text-red-500 "
+                    }`}
                   >
                     {type}
                   </span>
                 </div>
 
                 {/* Row 2: Entry Price + Trend + RSI */}
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
+                <div className="flex items-center justify-between">
                   <span
-                    style={{
-                      fontSize: "0.8rem",
-                      fontWeight: "600",
-                      color: isCall ? "#22c55e" : "#ef4444",
-                    }}
+                    className={`text-[0.8rem] font-semibold ${
+                      isCall ? "text-green-500" : "text-red-500"
+                    }`}
                   >
                     ₹{item.response?.entry_price ?? "—"}
                   </span>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      justifyContent: "flex-end",
-                    }}
-                  >
+                  <div className="flex items-center justify-end gap-2">
                     {item.response?.trend && (
                       <span
-                        style={{
-                          fontSize: "0.68rem",
-                          color:
-                            item.response.trend === "UP"
-                              ? "#22c55e"
-                              : "#ef4444",
-                        }}
+                        className={`text-[0.68rem] ${
+                          item.response.trend === "UP"
+                            ? "text-green-500"
+                            : "text-red-500"
+                        }`}
                       >
                         {item.response.trend === "UP" ? "↑" : "↓"}{" "}
                         {item.response.trend}
                       </span>
                     )}
                     {item.response?.rsi && (
-                      <span
-                        style={{
-                          fontSize: "0.68rem",
-                          color: "var(--text-secondary)",
-                        }}
-                      >
+                      <span className="text-[0.68rem] text-[var(--text-secondary)]">
                         RSI: {Number(item.response.rsi).toFixed(1)}
                       </span>
                     )}
                   </div>
                 </div>
 
-                {/* Row 4: Time */}
-                <div style={styles.time}>
-                  {(() => {
-                    const timeStr =
-                      item.tick?.datetime || item.response?.entry_time;
-                    if (!timeStr) return "N/A";
-                    try {
-                      const d = new Date(timeStr);
-                      if (isNaN(d.getTime())) return timeStr;
-                      return d.toLocaleString("en-IN", {
-                        timeZone: "Asia/Kolkata",
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit",
-                      });
-                    } catch (e) {
-                      return timeStr;
-                    }
-                  })()}
+                {/* Row 3: Time */}
+                <div className="text-[0.75rem] text-[var(--text-secondary)]">
+                  {displayTime}
                 </div>
               </div>
             );
@@ -293,81 +183,27 @@ const LeftDepth = ({
           predictionStatus?.phase === "predicting" ||
           predictionStatus?.phase === "starting" ||
           predictionStatus?.status === "starting" ? null : (
-          <div
-            style={{
-              textAlign: "center",
-              marginTop: "20px",
-              color: "var(--text-secondary)",
-              fontSize: "0.85rem",
-            }}
-          >
+          <div className="mt-5 text-center text-[0.85rem] text-[var(--text-secondary)]">
             No results available.
           </div>
         )}
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          padding: "12px 16px",
-          borderTop: "1px solid var(--border-color)",
-          background: "var(--bg-secondary)",
-          alignItems: "center",
-          gap: "8px",
-        }}
-      >
-        {(() => {
-          const statusStr =
-            typeof predictionStatus === "string"
-              ? predictionStatus
-              : predictionStatus?.phase || predictionStatus?.status || "";
-
-          const isSuccess =
-            statusStr?.toLowerCase() === "complete" ||
-            statusStr?.toLowerCase() === "done";
-
-          if (isSuccess) return null; // Do not show buttons after prediction is completed
-
-          return (
+      {/* Footer */}
+      {!isSuccess && (
+        <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-[var(--border-color)] bg-[var(--bg-secondary)]">
+          {statusStr && (
             <>
-              {statusStr && (
-                <>
-                  <span
-                    style={{
-                      fontSize: "0.75rem",
-                      fontWeight: "600",
-                      padding: "4px 10px",
-                      borderRadius: "6px",
-                      backgroundColor: "rgba(234, 179, 8, 0.15)",
-                      color: "#eab308",
-                      border: "1px solid rgba(234, 179, 8, 0.3)",
-                      textTransform: "capitalize",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Status: {statusStr}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "0.75rem",
-                      fontWeight: "600",
-                      padding: "4px 10px",
-                      borderRadius: "6px",
-                      backgroundColor: "rgba(59, 130, 246, 0.15)",
-                      color: "#3b82f6",
-                      border: "1px solid rgba(59, 130, 246, 0.3)",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Trades: {predictResults?.length || 0}
-                  </span>
-                </>
-              )}
+              <span className="whitespace-nowrap text-[0.75rem] font-semibold px-2.5 py-1 rounded-md bg-yellow-500/15 text-yellow-500 border border-yellow-50 capitalize">
+                Status: {statusStr}
+              </span>
+              <span className="whitespace-nowrap text-[0.75rem] font-semibold px-2.5 py-1 rounded-md bg-blue-500/15 text-blue-500 border border-blue-500/30">
+                Trades: {predictResults?.length || 0}
+              </span>
             </>
-          );
-        })()}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

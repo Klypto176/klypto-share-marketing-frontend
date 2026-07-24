@@ -874,10 +874,10 @@ export const ListingModal = ({
                         }}
                       >
                         <div>
-                          <span style={{ fontWeight: 500, fontSize: 13 }}>
+                          <span className="capatalize " style={{ fontWeight: 500, fontSize: 13, textTransform: "capitalize" }}>
                             {item.label}
                           </span>
-                          <span
+                          {/* <span
                             style={{
                               marginLeft: 8,
                               fontSize: 11,
@@ -885,7 +885,7 @@ export const ListingModal = ({
                             }}
                           >
                             {item.slug}
-                          </span>
+                          </span> */}
                         </div>
                       </ListGroup.Item>
                     );
