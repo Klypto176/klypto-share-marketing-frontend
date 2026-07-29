@@ -395,6 +395,27 @@ export default function Candlestick() {
   }, [predictionStatus]);
   const [isPredicting, setIsPredicting] = useState(false);
   const [isDepthOpen, setIsDepthOpen] = useState(false);
+
+  useEffect(() => {
+    if (isDepthOpen) {
+      setIsWatchlistOpen(false);
+      setIsDetailsOpen(false);
+    }
+  }, [isDepthOpen]);
+
+  useEffect(() => {
+    if (isWatchlistOpen) {
+      setIsDepthOpen(false);
+      setIsDetailsOpen(false);
+    }
+  }, [isWatchlistOpen]);
+
+  useEffect(() => {
+    if (isDetailsOpen) {
+      setIsWatchlistOpen(false);
+      setIsDepthOpen(false);
+    }
+  }, [isDetailsOpen]);
   const [isAgentPanelOpen, setIsAgentPanelOpen] = useState(false);
   const [agentMessages, setAgentMessages] = useState([]);
   const [agentDraft, setAgentDraft] = useState("");
@@ -6868,6 +6889,10 @@ json.dumps(result)
         <Navbar
           setSelectedCurrency={setSelectedCurrency}
           predictCount={predictResultData?.length}
+          onBellClick={() => {
+            setIsDepthOpen(true);
+            if (activeTab === "Alerts") setActiveTab("Chart");
+          }}
         />
       )}
       <section

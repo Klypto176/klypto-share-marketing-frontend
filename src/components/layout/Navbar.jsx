@@ -5,6 +5,8 @@ import apiService from "../../services/apiServices";
 import { useNavigate } from "react-router-dom";
 import { isAuthenticated, logout, getUser } from "../../pages/auth/protected";
 import useSocket from "../../util/useSocket";
+import logoLight from "../../assets/logo-light.png";
+import logoDark from "../../assets/logo-dark.png";
 
 const mergeRealtimeIntoStock = (stock, payload) => {
   const livePrice =
@@ -50,7 +52,7 @@ const mergeRealtimeIntoStock = (stock, payload) => {
   };
 };
 
-const Navbar = ({ setSelectedCurrency, predictCount = 0 }) => {
+const Navbar = ({ setSelectedCurrency, predictCount = 0, onBellClick }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [showRecent, setShowRecent] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -470,10 +472,13 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0 }) => {
           >
             ☰
           </button>
-          <BsGrid style={styles.logoIcon} />
-          <span>Algo</span>
+          <img 
+            src={theme === "light" ? logoLight : logoDark} 
+            alt="Klypto Logo" 
+            style={{ height: "250px", width: "auto", objectFit: "contain", marginLeft:"-58px" }}
+          />
         </div>
-        <div className="d-none d-xl-flex" style={styles.indexData}>
+        {/* <div className="d-none d-xl-flex" style={styles.indexData}>
           <div style={styles.indexName}>
             <span>{topIndexDisplay.name || "NIFTY"}</span>
             <span style={styles.expiryTag}>EXPIRY</span>
@@ -486,7 +491,7 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0 }) => {
               {topIndexDisplay.arrow} {topIndexDisplay.formattedChange} ({topIndexDisplay.formattedPercent})
             </span>
           </div>
-        </div>
+        </div> */}
       </div>
 
       {/* Search */}
@@ -501,7 +506,7 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0 }) => {
           <FiSearch color="var(--text-secondary)" size={15} />
           <input
             style={styles.searchInput}
-            placeholder="Search stocks, indices… [Ctrl + S]"
+            placeholder="Search stocks, indices…"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             onFocus={() => setShowRecent(true)}
@@ -687,7 +692,10 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0 }) => {
             paddingLeft: "20px",
           }}
         >
-          <button style={{ ...styles.iconButton, position: "relative" }}>
+          <button 
+            style={{ ...styles.iconButton, position: "relative" }}
+            onClick={onBellClick}
+          >
             <BsBell />
             {predictCount > 0 && (
               <span style={{

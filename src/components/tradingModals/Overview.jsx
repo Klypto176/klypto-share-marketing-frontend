@@ -438,8 +438,8 @@ const Overview = ({ selectedCurrency, onBack }) => {
     overview.total_sell_quantity ?? 0;
 
   // Depth Parsing
-  const buyDepth = overview.best_five_buy ?? [];
-  const sellDepth = overview.best_five_sell ?? [];
+  const buyDepth = overview.best_5_buy_data ?? [];
+  const sellDepth = overview.best_5_sell_data ?? [];
   const maxBuyQty = Math.max(...buyDepth?.map((b) => Number(b.quantity)), 0);
   const maxSellQty = Math.max(...sellDepth?.map((s) => Number(s.quantity)), 0);
 
