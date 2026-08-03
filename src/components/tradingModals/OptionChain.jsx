@@ -77,7 +77,17 @@ const OptionChain = ({ selectedCurrency, onSymbolChange, onBack }) => {
   // When symbol changes, update expiries from metadata
   useEffect(() => {
     if (!selectedSymbol || !metadata[selectedSymbol]) return;
-    const expiries = metadata[selectedSymbol]?.expiries || [];
+    const expiriesRaw = metadata[selectedSymbol]?.expiries || [];
+    const expiries = expiriesRaw
+      .map(e => e ? String(e).replace(/\s+/g, "").toUpperCase() : "")
+      .filter(exp => {
+        if (!exp) return false;
+        const expDate = new Date(exp);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return isNaN(expDate.getTime()) ? true : expDate >= today;
+      })
+      .sort((a, b) => new Date(a) - new Date(b));
     setExpiriesList(expiries);
 
     // Only set a default expiry if the current active expiry isn't valid for this symbol
@@ -141,19 +151,20 @@ const OptionChain = ({ selectedCurrency, onSymbolChange, onBack }) => {
         setSelectedContract((prev) => {
           if (!prev) {
             const currentSym = (selectedSymbolRef.current || "").toLowerCase();
-            let first = response.data.find(c => {
+            let allMatching = response.data.filter(c => {
               const sym = (c.symbol || c.name || "").toLowerCase();
               return sym === currentSym;
             });
             
-            if (!first) {
-              first = response.data[0]; // fallback if the requested symbol isn't in the list
-            }
+            let first = allMatching.length > 0
+              ? allMatching.sort((a, b) => new Date(a.expiry ?? a.expiry_date) - new Date(b.expiry ?? b.expiry_date))[0]
+              : response.data[0];
             
             if (first) {
               const newSym = first.symbol || first.name;
               setSelectedSymbol(newSym);
-              setActiveExpiry(first.expiry ?? first.expiry_date);
+              const rawExp = first.expiry ?? first.expiry_date;
+              setActiveExpiry(rawExp ? String(rawExp).replace(/\s+/g, "").toUpperCase() : "");
               // Do NOT setSymbolSearch here, so the default filter behavior applies
               return first;
             }
@@ -540,8 +551,8 @@ const OptionChain = ({ selectedCurrency, onSymbolChange, onBack }) => {
                 </span>
                 <span style={{ color: "#363a45" }}>|</span>
                 <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>
-                  {selectedContract.expiry} {selectedContract.strike}{" "}
-                  {selectedContract.option_type}
+                  {selectedContract.expiry ? String(selectedContract.expiry).replace(/\s+/g, "").toUpperCase() : ""}{" "}
+                  {selectedContract.strike} {selectedContract.option_type}
                 </span>
                 <span
                   style={{
@@ -639,7 +650,8 @@ const OptionChain = ({ selectedCurrency, onSymbolChange, onBack }) => {
                       ? "var(--success-color)"
                       : "var(--danger-color)";
                     const exchange = contract.exchange ?? "NFO";
-                    const expDate = contract.expiry ?? contract.expiry_date;
+                    const rawExp = contract.expiry ?? contract.expiry_date;
+                    const expDate = rawExp ? String(rawExp).replace(/\s+/g, "").toUpperCase() : "";
                     const strikePrice =
                       contract.strike ?? contract.strike_price;
 
@@ -788,7 +800,7 @@ const OptionChain = ({ selectedCurrency, onSymbolChange, onBack }) => {
         )}
 
         {/* Expiry Pills */}
-        <div
+        {/* <div
           style={{
             display: "flex",
             gap: 6,
@@ -796,7 +808,8 @@ const OptionChain = ({ selectedCurrency, onSymbolChange, onBack }) => {
             marginLeft: "auto",
           }}
         >
-          {expiriesList?.map((exp) => (
+          {expiriesList
+            ?.map((exp) => (
             <button
               key={exp}
               onClick={() => setActiveExpiry(exp)}
@@ -817,7 +830,7 @@ const OptionChain = ({ selectedCurrency, onSymbolChange, onBack }) => {
               {exp}
             </button>
           ))}
-        </div>
+        </div> */}
       </div>
 
       {/* ── Table ── */}

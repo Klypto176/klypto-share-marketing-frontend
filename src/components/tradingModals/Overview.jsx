@@ -304,8 +304,9 @@ const Overview = ({ selectedCurrency, onBack }) => {
   const [loading, setLoading] = useState(true);
 
   const { emit } = useSocket({
-    handleLiveTick: (payload) => {
-      const actualPayload = payload?.data || payload;
+    handleOverviewTick: (payload) => {
+      console.log("strategyLiveTick response:", payload);
+      const actualPayload = payload  ;
       const symbol =
         actualPayload?.symbol || actualPayload?.raw?.tradingSymbol || actualPayload?.name;
       const targetSymbol = selectedCurrency?.name || selectedCurrency?.symbol;
@@ -390,9 +391,8 @@ const Overview = ({ selectedCurrency, onBack }) => {
   }
 
   const safeData = dataPayload || {};
-  const raw = safeData.raw || {};
-  const tick = safeData.tick || {};
-  const overview = safeData.overview || {};
+  const raw = safeData?.raw || {};
+  const overview = safeData?.overview || {};
 
   // Basic Fields
   const ltp =
@@ -403,10 +403,10 @@ const Overview = ({ selectedCurrency, onBack }) => {
   const percentChange =
     overview.percent_change ?? raw.percent_change ?? 0;
 
-  const open = overview.open ?? "--";
-  const high = overview.day_high ?? "--";
-  const low = overview.day_low ?? "--";
-  const close = overview.close ?? "--";
+  const open = overview.day_open ?? raw.open ?? "--";
+  const high = overview.day_high ?? raw.high ?? "--";
+  const low = overview.day_low ?? raw.low ?? "--";
+  const close = overview.day_close ?? raw.close ?? "--";
 
   const isPositive =
     String(netChange).startsWith("+") || Number(netChange) >= 0;
@@ -415,18 +415,18 @@ const Overview = ({ selectedCurrency, onBack }) => {
     : "var(--danger-color)";
 
   // Additional Data
-  const tradeVolume = overview.volume ??  0;
+  const tradeVolume = overview.vol_traded ?? overview.volume ?? 0;
   const opnInterest = overview.open_interest ?? 0;
   const lastTradeQty =
-    overview.last_trade_quantity ?? 0;
+    overview.last_traded_quantity ?? overview.last_trade_quantity ?? 0;
 
   const exchFeedTime =
     overview.exchange_feed_time ?? "--";
   const exchTradeTime =
     overview.exchange_trade_time ??  "--";
 
-  const lowerCircuit = overview.lowerCircuit ?? "--";
-  const upperCircuit = overview.upperCircuit ?? "--";
+  const lowerCircuit = overview.lower_circuit ?? "--";
+  const upperCircuit = overview.upper_circuit ?? "--";
   const week52Low =
     overview.fiftytwo_week_low ?? "--";
   const week52High =
@@ -438,8 +438,8 @@ const Overview = ({ selectedCurrency, onBack }) => {
     overview.total_sell_quantity ?? 0;
 
   // Depth Parsing
-  const buyDepth = overview.best_5_buy_data ?? [];
-  const sellDepth = overview.best_5_sell_data ?? [];
+  const buyDepth = overview.best_five_buy ?? [];
+  const sellDepth = overview.best_five_sell ?? [];
   const maxBuyQty = Math.max(...buyDepth?.map((b) => Number(b.quantity)), 0);
   const maxSellQty = Math.max(...sellDepth?.map((s) => Number(s.quantity)), 0);
 
@@ -578,14 +578,67 @@ const Overview = ({ selectedCurrency, onBack }) => {
         <div style={{ width: 1, background: "var(--border-color)" }} />
         <TopStat label="Prev Close" value={fmt(close)} />
         <div style={{ width: 1, background: "var(--border-color)" }} />
-        <TopStat label="Avg Price" value={fmt(overview.avgPrice || "--")} />
+        <TopStat label="Avg Price" value={fmt(overview.avg_traded_price || "--")} />
         <div style={{ width: 1, background: "var(--border-color)" }} />
         <TopStat label="Volume" value={fmt(tradeVolume, 0)} />
         <div style={{ width: 1, background: "var(--border-color)" }} />
         <TopStat label="OI" value={fmt(opnInterest, 0)} />
       </div>
 
-      {/* ── MIDDLE PANELS ── */}
+{/* ── WIDGETS ── */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+          gap: 16,
+        }}
+      >
+        <RangeWidget
+          title="Day Range"
+          low={low}
+          high={high}
+          current={ltp}
+          icon={FiBarChart2}
+        />
+        <RangeWidget
+          title="52 Week Range"
+          low={overview["52WeekLow"]}
+          high={overview["52WeekHigh"]}
+          current={ltp}
+          icon={FiTrendingUp}
+        />
+        <BadgeWidget
+          title="Lower Circuit"
+          value={fmt(overview.lowerCircuit)}
+          icon={FiShield}
+          iconColor="#eab308"
+          valueColor="var(--danger-color)"
+        />
+
+        <BadgeWidget
+          title="Upper Circuit"
+          value={fmt(overview.upperCircuit)}
+          icon={FiShield}
+          iconColor="#22c55e"
+          valueColor="var(--success-color)"
+        />
+        <BadgeWidget
+          title="Total Buy Qty"
+          value={fmt(overview.totBuyQuan, 0)}
+          icon={FiClock}
+          iconColor="#3b82f6"
+          valueColor="var(--success-color)"
+        />
+        <BadgeWidget
+          title="Total Sell Qty"
+          value={fmt(overview.totSellQuan, 0)}
+          icon={FiClock}
+          iconColor="#ef4444"
+          valueColor="var(--danger-color)"
+        />
+      </div>
+
+      {/* ── PANELS ── */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
         {/* MARKET INFORMATION */}
         <div
@@ -830,58 +883,7 @@ const Overview = ({ selectedCurrency, onBack }) => {
         </div>
       </div>
 
-      {/* ── BOTTOM WIDGETS ── */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-          gap: 16,
-        }}
-      >
-        <RangeWidget
-          title="Day Range"
-          low={low}
-          high={high}
-          current={ltp}
-          icon={FiBarChart2}
-        />
-        <RangeWidget
-          title="52 Week Range"
-          low={overview["52WeekLow"]}
-          high={overview["52WeekHigh"]}
-          current={ltp}
-          icon={FiTrendingUp}
-        />
-        <BadgeWidget
-          title="Lower Circuit"
-          value={fmt(overview.lowerCircuit)}
-          icon={FiShield}
-          iconColor="#eab308"
-          valueColor="var(--danger-color)"
-        />
-
-        <BadgeWidget
-          title="Upper Circuit"
-          value={fmt(overview.upperCircuit)}
-          icon={FiShield}
-          iconColor="#22c55e"
-          valueColor="var(--success-color)"
-        />
-        <BadgeWidget
-          title="Total Buy Qty"
-          value={fmt(overview.totBuyQuan, 0)}
-          icon={FiClock}
-          iconColor="#3b82f6"
-          valueColor="var(--success-color)"
-        />
-        <BadgeWidget
-          title="Total Sell Qty"
-          value={fmt(overview.totSellQuan, 0)}
-          icon={FiClock}
-          iconColor="#ef4444"
-          valueColor="var(--danger-color)"
-        />
-      </div>
+      
     </div>
   );
 };

@@ -281,12 +281,13 @@ const LeftWatchlist = ({ onClose, setSelectedCurrency }) => {
       <div style={styles.header}>
         <span>Watchlist</span>
         <div style={styles.headerIcons}>
-          <FiSettings />
+          {/* <FiSettings /> */}
           <FiX onClick={onClose} />
         </div>
       </div>
 
-      <div style={styles.tabsContainer}>
+      {/*
+        <div style={styles.tabsContainer}>
         <div style={styles.tabActive}>mywatchlist</div>
         <div
           style={{
@@ -301,6 +302,7 @@ const LeftWatchlist = ({ onClose, setSelectedCurrency }) => {
           <FiPlus /> <FiMaximize2 size={12} />
         </div>
       </div>
+      */}
 
       <div style={styles.searchContainer}>
         <div style={styles.searchBox}>
@@ -311,11 +313,11 @@ const LeftWatchlist = ({ onClose, setSelectedCurrency }) => {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
-          <FiSettings
+          {/* <FiSettings
             color="var(--text-secondary)"
             size={14}
             style={{ cursor: "pointer" }}
-          />
+          /> */}
         </div>
       </div>
 
