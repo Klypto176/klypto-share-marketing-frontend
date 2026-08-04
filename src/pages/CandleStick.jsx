@@ -2499,10 +2499,20 @@ export default function Candlestick() {
     const newSignals = [];
 
     if (dashboardSignals && dashboardSignals.length > 0) {
-      console.log("Processing dashboardSignals for markers:", dashboardSignals);
+      const uniqueDashboardSignals = [];
+      const seenDashboardSignals = new Set();
+      dashboardSignals.forEach((signal) => {
+        const key = `${signal.symbol}_${signal.timestamp}`;
+        if (!seenDashboardSignals.has(key)) {
+          seenDashboardSignals.add(key);
+          uniqueDashboardSignals.push(signal);
+        }
+      });
+      
+      console.log("Processing dashboardSignals for markers:", uniqueDashboardSignals);
       console.log("Currently selected stock:", selectedCurrency);
 
-      dashboardSignals.forEach((item) => {
+      uniqueDashboardSignals.forEach((item) => {
         let type = item.signalType || item.response?.type;
         if (!type) {
           type = "BUY";
@@ -2569,7 +2579,17 @@ export default function Candlestick() {
           });
         }
       });
-      markersToSet.sort((a, b) => a.time - b.time);
+      const uniqueMarkers = [];
+      const seenTimes = new Set();
+      markersToSet.forEach((m) => {
+        if (!seenTimes.has(m.time)) {
+          seenTimes.add(m.time);
+          uniqueMarkers.push(m);
+        }
+      });
+      uniqueMarkers.sort((a, b) => a.time - b.time);
+      markersToSet.length = 0;
+      markersToSet.push(...uniqueMarkers);
       console.log("Final markersToSet to plot on chart:", markersToSet);
 
       // Auto-open Alerts panel if we have signals
