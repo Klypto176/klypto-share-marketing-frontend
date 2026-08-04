@@ -7,6 +7,7 @@ import { isAuthenticated, logout, getUser } from "../../pages/auth/protected";
 import useSocket from "../../util/useSocket";
 import logoLight from "../../assets/logo-light.png";
 import logoDark from "../../assets/logo-dark.png";
+import Swal from "sweetalert2";
 
 const mergeRealtimeIntoStock = (stock, payload) => {
   const livePrice =
@@ -667,16 +668,26 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0, onBellClick }) => {
           {[
             // "Markets",
             "Trade",
-            // "Portfolio",
+            "Portfolio",
             "Orders",
             "Positions",
             // "Tools",
           ].map((link) => (
             <div
               key={link}
+              onClick={() => {
+                Swal.fire({
+                  icon: "info",
+                  title: "Coming Soon",
+                  text: "We are still working on it",
+                  background: "var(--bg-secondary)",
+                  color: "var(--text-primary)",
+                });
+              }}
               style={{
                 ...styles.navLink,
                 ...(link === "TradeOne" ? styles.navLinkActive : {}),
+                cursor: "pointer",
               }}
             >
               {link}

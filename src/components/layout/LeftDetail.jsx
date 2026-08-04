@@ -229,7 +229,8 @@ const LeftDetail = ({
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.headerTitle}>
-          Details <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginLeft: "4px" }}>▼</span>
+          Details 
+          {/* <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginLeft: "4px" }}>▼</span> */}
         </div>
         <div style={styles.headerIcons}>
           {activeTab === "watchlist" && (
@@ -243,9 +244,9 @@ const LeftDetail = ({
               title="Configure Scanner"
             />
           )}
-          <FiMaximize2 size={14} />
+          {/* <FiMaximize2 size={14} /> */}
           <FiX onClick={onClose} />
-          <FiMoreHorizontal />
+          {/* <FiMoreHorizontal /> */}
         </div>
       </div>
 

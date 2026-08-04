@@ -159,16 +159,16 @@ const ChartTabs = ({
           gap: 6px;
           padding: 6px 12px;
           background-color: transparent;
-          border: 1px solid #7c3aed;
+          border: 1px solid var(--accent-color);
           border-radius: 4px;
-          color: #7c3aed;
+          color: var(--accent-color);
           font-size: 0.8rem;
           font-weight: 600;
           cursor: pointer;
           transition: all 0.2s;
         }
         .chart-scalper-btn:hover {
-          background-color: rgba(124, 58, 237, 0.1);
+          background-color: rgba(var(--accent-rgb, 124,58,237), 0.1);
         }
         .chart-agent-btn {
           display: flex;
@@ -176,9 +176,9 @@ const ChartTabs = ({
           gap: 6px;
           padding: 6px 12px;
           background: linear-gradient(135deg, rgba(14, 165, 233, 0.14), rgba(124, 58, 237, 0.16));
-          border: 1px solid rgba(96, 165, 250, 0.55);
+          border: 1px solid rgba(var(--accent-rgb, 124,58,237), 0.4);
           border-radius: 4px;
-          color: #bfdbfe;
+          color: var(--text-primary);
           font-size: 0.8rem;
           font-weight: 600;
           cursor: pointer;
@@ -186,17 +186,17 @@ const ChartTabs = ({
         }
         .chart-agent-btn:hover {
           background: linear-gradient(135deg, rgba(14, 165, 233, 0.22), rgba(124, 58, 237, 0.22));
-          border-color: #93c5fd;
-          color: #eff6ff;
+          border-color: var(--accent-color);
+          color: var(--accent-color);
         }
         .chart-strategy-btn {
           display: flex;
           align-items: center;
           gap: 6px;
           border-radius: 4px;
-          border: 1px solid #999;
+          border: 1px solid var(--border-color);
           padding: 6px 12px;
-          color: #999;
+          color: var(--text-secondary);
           font-size: 0.8rem;
           font-weight: 600;
           cursor: pointer;
@@ -204,7 +204,9 @@ const ChartTabs = ({
           background-color: transparent;
         }
         .chart-strategy-btn:hover {
-          background-color: rgba(124, 58, 237, 0.1);
+          background-color: rgba(var(--accent-rgb, 124,58,237), 0.1);
+          color: var(--accent-color);
+          border-color: var(--accent-color);
         }
         .chart-exit-fullscreen-btn {
           display: flex;

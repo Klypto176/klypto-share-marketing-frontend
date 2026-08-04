@@ -177,11 +177,11 @@ function RangeWidget({ title, low, high, current, icon: Icon }) {
           width: 40,
           height: 40,
           borderRadius: 8,
-          background: "#1e293b",
+          background: "var(--bg-primary)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#3b82f6",
+          color: "var(--accent-color)",
         }}
       >
         <Icon size={20} />
@@ -264,7 +264,7 @@ function BadgeWidget({ title, value, icon: Icon, iconColor, valueColor }) {
           width: 40,
           height: 40,
           borderRadius: 8,
-          background: "#1e293b",
+          background: "var(--bg-primary)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -306,11 +306,13 @@ const Overview = ({ selectedCurrency, onBack }) => {
   const { emit } = useSocket({
     handleOverviewTick: (payload) => {
       console.log("strategyLiveTick response:", payload);
-      const actualPayload = payload  ;
+      const actualPayload = payload;
       const symbol =
-        actualPayload?.symbol || actualPayload?.raw?.tradingSymbol || actualPayload?.name;
+        actualPayload?.symbol ||
+        actualPayload?.raw?.tradingSymbol ||
+        actualPayload?.name;
       const targetSymbol = selectedCurrency?.name || selectedCurrency?.symbol;
-      
+
       // Allow it to pass if symbol is missing, just to show data instead of getting stuck
       if (symbol && String(symbol) !== String(targetSymbol)) return;
 
@@ -355,7 +357,7 @@ const Overview = ({ selectedCurrency, onBack }) => {
     const fallbackTimer = setTimeout(() => {
       setLoading(false);
     }, 3000);
-    
+
     return () => clearTimeout(fallbackTimer);
   }, [selectedCurrency, emit]);
 
@@ -395,13 +397,9 @@ const Overview = ({ selectedCurrency, onBack }) => {
   const overview = safeData?.overview || {};
 
   // Basic Fields
-  const ltp =
-    overview.last_traded_price ??
-    raw.last_traded_price ??
-    "--";
+  const ltp = overview.last_traded_price ?? raw.last_traded_price ?? "--";
   const netChange = overview.net_change ?? 0;
-  const percentChange =
-    overview.percent_change ?? raw.percent_change ?? 0;
+  const percentChange = overview.percent_change ?? raw.percent_change ?? 0;
 
   const open = overview.day_open ?? raw.open ?? "--";
   const high = overview.day_high ?? raw.high ?? "--";
@@ -420,22 +418,16 @@ const Overview = ({ selectedCurrency, onBack }) => {
   const lastTradeQty =
     overview.last_traded_quantity ?? overview.last_trade_quantity ?? 0;
 
-  const exchFeedTime =
-    overview.exchange_feed_time ?? "--";
-  const exchTradeTime =
-    overview.exchange_trade_time ??  "--";
+  const exchFeedTime = overview.exchange_feed_time ?? "--";
+  const exchTradeTime = overview.exchange_trade_time ?? "--";
 
   const lowerCircuit = overview.lower_circuit ?? "--";
   const upperCircuit = overview.upper_circuit ?? "--";
-  const week52Low =
-    overview.fiftytwo_week_low ?? "--";
-  const week52High =
-    overview.fiftytwo_week_high ?? "--";
+  const week52Low = overview.fiftytwo_week_low ?? "--";
+  const week52High = overview.fiftytwo_week_high ?? "--";
 
-  const totBuyQuan =
-    overview.total_buy_quantity ?? 0;
-  const totSellQuan =
-    overview.total_sell_quantity ?? 0;
+  const totBuyQuan = overview.total_buy_quantity ?? 0;
+  const totSellQuan = overview.total_sell_quantity ?? 0;
 
   // Depth Parsing
   const buyDepth = overview.best_five_buy ?? [];
@@ -448,7 +440,8 @@ const Overview = ({ selectedCurrency, onBack }) => {
   const spread =
     bestSell != null && bestBuy != null ? bestSell - bestBuy : null;
 
-  const targetSymbol = selectedCurrency?.name || selectedCurrency?.symbol || "--";
+  const targetSymbol =
+    selectedCurrency?.name || selectedCurrency?.symbol || "--";
   const tradingSymbol = raw.symbol || safeData.symbol || targetSymbol;
   const symbolToken = raw.token || "--";
   const exchange = raw.exchange || "NSE";
@@ -578,14 +571,17 @@ const Overview = ({ selectedCurrency, onBack }) => {
         <div style={{ width: 1, background: "var(--border-color)" }} />
         <TopStat label="Prev Close" value={fmt(close)} />
         <div style={{ width: 1, background: "var(--border-color)" }} />
-        <TopStat label="Avg Price" value={fmt(overview.avg_traded_price || "--")} />
+        <TopStat
+          label="Avg Price"
+          value={fmt(overview.avg_traded_price || "--")}
+        />
         <div style={{ width: 1, background: "var(--border-color)" }} />
         <TopStat label="Volume" value={fmt(tradeVolume, 0)} />
         <div style={{ width: 1, background: "var(--border-color)" }} />
         <TopStat label="OI" value={fmt(opnInterest, 0)} />
       </div>
 
-{/* ── WIDGETS ── */}
+      {/* ── WIDGETS ── */}
       <div
         style={{
           display: "grid",
@@ -882,8 +878,6 @@ const Overview = ({ selectedCurrency, onBack }) => {
           </div>
         </div>
       </div>
-
-      
     </div>
   );
 };
