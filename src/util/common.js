@@ -65,12 +65,12 @@ export const ChartProprties = {
   },
   grid: {
     vertLines: {
-      visible: true,
+      visible: false,
       color: "rgba(120, 123, 134, 0.4)",
       style: 0,
     },
     horzLines: {
-      visible: true,
+      visible: false,
       color: "rgba(120, 123, 134, 0.4)",
       style: 0,
     },
