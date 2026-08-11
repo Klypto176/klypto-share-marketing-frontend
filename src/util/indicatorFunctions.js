@@ -371,25 +371,25 @@ export let indicatorConfigDefault = {
   MA_RIBBON: {
     ma1: {
       enabled: true,
-      type: "EMA",
+      type: "SMA",
       source: "close",
       length: 20,
     },
     ma2: {
       enabled: true,
       type: "SMA",
-      source: "hl2",
+      source: "close",
       length: 50,
     },
     ma3: {
       enabled: true,
-      type: "WMA",
+      type: "SMA",
       source: "close",
       length: 100,
     },
     ma4: {
       enabled: true,
-      type: "VWMA",
+      type: "SMA",
       source: "close",
       length: 200,
     },
@@ -1666,28 +1666,28 @@ export let indicatorStyleDefault = {
   },
   MA_RIBBON: {
     ma1: {
-      color: "rgba(255,255,255,1)",
+      color: "rgba(246,195,9,1)",
       width: 1,
       lineStyle: 0,
       opacity: 100,
       visible: true,
     },
     ma2: {
-      color: "rgba(255,202,28,1)",
+      color: "rgba(251,152,0,1)",
       width: 1,
       lineStyle: 0,
       opacity: 100,
       visible: true,
     },
     ma3: {
-      color: "rgba(38,166,154,1)",
+      color: "rgba(251,101,0,1)",
       width: 1,
       lineStyle: 0,
       opacity: 100,
       visible: true,
     },
     ma4: {
-      color: "rgba(239,83,80,1)",
+      color: "rgba(246,12,12,1)",
       width: 1,
       lineStyle: 0,
       opacity: 100,
