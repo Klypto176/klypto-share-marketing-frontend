@@ -394,6 +394,7 @@ export default function Candlestick() {
     console.log("[DEBUG CandleStick] predictionStatus state changed to:", predictionStatus);
   }, [predictionStatus]);
   const [isPredicting, setIsPredicting] = useState(false);
+  const [isFetchingCandles, setIsFetchingCandles] = useState(false);
   const [isDepthOpen, setIsDepthOpen] = useState(false);
 
   useEffect(() => {
@@ -3808,6 +3809,19 @@ json.dumps(result)
       prevFromDateRef.current !== fromDate ||
       prevToDateRef.current !== toDate;
 
+    if (isContextChange) {
+      // Reset tracking on context change so we fetch fresh data once candles are ready
+      fetchedIndicatorsRef.current.clear();
+      
+      prevTimeframeRef.current = timeframeValue;
+      prevCurrencyRef.current = selectedCurrency?.name;
+      prevChartTypeRef.current = chartType;
+      prevFromDateRef.current = fromDate;
+      prevToDateRef.current = toDate;
+    }
+
+    if (isFetchingCandles) return; // Prevent fetching while candles are loading
+
     let indicatorsToFetch = selectedIndicator;
 
     if (!isContextChange) {
@@ -3817,31 +3831,6 @@ json.dumps(result)
       );
 
       if (indicatorsToFetch?.length === 0) return;
-    } else {
-      // 🔥 Reset on timeframe / currency / chartType change
-      fetchedIndicatorsRef.current.clear();
-
-      // Keep the series alive with their old data so the UI does not change
-      // until the new data response comes! (User request)
-      // if (allCreatedSeriesRef.current) {
-      //   allCreatedSeriesRef.current.forEach((item) => {
-      //     if (
-      //       item &&
-      //       item.series &&
-      //       typeof item.series.setData === "function"
-      //     ) {
-      //       try {
-      //         item.series.setData([]);
-      //       } catch (e) {}
-      //     }
-      //   });
-      // }
-
-      // Explicitly clear old data so it doesn't render over the new symbol's chart
-      // indicatorDataRef.current = {};
-      // DO NOT clear indicatorSeriesRef, panesRef, paneIndexRef!
-      // Keeping them allows the plot components to explicitly destroy the old series
-      // when they receive new data, preventing memory leaks and pane jumping.
     }
 
     setIndicatorLoading(true);
@@ -3886,13 +3875,6 @@ json.dumps(result)
       });
       setTimeout(() => setIndicatorUpdateTrigger((v) => v + 1), 0);
     }
-
-    // update previous values
-    prevTimeframeRef.current = timeframeValue;
-    prevCurrencyRef.current = selectedCurrency?.name;
-    prevChartTypeRef.current = chartType;
-    prevFromDateRef.current = fromDate;
-    prevToDateRef.current = toDate;
   }, [
     selectedIndicator,
     selectedCurrency?.name,
@@ -3900,6 +3882,7 @@ json.dumps(result)
     chartType,
     fromDate,
     toDate,
+    isFetchingCandles,
   ]);
 
   const toggleIndicatorVisibility = (indicator) => {
@@ -5254,6 +5237,7 @@ json.dumps(result)
       });
       console.log("📬 getManualHistoricalData Payload:", historicalPayload);
       historyBackfillInFlightRef.current = true;
+      setIsFetchingCandles(true);
       if (emitRef.current) {
         emitRef.current(EVENTS.CHART.GET, historicalPayload);
       }
@@ -5617,6 +5601,7 @@ json.dumps(result)
         historicalMergeModeRef.current = "replace";
         pendingHistoricalFromDateRef.current = null;
         historyBackfillInFlightRef.current = false;
+        setIsFetchingCandles(false);
         if (mergeMode === "prepend") {
           setMainChartLoading(false);
           return;
@@ -5684,6 +5669,7 @@ json.dumps(result)
       setCandleDataVersion((prev) => prev + 1);
       historicalMergeModeRef.current = "replace";
       historyBackfillInFlightRef.current = false;
+      setIsFetchingCandles(false);
 
       if (!mergedData.length) {
         setMainChartLoading(false);
@@ -5996,7 +5982,8 @@ json.dumps(result)
 
         if (
           selectedIndicatorRef.current &&
-          selectedIndicatorRef.current.length > 0
+          selectedIndicatorRef.current.length > 0 &&
+          mergeMode !== "replace"
         ) {
           const fetchFrom =
             requestMeta?.pendingFromDate ||

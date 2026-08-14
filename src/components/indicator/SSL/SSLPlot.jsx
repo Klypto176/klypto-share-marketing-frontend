@@ -229,12 +229,12 @@ export default function SSLPlot({
       if (lineName === "baseline") {
         const colored = [];
         lineData.forEach((point) => {
-          if (point.value == null || Number.isNaN(Number(point.value))) return;
+          if (point.time == null || point.value == null || Number.isNaN(Number(point.value))) return;
           const actualClose = closeMap.get(point.time) ?? point.close ?? null;
 
           colored.push({
             time: point.time,
-            value: point.value,
+            value: Number(point.value),
             color: getBaselineColor(
               actualClose,
               point.upperChannel ?? upperByTime.get(point.time) ?? null,
@@ -251,12 +251,12 @@ export default function SSLPlot({
         // Channel lines use same color logic as baseline
         const colored = [];
         lineData.forEach((point) => {
-          if (point.value == null || Number.isNaN(Number(point.value))) return;
+          if (point.time == null || point.value == null || Number.isNaN(Number(point.value))) return;
           const actualClose = closeMap.get(point.time) ?? point.close ?? null;
 
           colored.push({
             time: point.time,
-            value: point.value,
+            value: Number(point.value),
             color: getBaselineColor(
               actualClose,
               upperByTime.get(point.time) ?? null,
@@ -272,12 +272,12 @@ export default function SSLPlot({
       } else if (lineName === "ssl1") {
         const colored = [];
         lineData.forEach((point) => {
-          if (point.value == null || Number.isNaN(Number(point.value))) return;
+          if (point.time == null || point.value == null || Number.isNaN(Number(point.value))) return;
           const actualClose = closeMap.get(point.time) ?? point.close ?? null;
 
           colored.push({
             time: point.time,
-            value: point.value,
+            value: Number(point.value),
             color: getSsl1Color(actualClose, point.value),
           });
         });
@@ -289,12 +289,12 @@ export default function SSLPlot({
       } else if (lineName === "ssl2") {
         const colored = [];
         lineData.forEach((point) => {
-          if (point.value == null || Number.isNaN(Number(point.value))) return;
+          if (point.time == null || point.value == null || Number.isNaN(Number(point.value))) return;
           const actualClose = closeMap.get(point.time) ?? point.close ?? null;
 
           colored.push({
             time: point.time,
-            value: point.value,
+            value: Number(point.value),
             color: getSsl2Color(
               actualClose,
               point.value,
@@ -309,7 +309,9 @@ export default function SSLPlot({
           console.warn("SSL ssl2 setData failed:", e);
         }
       } else {
-        const validData = lineData.filter(p => p.value != null && !Number.isNaN(Number(p.value)));
+        const validData = lineData
+          .filter(p => p.time != null && p.value != null && !Number.isNaN(Number(p.value)))
+          .map(p => ({ ...p, value: Number(p.value) }));
         try {
           series.setData(validData);
         } catch (e) {
@@ -374,17 +376,24 @@ export default function SSLPlot({
 
     ctx.beginPath();
 
+    let firstPoint = true;
     for (let i = 0; i < upper.length; i++) {
       const p = upper[i];
+      if (p == null || p.time == null || p.value == null) continue;
       const x = chart.timeScale().timeToCoordinate(p.time);
       const y = sslGroup.upperChannel?.priceToCoordinate(p.value);
       if (x == null || y == null) continue;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+      if (firstPoint) {
+        ctx.moveTo(x, y);
+        firstPoint = false;
+      } else {
+        ctx.lineTo(x, y);
+      }
     }
 
     for (let i = lower.length - 1; i >= 0; i--) {
       const p = lower[i];
+      if (p == null || p.time == null || p.value == null) continue;
       const x = chart.timeScale().timeToCoordinate(p.time);
       const y = sslGroup.lowerChannel?.priceToCoordinate(p.value);
       if (x == null || y == null) continue;
