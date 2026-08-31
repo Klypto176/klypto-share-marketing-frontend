@@ -113,3 +113,6 @@ src/
 * Alerts and notification system
 * Multi-market and multi-asset support
 
+
+
+<!-- Security scan triggered at 2026-08-31 17:13:12 -->
