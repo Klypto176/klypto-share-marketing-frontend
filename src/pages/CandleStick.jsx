@@ -375,7 +375,7 @@ export default function Candlestick() {
   const { matchedCoins, addAlert, clearAllCoins, scanner, removeCoin } =
     useAlerts();
 
-  const [isWatchlistOpen, setIsWatchlistOpen] = useState(window.innerWidth >= 768);
+  const [isWatchlistOpen, setIsWatchlistOpen] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -396,27 +396,6 @@ export default function Candlestick() {
   const [isPredicting, setIsPredicting] = useState(false);
   const [isFetchingCandles, setIsFetchingCandles] = useState(false);
   const [isDepthOpen, setIsDepthOpen] = useState(false);
-
-  useEffect(() => {
-    if (isDepthOpen) {
-      setIsWatchlistOpen(false);
-      setIsDetailsOpen(false);
-    }
-  }, [isDepthOpen]);
-
-  useEffect(() => {
-    if (isWatchlistOpen) {
-      setIsDepthOpen(false);
-      setIsDetailsOpen(false);
-    }
-  }, [isWatchlistOpen]);
-
-  useEffect(() => {
-    if (isDetailsOpen) {
-      setIsWatchlistOpen(false);
-      setIsDepthOpen(false);
-    }
-  }, [isDetailsOpen]);
   const [isAgentPanelOpen, setIsAgentPanelOpen] = useState(false);
   const [agentMessages, setAgentMessages] = useState([]);
   const [agentDraft, setAgentDraft] = useState("");
@@ -578,7 +557,6 @@ export default function Candlestick() {
   }, [areStrategyVisualsVisible]);
 
   const handleStrategyClick = () => {
-    setIsDepthOpen(true);
     setIsWatchlistOpen(false);
     setIsDetailsOpen(false);
     if (activeTab === "Alerts") setActiveTab("Chart");
@@ -604,7 +582,6 @@ export default function Candlestick() {
               "[AI PREDICTION] REST results loaded on click:",
               results.length,
             );
-            setIsDepthOpen(true);
 
             const mapped = results.map((item) => ({
               symbol: item.symbol,
@@ -2332,7 +2309,6 @@ export default function Candlestick() {
       
       if (newData.status === "running") {
         setIsPredicting(true);
-        setIsDepthOpen(true);
       } else if (newData.status === "done" || newData.status === "complete") {
         setIsPredicting(false);
 
@@ -2362,7 +2338,6 @@ export default function Candlestick() {
                     "[AI PREDICTION] Fallback REST results loaded:",
                     results.length,
                   );
-                  setIsDepthOpen(true);
 
                   const mapped = results.map((item) => ({
                     symbol: item.symbol,
@@ -2429,7 +2404,6 @@ export default function Candlestick() {
         tradeData,
       );
       // Ensure Results pane is open
-      setIsDepthOpen(true);
 
       const mappedSignal = {
         symbol: tradeData.symbol,
@@ -3263,6 +3237,10 @@ json.dumps(result)
   const currentCandleRef = useRef(null);
   const lastCandleTimeRef = useRef(null);
   const candlesRef = useRef([]);
+  const reconciliationRunningRef = useRef(false);
+  const reconciliationAbortRef = useRef(null);
+  const reconciliationGenerationRef = useRef(0);
+  const lastValidTickAtRef = useRef(Date.now());
   const pendingLiveBarRef = useRef(null);
   const pendingLiveBarMetaRef = useRef({ shouldAutoScale: false });
   const lastQueuedLiveBarSignatureRef = useRef(null);
@@ -5478,7 +5456,22 @@ json.dumps(result)
     };
   }, []);
 
-  // ── Central Socket Hook ──
+  const requestLastThreeCandles = useCallback(() => {
+    if (reconciliationRunningRef.current || !selectedCurrency || !timeframeValue) return false;
+    reconciliationRunningRef.current = true;
+    const now = new Date();
+    const recentFromDate = new Date(now.getTime() - 10 * 60 * 1000);
+    const requested = requestHistoricalData(true, { fromDate: recentFromDate.toISOString(), toDate: now.toISOString() }, { mergeMode: 'reconcile', preserveVisibleRange: true });
+    window.setTimeout(() => { reconciliationRunningRef.current = false; }, 10000);
+    return requested;
+  }, [selectedCurrency, timeframeValue, requestHistoricalData]);  // ── Central Socket Hook ──
+  const normalizeCandle = useCallback((candle) => {
+    if (!candle) return null;
+    let time = Number(candle.time ?? candle.timestamp ?? candle.datetime);
+    if (!Number.isFinite(time)) time = Math.floor(new Date(candle.datetime).getTime() / 1000);
+    if (time > 10000000000) time = Math.floor(time / 1000);
+    return { ...candle, time: time + IST_OFFSET, open: Number(candle.open), high: Number(candle.high), low: Number(candle.low), close: Number(candle.close), volume: Number(candle.volume ?? 0) };
+  }, []);
   const { emit, once, connected, off, socket: dataSocket } = useSocket({
     disableOverviewLiveTickFallback: true,
     handleAiPredictionStatus: (data) => {
@@ -5487,7 +5480,6 @@ json.dumps(result)
       
       if (newData.status === "running") {
         setIsPredicting(true);
-        setIsDepthOpen(true);
       } else if (newData.status === "done" || newData.status === "complete") {
         setIsPredicting(false);
         setTimeout(async () => {
@@ -5496,7 +5488,6 @@ json.dumps(result)
             apiService.get("/api/predictResult").then((res) => {
               const results = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
               if (results.length > 0) {
-                setIsDepthOpen(true);
                 const mapped = results.map((item) => ({
                   symbol: item.symbol,
                   response: {
@@ -5524,7 +5515,6 @@ json.dumps(result)
       }
     },
     handleAiTradeSignal: (tradeData) => {
-      setIsDepthOpen(true);
       const mappedSignal = {
         symbol: tradeData.symbol,
         response: { type: tradeData.trade_type, entry_time: tradeData.entry_time, entry_price: tradeData.entry_price, signal: tradeData.signal },
@@ -5559,7 +5549,7 @@ json.dumps(result)
     handleHistoricalData: (response) => {
       console.log("HISTORICAL DATA RESPONSE", response?.data);
       if (!chartRef.current || chartDisposedRef.current) return;
-      const requestId = response?.meta?.requestId || null;
+      const requestId = response?.requestId || response?.meta?.requestId || response?.data?.requestId || null;
       const requestMeta = requestId
         ? historicalRequestOptionsRef.current.get(requestId)
         : null;
@@ -5595,7 +5585,57 @@ json.dumps(result)
         return;
       }
 
-      const raw = response?.data || [];
+      const rawCandles = Array.isArray(response)
+        ? response
+        : response?.candles || response?.data?.candles || response?.data || [];
+      const incomingCandles = rawCandles
+        .map(normalizeCandle)
+        .filter((candle) => candle && Number.isFinite(candle.time) && Number.isFinite(candle.open) && Number.isFinite(candle.high) && Number.isFinite(candle.low) && Number.isFinite(candle.close))
+        .sort((a, b) => a.time - b.time);
+      const raw = rawCandles;
+
+      if (requestMeta?.mergeMode === "reconcile") {
+        const latestThreeCandles = incomingCandles.slice(-3);
+        const candleMap = new Map(candlesRef.current.map((candle) => [Number(candle.time), candle]));
+        const changedCandles = [];
+        latestThreeCandles.forEach((incoming) => {
+          const existing = candleMap.get(Number(incoming.time));
+          console.log("[RECONCILIATION] Comparing candle:", {
+            incoming,
+            existing,
+            time: incoming.time,
+          });
+          const changed = !existing || ["open", "high", "low", "close", "volume"].some((key) => existing[key] !== incoming[key]);
+          if (changed) { candleMap.set(Number(incoming.time), incoming); changedCandles.push(incoming); }
+        });
+        candlesRef.current = Array.from(candleMap.values()).sort((a, b) => Number(a.time) - Number(b.time));
+        const latestSeriesTime = Number(
+          candlesRef.current[candlesRef.current.length - 1]?.time,
+        );
+        const chartCandles = changedCandles
+          .filter(
+            (candle) =>
+              !Number.isFinite(latestSeriesTime) ||
+              candle.time >= latestSeriesTime,
+          )
+          .sort((a, b) => a.time - b.time);
+
+        console.log("[RECONCILIATION] Candles received:", latestThreeCandles);
+        console.log("[RECONCILIATION] Candles changed:", changedCandles);
+        console.log("[RECONCILIATION] Candles sent to chart:", chartCandles);
+        chartCandles.forEach((candle) => {
+          console.log("[RECONCILIATION] Updating chart candle:", candle);
+          seriesRef.current?.update(candle);
+        });
+        const latestCandle = candlesRef.current[candlesRef.current.length - 1] || null;
+        currentCandleRef.current = latestCandle;
+        lastCandleTimeRef.current = latestCandle?.time || null;
+        if (changedCandles.length) setCandleDataVersion((value) => value + 1);
+        historicalRequestOptionsRef.current.delete(requestId);
+        reconciliationRunningRef.current = false;
+        setIsFetchingCandles(false);
+        return;
+      }
 
       if (raw.length === 0) {
         historicalMergeModeRef.current = "replace";
@@ -6121,6 +6161,8 @@ json.dumps(result)
           return;
         }
 
+        lastValidTickAtRef.current = Date.now();
+
         // The volume from liveData.volume is per-tick; use raw.volume (total day volume) as fallback
         const liveVolume = Number(rawData?.volume ?? liveData?.volume ?? 0);
 
@@ -6577,6 +6619,22 @@ json.dumps(result)
     requestLiveTick,
   ]);
 
+  useEffect(() => {
+    if (!selectedCurrency || !timeframeValue) return;
+    let intervalId;
+    const delay = Math.max(0, Math.ceil(Date.now() / 60000) * 60000 + 3000 - Date.now());
+    const run = () => { if (document.visibilityState === 'visible' && navigator.onLine) requestLastThreeCandles(); };
+    const timeoutId = window.setTimeout(() => { run(); intervalId = window.setInterval(run, 60000); }, delay);
+    return () => { window.clearTimeout(timeoutId); if (intervalId) window.clearInterval(intervalId); reconciliationAbortRef.current?.abort(); reconciliationRunningRef.current = false; reconciliationGenerationRef.current += 1; };
+  }, [selectedCurrency?.symbol, selectedCurrency?.name, selectedCurrency?.exchange, selectedCurrency?.token, timeframeValue, requestLastThreeCandles]);
+
+  useEffect(() => {
+    let lastRecoveryAt = 0;
+    const recover = () => { if (document.visibilityState !== 'visible' || !navigator.onLine || Date.now() - lastRecoveryAt < 2000) return; lastRecoveryAt = Date.now(); requestLastThreeCandles(); requestLiveTick(); };
+    const visibility = () => { if (document.visibilityState === 'visible') recover(); };
+    window.addEventListener('focus', recover); window.addEventListener('online', recover); document.addEventListener('visibilitychange', visibility);
+    return () => { window.removeEventListener('focus', recover); window.removeEventListener('online', recover); document.removeEventListener('visibilitychange', visibility); };
+  }, [requestLastThreeCandles, requestLiveTick]);
   const zoomCharts = (delta) => {
     const charts = [
       chartRef.current,
@@ -6897,7 +6955,6 @@ json.dumps(result)
           setSelectedCurrency={setSelectedCurrency}
           predictCount={predictResultData?.length}
           onBellClick={() => {
-            setIsDepthOpen(true);
             if (activeTab === "Alerts") setActiveTab("Chart");
           }}
         />
@@ -7048,7 +7105,7 @@ json.dumps(result)
                   }}
                 >
                   <LeftDepth
-                    onClose={() => setIsDepthOpen(false)}
+                    onClose={() => { setIsDepthOpen(false); localStorage.setItem("leftDepthOpen", "false"); }}
                     predictResults={predictResultData}
                     setSelectedCurrency={setSelectedCurrency}
                     isPredicting={isPredicting}
@@ -8334,6 +8391,7 @@ json.dumps(result)
                     const willOpen = !isDepthOpen;
                     if (activeTab === "Alerts") setActiveTab("Chart");
                     setIsDepthOpen(willOpen);
+                    localStorage.setItem("leftDepthOpen", String(willOpen));
                     if (willOpen) {
                       setIsWatchlistOpen(false);
                       setIsDetailsOpen(false);

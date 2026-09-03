@@ -396,10 +396,10 @@ export let indicatorConfigDefault = {
   },
   SUPERSMOOTHER: {
     smoothingLength: 5,
-    fastLength: 20,
-    slowLength: 50,
+    fastLength: 50,
+    slowLength: 100,
     source: "close",
-    atrLength: 20,
+    atrLength: 27,
     atrMultiplier: 1.2,
     signalSensitivity: 0.03,
   },
