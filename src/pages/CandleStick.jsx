@@ -349,6 +349,11 @@ export default function Candlestick() {
   const syncingRef = useRef(false);
   const fetchedIndicatorsRef = useRef(new Set());
   const socketRef = useRef(null);
+  const indicatorFailureCountRef = useRef(new Map());
+  const indicatorBlockedRef = useRef(new Set());
+  const indicatorInFlightRef = useRef(new Set());
+  const indicatorErrorShownRef = useRef(new Set());
+  const MAX_INDICATOR_FAILURES = 1;
   const chartIndicatorHandlerRef = useRef(null);
   const customScriptSeriesRef = useRef(null);
   const customScriptMarkersRef = useRef(null);
@@ -375,6 +380,8 @@ export default function Candlestick() {
   const historyBackfillInFlightRef = useRef(false);
   const lastAutoBackfillFromRef = useRef(null);
   const lastAutoForwardToRef = useRef(null);
+  const backfillTimeoutRef = useRef(null);
+  const inFlightBackfillModeRef = useRef(null);
   const [isDeployed, setIsDeployed] = useState(false);
 
   const applySandboxBarColorsToData = useCallback(
@@ -3836,6 +3843,10 @@ json.dumps(result)
     if (isContextChange) {
       // Reset tracking on context change so we fetch fresh data once candles are ready
       fetchedIndicatorsRef.current.clear();
+      indicatorFailureCountRef.current.clear();
+      indicatorBlockedRef.current.clear();
+      indicatorInFlightRef.current.clear();
+      indicatorErrorShownRef.current.clear();
       
       prevTimeframeRef.current = timeframeValue;
       prevCurrencyRef.current = selectedCurrency?.name;
@@ -3858,7 +3869,7 @@ json.dumps(result)
     }
 
     setIndicatorLoading(true);
-    fetchIndicatorData(indicatorsToFetch, selectedCurrency, timeframeValue)
+    safeFetchIndicatorData(indicatorsToFetch, selectedCurrency, timeframeValue)
       .then(() => {
         setIndicatorUpdateTrigger((v) => v + 1);
       })
@@ -3892,6 +3903,14 @@ json.dumps(result)
         );
         // Remove tracking data
         fetchedIndicatorsRef.current.delete(id);
+        for (const key of [...indicatorFailureCountRef.current.keys(), ...indicatorBlockedRef.current, ...indicatorErrorShownRef.current]) {
+          if (key.endsWith(`|${id}`)) {
+            indicatorFailureCountRef.current.delete(key);
+            indicatorBlockedRef.current.delete(key);
+            indicatorInFlightRef.current.delete(key);
+            indicatorErrorShownRef.current.delete(key);
+          }
+        }
         if (indicatorDataRef.current) delete indicatorDataRef.current[id];
         if (indicatorSeriesRef.current) delete indicatorSeriesRef.current[id];
         if (panesRef.current) delete panesRef.current[id];
@@ -5200,6 +5219,48 @@ json.dumps(result)
     },
   });
 
+  const getIndicatorRequestKey = useCallback((indicator, currency, timeframe) => {
+    const type = typeof indicator === "object" ? indicator?.type : indicator;
+    const symbol = currency?.symbol || currency?.name || "";
+    return [String(symbol).toUpperCase(), timeframe || "", String(type || "").toUpperCase()].join("|");
+  }, []);
+
+  const safeFetchIndicatorData = useCallback(async (indicators, currency, timeframe, customFromDate, customToDate) => {
+    if (!Array.isArray(indicators) || indicators.length === 0) return;
+    const allowed = indicators.filter((indicator) => {
+      const key = getIndicatorRequestKey(indicator, currency, timeframe);
+      return !indicatorBlockedRef.current.has(key) && !indicatorInFlightRef.current.has(key);
+    });
+    if (!allowed.length) return;
+    const keys = allowed.map((indicator) => getIndicatorRequestKey(indicator, currency, timeframe));
+    keys.forEach((key) => indicatorInFlightRef.current.add(key));
+    try {
+      const result = await fetchIndicatorData(allowed, currency, timeframe, customFromDate, customToDate);
+      return result;
+    } catch (error) {
+      allowed.forEach((indicator) => {
+        const key = getIndicatorRequestKey(indicator, currency, timeframe);
+        const count = (indicatorFailureCountRef.current.get(key) || 0) + 1;
+        indicatorFailureCountRef.current.set(key, count);
+        if (count >= MAX_INDICATOR_FAILURES) {
+          indicatorBlockedRef.current.add(key);
+          fetchedIndicatorsRef.current.add(indicator.id);
+          if (!indicatorErrorShownRef.current.has(key)) {
+            indicatorErrorShownRef.current.add(key);
+            Swal.fire({
+              icon: "error",
+              title: "Indicator Error",
+              text: `${indicator?.type || indicator?.name || "This indicator"} could not be calculated after ${MAX_INDICATOR_FAILURES} attempt${MAX_INDICATOR_FAILURES > 1 ? "s" : ""}. Further requests have been stopped.`,
+              background: "var(--bg-secondary)",
+              color: "var(--text-primary)",
+              confirmButtonText: "OK",
+            });
+          }
+        }
+      });
+      return null;
+    } finally { keys.forEach((key) => indicatorInFlightRef.current.delete(key)); }
+  }, [fetchIndicatorData, getIndicatorRequestKey]);
   // ATTACH MAIN CHART
 
   useEffect(() => {
@@ -5223,7 +5284,7 @@ json.dumps(result)
       if (!selectedCurrency || !timeframeValue) return;
       setNoDataAvailable(false);
       const historicalPayloadBase = {
-        symbol: selectedCurrency?.name,
+        symbol: selectedCurrency?.name || selectedCurrency?.symbol,
         interval: timeframeValue,
         fromDate: fromDate,
         toDate: toDate,
@@ -5244,7 +5305,7 @@ json.dumps(result)
         ...historicalPayloadBase,
         pendingToDate: options.pendingToDate || null,
         preserveVisibleRange: options.preserveVisibleRange || null,
-        symbol: selectedCurrency?.name,
+        symbol: selectedCurrency?.name || selectedCurrency?.symbol,
         timeframe: timeframeValue,
         requestId,
       };
@@ -5318,14 +5379,23 @@ json.dumps(result)
 
     if (
       newFromDate === currentFromDate ||
-      lastAutoBackfillFromRef.current === newFromDate
+      (lastAutoBackfillFromRef.current === newFromDate && historyBackfillInFlightRef.current)
     ) {
       return false;
     }
 
+    if (backfillTimeoutRef.current) clearTimeout(backfillTimeoutRef.current);
     historyBackfillInFlightRef.current = true;
+    inFlightBackfillModeRef.current = "prepend";
     lastAutoBackfillFromRef.current = newFromDate;
     setMainChartLoading(true);
+
+    backfillTimeoutRef.current = setTimeout(() => {
+      historyBackfillInFlightRef.current = false;
+      inFlightBackfillModeRef.current = null;
+      lastAutoBackfillFromRef.current = null;
+      setMainChartLoading(false);
+    }, 4000);
 
     return requestHistoricalData(
       true,
@@ -5376,13 +5446,25 @@ json.dumps(result)
     const newToDate =
       newTo > today ? todayStr : newTo.toISOString().split("T")[0];
 
-    if (newToDate === toDate || lastAutoForwardToRef.current === newToDate) {
+    if (
+      newToDate === toDate ||
+      (lastAutoForwardToRef.current === newToDate && historyBackfillInFlightRef.current)
+    ) {
       return false;
     }
 
+    if (backfillTimeoutRef.current) clearTimeout(backfillTimeoutRef.current);
     historyBackfillInFlightRef.current = true;
+    inFlightBackfillModeRef.current = "append";
     lastAutoForwardToRef.current = newToDate;
     setMainChartLoading(true);
+
+    backfillTimeoutRef.current = setTimeout(() => {
+      historyBackfillInFlightRef.current = false;
+      inFlightBackfillModeRef.current = null;
+      lastAutoForwardToRef.current = null;
+      setMainChartLoading(false);
+    }, 4000);
 
     return requestHistoricalData(
       true,
@@ -5584,7 +5666,7 @@ json.dumps(result)
           selectedIndicatorRef.current &&
           selectedIndicatorRef.current.length > 0
         ) {
-          fetchIndicatorData(
+          safeFetchIndicatorData(
             selectedIndicatorRef.current,
             selectedCurrency,
             timeframeValue,
@@ -5604,7 +5686,10 @@ json.dumps(result)
       }
 
       const mergeMode =
-        requestMeta?.mergeMode || historicalMergeModeRef.current || "replace";
+        requestMeta?.mergeMode ||
+        inFlightBackfillModeRef.current ||
+        historicalMergeModeRef.current ||
+        "replace";
 
       if (
         mergeMode === "replace" &&
@@ -5676,10 +5761,17 @@ json.dumps(result)
         return;
       }
 
+      if (backfillTimeoutRef.current) {
+        clearTimeout(backfillTimeoutRef.current);
+        backfillTimeoutRef.current = null;
+      }
+
       if (raw.length === 0) {
         historicalMergeModeRef.current = "replace";
         pendingHistoricalFromDateRef.current = null;
         historyBackfillInFlightRef.current = false;
+        lastAutoBackfillFromRef.current = null;
+        lastAutoForwardToRef.current = null;
         setIsFetchingCandles(false);
         if (mergeMode === "prepend") {
           setMainChartLoading(false);
@@ -5748,6 +5840,8 @@ json.dumps(result)
       setCandleDataVersion((prev) => prev + 1);
       historicalMergeModeRef.current = "replace";
       historyBackfillInFlightRef.current = false;
+      lastAutoBackfillFromRef.current = null;
+      lastAutoForwardToRef.current = null;
       setIsFetchingCandles(false);
 
       if (!mergedData.length) {
@@ -6072,7 +6166,7 @@ json.dumps(result)
             requestMeta?.pendingToDate ||
             pendingHistoricalToDateRef.current ||
             toDate;
-          fetchIndicatorData(
+          safeFetchIndicatorData(
             selectedIndicatorRef.current,
             selectedCurrency,
             timeframeValue,
@@ -6122,11 +6216,17 @@ json.dumps(result)
       }, 150);
     },
     handleHistoricalError: (err) => {
+      if (backfillTimeoutRef.current) {
+        clearTimeout(backfillTimeoutRef.current);
+        backfillTimeoutRef.current = null;
+      }
       historicalMergeModeRef.current = "replace";
       pendingHistoricalFromDateRef.current = null;
       pendingHistoricalToDateRef.current = null;
       historyBackfillInFlightRef.current = false;
-      toast.error(err.message || "Failed to fetch historical data");
+      lastAutoBackfillFromRef.current = null;
+      lastAutoForwardToRef.current = null;
+      toast.error(err?.message || "Failed to fetch historical data");
       console.error("❌ Historical data error:", err);
       setMainChartLoading(false);
       symbolTransitioningRef.current = false;
@@ -6303,7 +6403,15 @@ json.dumps(result)
             const sentTypes = new Set();
             activeIndicators.forEach((ind) => {
               const indType = typeof ind === "object" ? ind.type : ind;
-              if (sentTypes.has(indType)) return;
+              if (!indType || sentTypes.has(indType)) return;
+
+              const requestKey = getIndicatorRequestKey(
+                indType,
+                selectedCurrency,
+                timeframeValue,
+              );
+              if (indicatorBlockedRef.current.has(requestKey)) return;
+
               sentTypes.add(indType);
               emit(EVENTS.INDICATOR.LIVE, {
                 symbol: selectedCurrency?.name,
@@ -6318,17 +6426,52 @@ json.dumps(result)
     },
     // Note: We've combined liveTick logic into a single handleLiveTick,
     handleLiveIndicator: (payload) => {
-      if (!payload?.success || !payload?.type) return;
+      if (!payload?.type) return;
 
-
-      //check - to plot live values of that particular stock
-      const activeSymbol = normalize(selectedCurrency?.name);
-      const payloadSymbol = normalize(payload.symbol);
-      if (payload.symbol && !isSameSymbolName(payloadSymbol, activeSymbol)) return;
-
-      // console.log(`[LiveIndicator] Payload:`, payload);
+      const activeSymbol = normalize(
+        selectedCurrency?.name || selectedCurrency?.symbol,
+      );
+      const payloadSymbol = normalize(payload?.symbol);
+      if (payload?.symbol && !isSameSymbolName(payloadSymbol, activeSymbol)) return;
 
       const indicatorType = payload.type;
+      const requestKey = getIndicatorRequestKey(
+        indicatorType,
+        selectedCurrency,
+        timeframeValue,
+      );
+
+      if (payload.success === false) {
+        if (indicatorBlockedRef.current.has(requestKey)) return;
+
+        const failureCount = (indicatorFailureCountRef.current.get(requestKey) || 0) + 1;
+        indicatorFailureCountRef.current.set(requestKey, failureCount);
+        console.warn(
+          `[INDICATOR FAILURE] ${indicatorType} ${failureCount}/${MAX_INDICATOR_FAILURES}`,
+          payload.error,
+        );
+
+        if (failureCount >= MAX_INDICATOR_FAILURES) {
+          indicatorBlockedRef.current.add(requestKey);
+          console.warn(`[INDICATOR BLOCKED] ${indicatorType}`);
+
+          if (!indicatorErrorShownRef.current.has(requestKey)) {
+            indicatorErrorShownRef.current.add(requestKey);
+            Swal.fire({
+              icon: "error",
+              title: "Indicator unavailable",
+              text: payload.error || `${indicatorType} could not be calculated.`,
+              confirmButtonText: "OK",
+              background: "var(--bg-secondary)",
+              color: "var(--text-primary)",
+            });
+          }
+        }
+        return;
+      }
+
+      indicatorFailureCountRef.current.delete(requestKey);
+
       const dataArray = payload.data;
       if (!Array.isArray(dataArray) || dataArray.length === 0) return;
       const lastPoint = dataArray[dataArray.length - 1];
@@ -6591,9 +6734,9 @@ json.dumps(result)
         typeof seriesRef.current.barsInLogicalRange === "function"
           ? seriesRef.current.barsInLogicalRange(range)
           : null;
-      const shouldLoadOlder = barsInfo
-        ? barsInfo.barsBefore < 50
-        : range.from <= 25;
+      const shouldLoadOlder =
+        range.from <= 30 ||
+        (barsInfo ? barsInfo.barsBefore < 50 : range.from <= 25);
       const shouldLoadNewer = barsInfo
         ? barsInfo.barsAfter < 50
         : range.to >= candlesRef.current.length - 25;
@@ -7764,13 +7907,11 @@ json.dumps(result)
                           >
                             {selectedIndicator
                               .filter((ind) => {
-                                // Only show indicator bar if data has arrived (series exists)
-                                if (
-                                  !indicatorSeriesRef.current ||
-                                  !indicatorSeriesRef.current[ind.id]
-                                )
-                                  return false;
-                                return !PANE_INDICATORS.has(ind.type);
+                                if (ind.type === "VP") return true;
+                                if (!PANE_INDICATORS.has(ind.type)) return true;
+                                const paneDiv =
+                                  panesRef.current[ind.id]?.pane?.getHTMLElement();
+                                return !paneDiv;
                               })
                               .map((ind) => {
                                 const { id, type } = ind;
@@ -7810,12 +7951,11 @@ json.dumps(result)
                           {/* Pane Indicators (Portals) */}
                           {selectedIndicator
                             .filter((ind) => {
-                              if (
-                                !indicatorSeriesRef.current ||
-                                !indicatorSeriesRef.current[ind.id]
-                              )
-                                return false;
-                              return PANE_INDICATORS.has(ind.type);
+                              if (ind.type === "VP") return false;
+                              if (!PANE_INDICATORS.has(ind.type)) return false;
+                              const paneDiv =
+                                panesRef.current[ind.id]?.pane?.getHTMLElement();
+                              return Boolean(paneDiv);
                             })
                             .map((ind) => {
                               const { id, type } = ind;

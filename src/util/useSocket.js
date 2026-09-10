@@ -129,28 +129,46 @@ const useSocket = (props = {}) => {
 
     const unsubscribers = [];
 
-    const eventsToLog = [
-      EVENTS.OPTION_CHAIN?.LIST,
-      EVENTS.OPTION_CHAIN?.GET,
-      EVENTS.OPTION_CHAIN?.RESPONSE,
-      EVENTS.CHART?.LIVETICKS,
-      EVENTS.OVERVIEW?.RESPONSE
-    ];
+    const eventRequirements = {
+      [EVENTS.STOCK_LIST.STOCKS_LIST]: ["setStocks", "handleAlertTick"],
+      [EVENTS.STOCK_LIST.STOCK_UPDATE]: ["handleStockUpdate", "handleAlertTick"],
+      [EVENTS.WATCHLIST.RESPONSE]: ["handleWatchlistResponse"],
+      [EVENTS.OPTION_CHAIN.LIST]: ["handleOptionChainList"],
+      [EVENTS.OPTION_CHAIN.RESPONSE]: ["handleOptionChainResponse"],
+      [EVENTS.CHART.RESPONSE]: ["handleHistoricalData"],
+      [EVENTS.CHART.ERROR]: ["handleHistoricalError"],
+      [EVENTS.CHART.LIVETICKS]: ["handleLiveTick", "handleAlertTick"],
+      [EVENTS.OVERVIEW.RESPONSE]: ["handleOverviewTick", "handleLiveTick"],
+      [EVENTS.INDICATOR.RESPONSE]: ["handleIndicatorDetails"],
+      [EVENTS.INDICATOR.LIVE_RESPONSE]: ["handleLiveIndicator", "handleAlertTick"],
+      [EVENTS.INDICATOR.UPDATE_RESPONSE]: ["handleUpdateIndicator"],
+      [EVENTS.BACKTEST.DASHBOARD_RESPONSE]: ["setBacktestDashboard"],
+      [EVENTS.STRATEGY.PROGRESS]: ["handleScannerProgress"],
+      [EVENTS.STRATEGY.NEW_SIGNAL]: ["handleNewScannerSignal"],
+      [EVENTS.STRATEGY.COMPLETE]: ["handleScannerComplete"],
+      [EVENTS.STRATEGY.AI_PREDICTION_STATUS]: ["handleAiPredictionStatus"],
+      [EVENTS.STRATEGY.AI_TRADE_SIGNAL]: ["handleAiTradeSignal"],
+      connect: ["handleConnect"],
+      disconnect: ["handleDisconnect"],
+    };
 
-    // Register all centralized handlers with try-catch wrapper
-    Object.keys(handlers).forEach((eventName) => {
+    Object.entries(handlers).forEach(([eventName, handler]) => {
+      const requiredProps = eventRequirements[eventName] || [];
+      const shouldSubscribe = requiredProps.length === 0 || requiredProps.some(
+        (propName) => typeof propsRef.current[propName] === "function",
+      );
+
+      if (!shouldSubscribe) return;
+
       const wrappedHandler = (...args) => {
         try {
-          if (eventsToLog.includes(eventName)) {
-            // console.log(`[SOCKET EVENT] ${eventName} received:`, ...args);
-          }
-          handlers[eventName](...args);
+          handler(...args);
         } catch (error) {
           console.error(`[SOCKET ERROR] Event '${eventName}' threw an exception:`, error);
         }
       };
-      const unsub = socketManager.subscribe(eventName, wrappedHandler);
-      unsubscribers.push(unsub);
+
+      unsubscribers.push(socketManager.subscribe(eventName, wrappedHandler));
     });
 
     const bootstrap = () => {

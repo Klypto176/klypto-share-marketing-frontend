@@ -176,7 +176,7 @@ export default function useChartFunctions({
         indicatorMeta.forEach(({ id }) => {
           if (typeof onIndicatorError === "function") onIndicatorError(id);
         });
-        return;
+        throw error;
       } finally {
         if (
           currentSessionId === globalFetchSessionId &&
@@ -231,25 +231,8 @@ export default function useChartFunctions({
             }
           } catch (error) {
             console.error(`Failed to fetch indicator ${type}:`, error);
-            // Show error to user and remove the empty pane
-            try {
-              await Swal.fire({
-                icon: "error",
-                title: `${type} Indicator Failed`,
-                text:
-                  error?.message ||
-                  `Could not load ${type} data. Please try again.`,
-                confirmButtonText: "OK",
-                background: "var(--bg-secondary)",
-                color: "var(--text-primary)",
-              });
-            } catch (alertError) {
-              console.error(
-                "Failed to show indicator error alert:",
-                alertError,
-              );
-            }
             if (typeof onIndicatorError === "function") onIndicatorError(id);
+            throw error;
           } finally {
             if (
               currentSessionId === globalFetchSessionId &&
