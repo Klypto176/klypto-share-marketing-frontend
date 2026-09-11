@@ -331,7 +331,7 @@ export default function Login() {
         </form>
 
         {/* Signup link */}
-        <div style={s.signupRow}>
+        {/* <div style={s.signupRow}>
           Don't have an account?
           <span
             style={s.signupLink}
@@ -339,7 +339,7 @@ export default function Login() {
           >
             Sign up
           </span>
-        </div>
+        </div> */}
       </div>
     </div>
   );
