@@ -5259,7 +5259,7 @@ json.dumps(result)
             Swal.fire({
               icon: "error",
               title: "Indicator Error",
-              text: `${indicator?.type || indicator?.name || "This indicator"} could not be calculated after ${MAX_INDICATOR_FAILURES} attempt${MAX_INDICATOR_FAILURES > 1 ? "s" : ""}. Further requests have been stopped.`,
+              text: `${indicator?.type || indicator?.name || "This indicator"} could not be loaded. `,
               background: "var(--bg-secondary)",
               color: "var(--text-primary)",
               confirmButtonText: "OK",
