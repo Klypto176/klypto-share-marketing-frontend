@@ -86,7 +86,18 @@ const getInitialLookbackDate = (timeframe) => {
 const getTodayDateString = () => new Date().toISOString().split("T")[0];
 const SANDBOX_DEPLOYMENT_CODE = "SANDBOX_EXECUTION";
 const CHART_TIME_OFFSET_SECONDS = 19800;
+const MIN_HISTORICAL_DATE = "2024-10-01";
 const SANDBOX_OVERLAY_KEY = "__sandbox_overlay__";
+
+const isWithinReconciliationWindow = (date = new Date()) => {
+  const istTime = new Date(
+    date.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
+  );
+  const day = istTime.getDay();
+  const minutes = istTime.getHours() * 60 + istTime.getMinutes();
+
+  return day >= 1 && day <= 5 && minutes >= 9 * 60 + 15 && minutes <= 15 * 60 + 15;
+};
 const WINDOWS_1252_BYTE_BY_CODE_POINT = new Map([
   [0x20ac, 0x80], [0x201a, 0x82], [0x0192, 0x83], [0x201e, 0x84],
   [0x2026, 0x85], [0x2020, 0x86], [0x2021, 0x87], [0x02c6, 0x88],
@@ -543,7 +554,11 @@ export default function Candlestick() {
     if (isNaN(d.getTime())) {
       d = new Date();
     }
-    setFromDate(d.toISOString().split("T")[0]);
+    setFromDate(
+      d.toISOString().split("T")[0] < MIN_HISTORICAL_DATE
+        ? MIN_HISTORICAL_DATE
+        : d.toISOString().split("T")[0],
+    );
   };
   const [toDate, setToDate] = useState(() => {
     const today = getTodayDateString();
@@ -5292,13 +5307,30 @@ json.dumps(result)
     (force = false, overrides = {}, options = {}) => {
       if (!selectedCurrency || !timeframeValue) return;
       setNoDataAvailable(false);
+      const requestedFromDate = overrides.fromDate || fromDate;
+      const requestedToDate = overrides.toDate || toDate;
+      const requestedFromDay = String(requestedFromDate).split("T")[0];
+      const requestedToDay = String(requestedToDate).split("T")[0];
+
+      // The backend has no data before this date. Guard the shared request
+      // entry point so neither scrolling nor any other chart action can emit
+      // an out-of-range historical request.
+      if (requestedToDay < MIN_HISTORICAL_DATE) return false;
+
       const historicalPayloadBase = {
         symbol: selectedCurrency?.name || selectedCurrency?.symbol,
         interval: timeframeValue,
-        fromDate: fromDate,
-        toDate: toDate,
+        fromDate:
+          requestedFromDay < MIN_HISTORICAL_DATE
+            ? MIN_HISTORICAL_DATE
+            : requestedFromDate,
+        toDate: requestedToDate,
         ...overrides,
       };
+      historicalPayloadBase.fromDate =
+        String(historicalPayloadBase.fromDate).split("T")[0] < MIN_HISTORICAL_DATE
+          ? MIN_HISTORICAL_DATE
+          : historicalPayloadBase.fromDate;
       const requestKey = JSON.stringify(historicalPayloadBase);
       const now = Date.now();
       if (
@@ -5388,8 +5420,13 @@ json.dumps(result)
     const chunkDays = getBackfillChunkDays(timeframeValue);
     const newFrom = new Date(currentFrom);
     newFrom.setDate(newFrom.getDate() - chunkDays);
-    const newFromDate = newFrom.toISOString().split("T")[0];
     const currentFromDate = currentFrom.toISOString().split("T")[0];
+    if (currentFromDate <= MIN_HISTORICAL_DATE) return false;
+
+    const newFromDate =
+      newFrom.toISOString().split("T")[0] < MIN_HISTORICAL_DATE
+        ? MIN_HISTORICAL_DATE
+        : newFrom.toISOString().split("T")[0];
 
     if (
       newFromDate === currentFromDate ||
@@ -5599,7 +5636,14 @@ json.dumps(result)
   }, []);
 
   const requestLastThreeCandles = useCallback(() => {
-    if (reconciliationRunningRef.current || !selectedCurrency || !timeframeValue) return false;
+    if (
+      reconciliationRunningRef.current ||
+      !selectedCurrency ||
+      !timeframeValue ||
+      !isWithinReconciliationWindow()
+    ) {
+      return false;
+    }
     reconciliationRunningRef.current = true;
     const now = new Date();
     const recentFromDate = new Date(now.getTime() - 10 * 60 * 1000);
@@ -7010,14 +7054,33 @@ json.dumps(result)
       diff: closestCandle ? Math.abs(closestCandle.time - targetTimeSec) : null,
     });
 
-    // Calculate range using actual times to avoid logical index mismatch
-    const fromIndex = Math.max(0, closestIndex - 25);
-    const toIndex = Math.min(candlesRef.current.length - 1, closestIndex + 25);
+    // The candle-array index can differ from the chart's logical index when
+    // indicators add earlier time points. Use the chart's own time index so
+    // the exact matched candle is brought into view.
+    const timeScale = chartRef.current.timeScale();
+    const targetLogicalIndex = timeScale.timeToIndex(closestCandle.time, true);
+    if (!Number.isFinite(targetLogicalIndex)) return;
 
-    chartRef.current.timeScale().setVisibleRange({
-      from: candlesRef.current[fromIndex].time,
-      to: candlesRef.current[toIndex].time,
-    });
+    const fromIndex = Math.max(0, targetLogicalIndex - 25);
+    const toIndex = targetLogicalIndex + 25;
+
+    const setGoToViewport = () => {
+      if (!chartRef.current || chartDisposedRef.current) return;
+      chartRef.current.timeScale().setVisibleLogicalRange({
+        from: fromIndex,
+        to: toIndex,
+      });
+    };
+
+    setGoToViewport();
+    // Historical/indicator redraws can restore their own range immediately
+    // after navigation. Reapply the target range through that redraw window.
+    requestAnimationFrame(setGoToViewport);
+    window.setTimeout(setGoToViewport, 100);
+    window.setTimeout(setGoToViewport, 250);
+
+    // Keep the selected candle and its local price range visible after Go To.
+    setMainChartAutoScale(true);
 
     // Ignore the immediate scroll events triggered by our own navigation
     ignoreNextScrollRef.current = true;
@@ -7028,6 +7091,7 @@ json.dumps(result)
     // ── Show floating Go To Date marker ──────────────────────────────
     // Give the chart a frame to settle then compute pixel X of the candle
     setTimeout(() => {
+      setGoToViewport();
       if (!chartRef.current || !containerRef.current) {
         console.log("[GoTo] Error: chartRef or containerRef missing");
         return;
@@ -7128,7 +7192,7 @@ json.dumps(result)
         setGoToMarker(null);
         goToMarkerCleanupRef.current = null;
       }, 10000);
-    }, 150);
+    }, 300);
   };
 
   const ignoreNextScrollRef = useRef(false);
