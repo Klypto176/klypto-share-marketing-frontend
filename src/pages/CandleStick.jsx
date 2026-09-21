@@ -375,6 +375,7 @@ export default function Candlestick() {
   const pendingHistoricalToDateRef = useRef(null);
   const suppressNextHistoricalReloadRef = useRef(false);
   const historicalRequestOptionsRef = useRef(new Map());
+  const activeHistoricalRequestRef = useRef(null);
   const latestReplaceRequestIdRef = useRef(null);
   const historicalVisibleRangeRef = useRef(null);
   const historyBackfillInFlightRef = useRef(false);
@@ -4076,7 +4077,15 @@ json.dumps(result)
           },
           paneIndex,
         );
-        dummy.setData([{ time: "2000-01-01", value: 0 }]);
+        const firstCandleTime = Number(candlesRef.current?.[0]?.time);
+        dummy.setData([
+          {
+            time: Number.isFinite(firstCandleTime)
+              ? firstCandleTime
+              : Math.floor(Date.now() / 1000),
+            value: 0,
+          },
+        ]);
         dummySeriesRef.current[paneIndex] = dummy;
       } catch (err) {}
     }
@@ -5312,14 +5321,19 @@ json.dumps(result)
       if ((options.mergeMode || "replace") === "replace") {
         latestReplaceRequestIdRef.current = requestId;
       }
-      historicalRequestOptionsRef.current.set(requestId, {
+      const requestOptions = {
         mergeMode: options.mergeMode || "replace",
         pendingFromDate: options.pendingFromDate || null,
         pendingToDate: options.pendingToDate || null,
         preserveVisibleRange: options.preserveVisibleRange || null,
         symbol: historicalPayload.symbol,
         timeframe: timeframeValue,
-      });
+      };
+      historicalRequestOptionsRef.current.set(requestId, requestOptions);
+      // Some historical-data responses do not echo requestId. Keep the active
+      // request options so a scroll-back response still gets merged as a
+      // prepend and its indicators are fetched for the expanded date range.
+      activeHistoricalRequestRef.current = { requestId, ...requestOptions };
       console.log("📬 getManualHistoricalData Payload:", historicalPayload);
       historyBackfillInFlightRef.current = true;
       setIsFetchingCandles(true);
@@ -5680,7 +5694,7 @@ json.dumps(result)
       const requestId = response?.requestId || response?.meta?.requestId || response?.data?.requestId || null;
       const requestMeta = requestId
         ? historicalRequestOptionsRef.current.get(requestId)
-        : null;
+        : activeHistoricalRequestRef.current;
       if (requestId) {
         historicalRequestOptionsRef.current.delete(requestId);
       }
@@ -5757,6 +5771,13 @@ json.dumps(result)
         if (changedCandles.length) setCandleDataVersion((value) => value + 1);
         historicalRequestOptionsRef.current.delete(requestId);
         reconciliationRunningRef.current = false;
+        // requestHistoricalData also marks reconciliation requests as in flight.
+        // Release that shared lock so scroll-back pagination can request older bars.
+        historyBackfillInFlightRef.current = false;
+        inFlightBackfillModeRef.current = null;
+        if (!requestId || activeHistoricalRequestRef.current?.requestId === requestId) {
+          activeHistoricalRequestRef.current = null;
+        }
         setIsFetchingCandles(false);
         return;
       }
@@ -5772,6 +5793,9 @@ json.dumps(result)
         historyBackfillInFlightRef.current = false;
         lastAutoBackfillFromRef.current = null;
         lastAutoForwardToRef.current = null;
+        if (!requestId || activeHistoricalRequestRef.current?.requestId === requestId) {
+          activeHistoricalRequestRef.current = null;
+        }
         setIsFetchingCandles(false);
         if (mergeMode === "prepend") {
           setMainChartLoading(false);
@@ -5842,6 +5866,9 @@ json.dumps(result)
       historyBackfillInFlightRef.current = false;
       lastAutoBackfillFromRef.current = null;
       lastAutoForwardToRef.current = null;
+      if (!requestId || activeHistoricalRequestRef.current?.requestId === requestId) {
+        activeHistoricalRequestRef.current = null;
+      }
       setIsFetchingCandles(false);
 
       if (!mergedData.length) {
@@ -6223,6 +6250,7 @@ json.dumps(result)
       historicalMergeModeRef.current = "replace";
       pendingHistoricalFromDateRef.current = null;
       pendingHistoricalToDateRef.current = null;
+      activeHistoricalRequestRef.current = null;
       historyBackfillInFlightRef.current = false;
       lastAutoBackfillFromRef.current = null;
       lastAutoForwardToRef.current = null;
@@ -6722,8 +6750,8 @@ json.dumps(result)
       historicalVisibleRangeRef.current = range || null;
       if (
         !range ||
-        mainChartLoading ||
-        !connected ||
+        historyBackfillInFlightRef.current ||
+        !socketRef.current?.socket?.connected ||
         !candlesRef.current?.length
       ) {
         return;
@@ -6734,12 +6762,26 @@ json.dumps(result)
         typeof seriesRef.current.barsInLogicalRange === "function"
           ? seriesRef.current.barsInLogicalRange(range)
           : null;
+      const visibleTimeRange = chartRef.current.timeScale().getVisibleRange();
+      const visibleFromTime = Number(visibleTimeRange?.from);
+      const visibleToTime = Number(visibleTimeRange?.to);
+      const firstLoadedTime = Number(candlesRef.current[0]?.time);
+      const lastLoadedTime = Number(
+        candlesRef.current[candlesRef.current.length - 1]?.time,
+      );
       const shouldLoadOlder =
+        (Number.isFinite(visibleFromTime) &&
+          Number.isFinite(firstLoadedTime) &&
+          visibleFromTime <= firstLoadedTime) ||
         range.from <= 30 ||
         (barsInfo ? barsInfo.barsBefore < 50 : range.from <= 25);
-      const shouldLoadNewer = barsInfo
-        ? barsInfo.barsAfter < 50
-        : range.to >= candlesRef.current.length - 25;
+      const shouldLoadNewer =
+        (Number.isFinite(visibleToTime) &&
+          Number.isFinite(lastLoadedTime) &&
+          visibleToTime >= lastLoadedTime) ||
+        (barsInfo
+          ? barsInfo.barsAfter < 50
+          : range.to >= candlesRef.current.length - 25);
 
       if (shouldLoadOlder) {
         requestOlderHistoricalChunk();
@@ -6749,10 +6791,16 @@ json.dumps(result)
     };
 
     const timeScale = chartRef.current.timeScale();
+    const handleVisibleTimeRangeChange = () => {
+      handleVisibleRangeChange(timeScale.getVisibleLogicalRange());
+    };
+
     timeScale.subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+    timeScale.subscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
     return () => {
       try {
         timeScale.unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+        timeScale.unsubscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
       } catch (e) {}
     };
   }, [
