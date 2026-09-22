@@ -57,13 +57,13 @@ const useSocket = (props = {}) => {
       },
       
       [EVENTS.CHART.LIVETICKS]: (tick) => {
-        console.log(`[SOCKET] ${EVENTS.CHART.LIVETICKS} received:`, tick);
+        // console.log(`[SOCKET] ${EVENTS.CHART.LIVETICKS} received:`, tick);
         if (propsRef.current.handleLiveTick) propsRef.current.handleLiveTick(tick);
         if (propsRef.current.handleAlertTick) propsRef.current.handleAlertTick({ type: EVENTS.CHART.LIVETICKS, data: tick });
       },
       
       [EVENTS.OVERVIEW.RESPONSE]: (tick) => {
-        console.log(`[SOCKET] ${EVENTS.OVERVIEW.RESPONSE} (strategyLiveTick) received:`, tick);
+        // console.log(`[SOCKET] ${EVENTS.OVERVIEW.RESPONSE} (strategyLiveTick) received:`, tick);
         if (propsRef.current.handleOverviewTick) {
           propsRef.current.handleOverviewTick(tick);
           return;

@@ -71,11 +71,11 @@ import DrawingToolbox from "../components/tradingModals/DrawingToolbox";
 
 const getInitialLookbackDate = (timeframe) => {
   const d = new Date();
-  if (["1m", "3m", "5m"].includes(timeframe)) {
+  if (["1m"].includes(timeframe)) {
     d.setDate(d.getDate() - 15);
   } else if (["15m", "30m"].includes(timeframe)) {
     d.setDate(d.getDate() - 30);
-  } else if (["1h", "2h", "4h", "60m", "120m", "240m"].includes(timeframe)) {
+  } else if (["5m","1h", "2h", "4h", "6h", "1d", "1w"].includes(timeframe)) {
     d.setDate(d.getDate() - 90);
   } else {
     d.setFullYear(d.getFullYear() - 1);
@@ -96,28 +96,55 @@ const isWithinReconciliationWindow = (date = new Date()) => {
   const day = istTime.getDay();
   const minutes = istTime.getHours() * 60 + istTime.getMinutes();
 
-  return day >= 1 && day <= 5 && minutes >= 9 * 60 + 15 && minutes <= 15 * 60 + 15;
+  return (
+    day >= 1 && day <= 5 && minutes >= 9 * 60 + 15 && minutes <= 15 * 60 + 15
+  );
 };
 const WINDOWS_1252_BYTE_BY_CODE_POINT = new Map([
-  [0x20ac, 0x80], [0x201a, 0x82], [0x0192, 0x83], [0x201e, 0x84],
-  [0x2026, 0x85], [0x2020, 0x86], [0x2021, 0x87], [0x02c6, 0x88],
-  [0x2030, 0x89], [0x0160, 0x8a], [0x2039, 0x8b], [0x0152, 0x8c],
-  [0x017d, 0x8e], [0x2018, 0x91], [0x2019, 0x92], [0x201c, 0x93],
-  [0x201d, 0x94], [0x2022, 0x95], [0x2013, 0x96], [0x2014, 0x97],
-  [0x02dc, 0x98], [0x2122, 0x99], [0x0161, 0x9a], [0x203a, 0x9b],
-  [0x0153, 0x9c], [0x017e, 0x9e], [0x0178, 0x9f],
+  [0x20ac, 0x80],
+  [0x201a, 0x82],
+  [0x0192, 0x83],
+  [0x201e, 0x84],
+  [0x2026, 0x85],
+  [0x2020, 0x86],
+  [0x2021, 0x87],
+  [0x02c6, 0x88],
+  [0x2030, 0x89],
+  [0x0160, 0x8a],
+  [0x2039, 0x8b],
+  [0x0152, 0x8c],
+  [0x017d, 0x8e],
+  [0x2018, 0x91],
+  [0x2019, 0x92],
+  [0x201c, 0x93],
+  [0x201d, 0x94],
+  [0x2022, 0x95],
+  [0x2013, 0x96],
+  [0x2014, 0x97],
+  [0x02dc, 0x98],
+  [0x2122, 0x99],
+  [0x0161, 0x9a],
+  [0x203a, 0x9b],
+  [0x0153, 0x9c],
+  [0x017e, 0x9e],
+  [0x0178, 0x9f],
 ]);
 
 const repairMojibake = (value) => {
   let text = String(value || "");
   const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
-  for (let attempt = 0; attempt < 3 && /[\u00C3\u00C2\u00E2]/.test(text); attempt += 1) {
+  for (
+    let attempt = 0;
+    attempt < 3 && /[\u00C3\u00C2\u00E2]/.test(text);
+    attempt += 1
+  ) {
     const bytes = [];
     let canDecode = true;
     for (const character of text) {
       const codePoint = character.codePointAt(0);
-      const byte = WINDOWS_1252_BYTE_BY_CODE_POINT.get(codePoint) ??
+      const byte =
+        WINDOWS_1252_BYTE_BY_CODE_POINT.get(codePoint) ??
         (codePoint <= 0xff ? codePoint : null);
       if (byte === null) {
         canDecode = false;
@@ -259,18 +286,17 @@ const getBackfillChunkDays = (timeframe) => {
 const formatBacktestDateTime = (chartTime) => {
   if (!Number.isFinite(chartTime)) return "--";
 
-  return new Date((chartTime - CHART_TIME_OFFSET_SECONDS) * 1000).toLocaleString(
-    "en-IN",
-    {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: true,
-    },
-  );
+  return new Date(
+    (chartTime - CHART_TIME_OFFSET_SECONDS) * 1000,
+  ).toLocaleString("en-IN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
 };
 
 const getSignalBacktestOhlc = (signal, matchedCandle) => {
@@ -290,7 +316,11 @@ const getSignalBacktestOhlc = (signal, matchedCandle) => {
   };
 };
 
-const normalizeApiBacktestRows = (tables, fallbackSymbol, fallbackTimeframe) => {
+const normalizeApiBacktestRows = (
+  tables,
+  fallbackSymbol,
+  fallbackTimeframe,
+) => {
   if (!Array.isArray(tables) || tables.length === 0) return [];
 
   const targetTable =
@@ -326,7 +356,9 @@ const normalizeApiBacktestRows = (tables, fallbackSymbol, fallbackTimeframe) => 
         timeframe: row?.timeframe || fallbackTimeframe || "--",
         dateTime:
           row?.datetime ||
-          (Number.isFinite(chartTime) ? formatBacktestDateTime(chartTime) : "--"),
+          (Number.isFinite(chartTime)
+            ? formatBacktestDateTime(chartTime)
+            : "--"),
         time: chartTime,
         open: Number.isFinite(Number(row?.open)) ? Number(row.open) : null,
         high: Number.isFinite(Number(row?.high)) ? Number(row.high) : null,
@@ -450,7 +482,10 @@ export default function Candlestick() {
   const [predictionStatus, setPredictionStatus] = useState(null);
 
   useEffect(() => {
-    console.log("[DEBUG CandleStick] predictionStatus state changed to:", predictionStatus);
+    console.log(
+      "[DEBUG CandleStick] predictionStatus state changed to:",
+      predictionStatus,
+    );
   }, [predictionStatus]);
   const [isPredicting, setIsPredicting] = useState(false);
   const [isFetchingCandles, setIsFetchingCandles] = useState(false);
@@ -459,45 +494,55 @@ export default function Candlestick() {
   const [agentMessages, setAgentMessages] = useState([]);
   const [agentDraft, setAgentDraft] = useState("");
   const [isAgentLoading, setIsAgentLoading] = useState(false);
-  
+
   const deduplicateTrades = (trades) => {
     if (!trades || !Array.isArray(trades)) return [];
-    
+
     const bestVersions = new Map();
     trades.forEach((trade) => {
       const sym = trade?.symbol;
-      let tStr = trade?.tick?.datetime || trade?.response?.entry_time || trade?.timestamp;
+      let tStr =
+        trade?.tick?.datetime ||
+        trade?.response?.entry_time ||
+        trade?.timestamp;
       let timeKey = tStr;
       if (tStr) {
         const d = new Date(tStr);
         if (!isNaN(d.getTime())) timeKey = d.getTime();
       }
       const key = `${sym}_${timeKey}`;
-      
+
       const existing = bestVersions.get(key);
-      if (!existing || (trade?.response?.rsi !== undefined && existing?.response?.rsi === undefined)) {
+      if (
+        !existing ||
+        (trade?.response?.rsi !== undefined &&
+          existing?.response?.rsi === undefined)
+      ) {
         bestVersions.set(key, trade);
       }
     });
-    
+
     const seen = new Set();
     const result = [];
     trades.forEach((trade) => {
       const sym = trade?.symbol;
-      let tStr = trade?.tick?.datetime || trade?.response?.entry_time || trade?.timestamp;
+      let tStr =
+        trade?.tick?.datetime ||
+        trade?.response?.entry_time ||
+        trade?.timestamp;
       let timeKey = tStr;
       if (tStr) {
         const d = new Date(tStr);
         if (!isNaN(d.getTime())) timeKey = d.getTime();
       }
       const key = `${sym}_${timeKey}`;
-      
+
       if (!seen.has(key)) {
         seen.add(key);
         result.push(bestVersions.get(key));
       }
     });
-    
+
     return result;
   };
 
@@ -577,7 +622,6 @@ export default function Candlestick() {
     } catch (e) {}
     return [];
   });
-  const [rangeValue, setRangeValue] = useState("1000");
   const [chartType, setChartType] = useState("candlestick");
   const [isMarketOpen, setIsMarketOpen] = useState(false);
   const [liveOhlcv, setLiveOhlcv] = useState({});
@@ -630,10 +674,7 @@ export default function Candlestick() {
             ? res
             : [];
         if (results.length > 0) {
-          console.log(
-            "[AI PREDICTION] REST results loaded:",
-            results.length,
-          );
+          console.log("[AI PREDICTION] REST results loaded:", results.length);
 
           const mapped = results.map((item) => ({
             symbol: item.symbol,
@@ -882,7 +923,8 @@ export default function Candlestick() {
 
       try {
         setIsSavingStrategy(true);
-        const symbolName = selectedCurrency?.name || selectedCurrency?.symbol || "Strategy";
+        const symbolName =
+          selectedCurrency?.name || selectedCurrency?.symbol || "Strategy";
         const existingStrategyName =
           draftStrategyName?.trim() || activeStrategyRecord?.name?.trim() || "";
         let strategyName =
@@ -1119,7 +1161,8 @@ export default function Candlestick() {
         return strategyName;
       }
 
-      const symbolName = selectedCurrency?.name || selectedCurrency?.symbol || "Strategy";
+      const symbolName =
+        selectedCurrency?.name || selectedCurrency?.symbol || "Strategy";
       const { value } = await Swal.fire({
         title: "Strategy Name Required",
         input: "text",
@@ -1140,431 +1183,347 @@ export default function Candlestick() {
       setDraftStrategyName(strategyName);
       return strategyName;
     },
-    [activeStrategyRecord?.name, draftStrategyName, selectedCurrency, timeframeValue],
+    [
+      activeStrategyRecord?.name,
+      draftStrategyName,
+      selectedCurrency,
+      timeframeValue,
+    ],
   );
 
-  const renderSandboxPlots = useCallback((chartContract) => {
-    if (!chartRef.current) return;
+  const renderSandboxPlots = useCallback(
+    (chartContract) => {
+      if (!chartRef.current) return;
 
-    const createdSeries = [];
-    const createdPriceLines = [];
-    const createdFillLayers = [];
-    const paneSeriesMap = new Map();
-    const sandboxPaneKeys = new Set();
-    const legendGroups = {};
-    const legendGroupsMeta = {};
-    const isStrategyVisualVisible = (baseVisible = true) =>
-      baseVisible !== false && areStrategyVisualsVisibleRef.current !== false;
+      const createdSeries = [];
+      const createdPriceLines = [];
+      const createdFillLayers = [];
+      const paneSeriesMap = new Map();
+      const sandboxPaneKeys = new Set();
+      const legendGroups = {};
+      const legendGroupsMeta = {};
+      const isStrategyVisualVisible = (baseVisible = true) =>
+        baseVisible !== false && areStrategyVisualsVisibleRef.current !== false;
 
-    const normalizeSandboxPane = (value) =>
-      String(value || chartContract?.pane || "overlay")
-        .trim()
-        .toLowerCase();
+      const normalizeSandboxPane = (value) =>
+        String(value || chartContract?.pane || "overlay")
+          .trim()
+          .toLowerCase();
 
-    const getSandboxPaneKey = (value) => {
-      const paneName = normalizeSandboxPane(value);
-      if (["overlay", "main", "price", ""].includes(paneName)) {
-        return null;
-      }
-      return `__sandbox_pane__${paneName}`;
-    };
-
-    const toLineStyleValue = (value) => {
-      const normalized = String(value || "solid").toLowerCase();
-      if (normalized === "dotted") return 1;
-      if (normalized === "dashed") return 2;
-      return 0;
-    };
-
-    const getSeriesType = (plotType) => {
-      const seriesTypeMap = {
-        line: LineSeries,
-        histogram: HistogramSeries,
-        bar: HistogramSeries,
-        area: AreaSeries,
-        step: LineSeries,
-        scatter: LineSeries,
-        candle: CandlestickSeries,
-      };
-      return seriesTypeMap[String(plotType || "line").toLowerCase()] || LineSeries;
-    };
-
-    const getIndexedStyleString = (value, index, fallback = null) => {
-      if (Array.isArray(value)) {
-        const direct = value[index];
-        if (typeof direct === "string" && direct.trim()) return direct;
-        const first = value.find((item) => typeof item === "string" && item.trim());
-        return first || fallback;
-      }
-
-      if (typeof value === "string" && value.trim()) {
-        return value;
-      }
-
-      return fallback;
-    };
-
-    const getIndexedPlotColor = (plot, index, fallbackColor = null) => {
-      const lineColor = getIndexedStyleString(
-        plot?.style?.lineColor,
-        index,
-        null,
-      );
-      if (lineColor) return lineColor;
-
-      return getIndexedStyleString(plot?.style?.color, index, fallbackColor);
-    };
-
-    const getSeriesOptionColor = (value, fallback) =>
-      getIndexedStyleString(value, 0, fallback);
-
-    const getSeriesOptions = (plot) => {
-      const plotType = String(plot?.type || "line").toLowerCase();
-      const lineStyle = toLineStyleValue(plot?.style?.lineStyle);
-      const baseVisible = plot?.style?.visible !== false;
-      const visible = isStrategyVisualVisible(baseVisible);
-      const baseOptions = {
-        visible,
-        priceLineVisible: false,
-        lastValueVisible: false,
+      const getSandboxPaneKey = (value) => {
+        const paneName = normalizeSandboxPane(value);
+        if (["overlay", "main", "price", ""].includes(paneName)) {
+          return null;
+        }
+        return `__sandbox_pane__${paneName}`;
       };
 
-      if (plotType === "histogram") {
+      const toLineStyleValue = (value) => {
+        const normalized = String(value || "solid").toLowerCase();
+        if (normalized === "dotted") return 1;
+        if (normalized === "dashed") return 2;
+        return 0;
+      };
+
+      const getSeriesType = (plotType) => {
+        const seriesTypeMap = {
+          line: LineSeries,
+          histogram: HistogramSeries,
+          bar: HistogramSeries,
+          area: AreaSeries,
+          step: LineSeries,
+          scatter: LineSeries,
+          candle: CandlestickSeries,
+        };
+        return (
+          seriesTypeMap[String(plotType || "line").toLowerCase()] || LineSeries
+        );
+      };
+
+      const getIndexedStyleString = (value, index, fallback = null) => {
+        if (Array.isArray(value)) {
+          const direct = value[index];
+          if (typeof direct === "string" && direct.trim()) return direct;
+          const first = value.find(
+            (item) => typeof item === "string" && item.trim(),
+          );
+          return first || fallback;
+        }
+
+        if (typeof value === "string" && value.trim()) {
+          return value;
+        }
+
+        return fallback;
+      };
+
+      const getIndexedPlotColor = (plot, index, fallbackColor = null) => {
+        const lineColor = getIndexedStyleString(
+          plot?.style?.lineColor,
+          index,
+          null,
+        );
+        if (lineColor) return lineColor;
+
+        return getIndexedStyleString(plot?.style?.color, index, fallbackColor);
+      };
+
+      const getSeriesOptionColor = (value, fallback) =>
+        getIndexedStyleString(value, 0, fallback);
+
+      const getSeriesOptions = (plot) => {
+        const plotType = String(plot?.type || "line").toLowerCase();
+        const lineStyle = toLineStyleValue(plot?.style?.lineStyle);
+        const baseVisible = plot?.style?.visible !== false;
+        const visible = isStrategyVisualVisible(baseVisible);
+        const baseOptions = {
+          visible,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        };
+
+        if (plotType === "histogram") {
+          return {
+            ...baseOptions,
+            color: getIndexedPlotColor(plot, 0, "#2962ff"),
+            lineWidth: Number(plot?.style?.width) || 2,
+            base: Number.isFinite(Number(plot?.style?.base))
+              ? Number(plot.style.base)
+              : 0,
+          };
+        }
+
+        if (plotType === "area") {
+          const color = getSeriesOptionColor(plot?.style?.color, "#2962ff");
+          const lineColor = getSeriesOptionColor(plot?.style?.lineColor, color);
+          return {
+            ...baseOptions,
+            lineColor,
+            topColor:
+              getSeriesOptionColor(plot?.style?.topColor, null) ||
+              `${color}${color.length === 7 ? "33" : ""}`,
+            bottomColor:
+              getSeriesOptionColor(plot?.style?.bottomColor, null) ||
+              `${color}${color.length === 7 ? "05" : ""}`,
+            lineWidth: Number(plot?.style?.width) || 2,
+            lineStyle,
+            crosshairMarkerVisible:
+              plot?.style?.crosshairMarkerVisible !== false,
+          };
+        }
+
+        if (plotType === "bar") {
+          return {
+            ...baseOptions,
+            color: getIndexedPlotColor(plot, 0, "#2962ff"),
+            lineWidth: Number(plot?.style?.width) || 2,
+            base: Number.isFinite(Number(plot?.style?.base))
+              ? Number(plot.style.base)
+              : 0,
+          };
+        }
+
+        if (plotType === "candle") {
+          const upColor = getSeriesOptionColor(plot?.style?.upColor, "#22c55e");
+          const downColor = getSeriesOptionColor(
+            plot?.style?.downColor,
+            "#ef4444",
+          );
+          return {
+            ...baseOptions,
+            upColor,
+            downColor,
+            wickUpColor: getSeriesOptionColor(
+              plot?.style?.wickUpColor,
+              upColor,
+            ),
+            wickDownColor: getSeriesOptionColor(
+              plot?.style?.wickDownColor,
+              downColor,
+            ),
+            borderUpColor: getSeriesOptionColor(
+              plot?.style?.borderUpColor,
+              upColor,
+            ),
+            borderDownColor: getSeriesOptionColor(
+              plot?.style?.borderDownColor,
+              downColor,
+            ),
+            borderVisible: plot?.style?.borderVisible ?? true,
+          };
+        }
+
         return {
           ...baseOptions,
           color: getIndexedPlotColor(plot, 0, "#2962ff"),
-          lineWidth: Number(plot?.style?.width) || 2,
-          base: Number.isFinite(Number(plot?.style?.base))
-            ? Number(plot.style.base)
-            : 0,
-        };
-      }
-
-      if (plotType === "area") {
-        const color = getSeriesOptionColor(plot?.style?.color, "#2962ff");
-        const lineColor = getSeriesOptionColor(plot?.style?.lineColor, color);
-        return {
-          ...baseOptions,
-          lineColor,
-          topColor:
-            getSeriesOptionColor(plot?.style?.topColor, null) ||
-            `${color}${color.length === 7 ? "33" : ""}`,
-          bottomColor:
-            getSeriesOptionColor(plot?.style?.bottomColor, null) ||
-            `${color}${color.length === 7 ? "05" : ""}`,
           lineWidth: Number(plot?.style?.width) || 2,
           lineStyle,
-          crosshairMarkerVisible: plot?.style?.crosshairMarkerVisible !== false,
+          lineVisible: plotType !== "scatter",
+          pointMarkersVisible: plotType === "scatter",
+          crosshairMarkerVisible: plotType === "scatter",
+          lineType: plotType === "step" ? 1 : 0,
         };
-      }
-
-      if (plotType === "bar") {
-        return {
-          ...baseOptions,
-          color: getIndexedPlotColor(plot, 0, "#2962ff"),
-          lineWidth: Number(plot?.style?.width) || 2,
-          base: Number.isFinite(Number(plot?.style?.base))
-            ? Number(plot.style.base)
-            : 0,
-        };
-      }
-
-      if (plotType === "candle") {
-        const upColor = getSeriesOptionColor(plot?.style?.upColor, "#22c55e");
-        const downColor = getSeriesOptionColor(plot?.style?.downColor, "#ef4444");
-        return {
-          ...baseOptions,
-          upColor,
-          downColor,
-          wickUpColor: getSeriesOptionColor(plot?.style?.wickUpColor, upColor),
-          wickDownColor: getSeriesOptionColor(
-            plot?.style?.wickDownColor,
-            downColor,
-          ),
-          borderUpColor: getSeriesOptionColor(plot?.style?.borderUpColor, upColor),
-          borderDownColor: getSeriesOptionColor(
-            plot?.style?.borderDownColor,
-            downColor,
-          ),
-          borderVisible: plot?.style?.borderVisible ?? true,
-        };
-      }
-
-      return {
-        ...baseOptions,
-        color: getIndexedPlotColor(plot, 0, "#2962ff"),
-        lineWidth: Number(plot?.style?.width) || 2,
-        lineStyle,
-        lineVisible: plotType !== "scatter",
-        pointMarkersVisible: plotType === "scatter",
-        crosshairMarkerVisible: plotType === "scatter",
-        lineType: plotType === "step" ? 1 : 0,
       };
-    };
 
-    const getSeriesData = (plot) => {
-      if (!Array.isArray(plot?.data)) return [];
+      const getSeriesData = (plot) => {
+        if (!Array.isArray(plot?.data)) return [];
 
-      const plotType = String(plot?.type || "line").toLowerCase();
-      if (plotType === "candle") {
+        const plotType = String(plot?.type || "line").toLowerCase();
+        if (plotType === "candle") {
+          return plot.data
+            .map((point) => {
+              const time = toChartTimestamp(point?.time);
+              const open = Number(point?.open);
+              const high = Number(point?.high);
+              const low = Number(point?.low);
+              const close = Number(point?.close);
+
+              if (
+                time === null ||
+                !Number.isFinite(open) ||
+                !Number.isFinite(high) ||
+                !Number.isFinite(low) ||
+                !Number.isFinite(close)
+              ) {
+                return null;
+              }
+
+              return {
+                time,
+                open,
+                high,
+                low,
+                close,
+                ...(point?.color ? { color: point.color } : {}),
+                ...(point?.borderColor
+                  ? { borderColor: point.borderColor }
+                  : {}),
+                ...(point?.wickColor ? { wickColor: point.wickColor } : {}),
+              };
+            })
+            .filter(Boolean);
+        }
+
         return plot.data
-          .map((point) => {
-            const time = toChartTimestamp(point?.time);
-            const open = Number(point?.open);
-            const high = Number(point?.high);
-            const low = Number(point?.low);
-            const close = Number(point?.close);
+          .map((point, index) => {
+            const normalized = toSeriesValue(point);
+            if (!normalized) return null;
+            if (!("value" in normalized)) return normalized;
+            const dynamicColor = getIndexedPlotColor(plot, index);
+            if (plotType === "area") {
+              const lineColor =
+                point?.lineColor ||
+                getIndexedStyleString(
+                  plot?.style?.lineColor,
+                  index,
+                  dynamicColor,
+                );
+              const topColor =
+                point?.topColor ||
+                getIndexedStyleString(plot?.style?.topColor, index, null);
+              const bottomColor =
+                point?.bottomColor ||
+                getIndexedStyleString(plot?.style?.bottomColor, index, null);
 
-            if (
-              time === null ||
-              !Number.isFinite(open) ||
-              !Number.isFinite(high) ||
-              !Number.isFinite(low) ||
-              !Number.isFinite(close)
-            ) {
-              return null;
+              return {
+                ...normalized,
+                ...(lineColor ? { lineColor } : {}),
+                ...(topColor ? { topColor } : {}),
+                ...(bottomColor ? { bottomColor } : {}),
+              };
             }
 
             return {
-              time,
-              open,
-              high,
-              low,
-              close,
-              ...(point?.color ? { color: point.color } : {}),
-              ...(point?.borderColor ? { borderColor: point.borderColor } : {}),
-              ...(point?.wickColor ? { wickColor: point.wickColor } : {}),
+              ...normalized,
+              ...(point?.color || point?.lineColor
+                ? { color: point.color || point.lineColor }
+                : dynamicColor
+                  ? { color: dynamicColor }
+                  : {}),
             };
           })
           .filter(Boolean);
-      }
-
-      return plot.data
-        .map((point, index) => {
-          const normalized = toSeriesValue(point);
-          if (!normalized) return null;
-          if (!("value" in normalized)) return normalized;
-          const dynamicColor = getIndexedPlotColor(plot, index);
-          if (plotType === "area") {
-            const lineColor =
-              point?.lineColor ||
-              getIndexedStyleString(
-                plot?.style?.lineColor,
-                index,
-                dynamicColor,
-              );
-            const topColor =
-              point?.topColor ||
-              getIndexedStyleString(plot?.style?.topColor, index, null);
-            const bottomColor =
-              point?.bottomColor ||
-              getIndexedStyleString(plot?.style?.bottomColor, index, null);
-
-            return {
-              ...normalized,
-              ...(lineColor ? { lineColor } : {}),
-              ...(topColor ? { topColor } : {}),
-              ...(bottomColor ? { bottomColor } : {}),
-            };
-          }
-
-          return {
-            ...normalized,
-            ...(point?.color || point?.lineColor
-              ? { color: point.color || point.lineColor }
-              : dynamicColor
-                ? { color: dynamicColor }
-                : {}),
-          };
-        })
-        .filter(Boolean);
-    };
-
-    const plots = Array.isArray(chartContract?.plots) ? chartContract.plots : [];
-    const plotEntriesById = new Map();
-
-    const getLastNumericValue = (seriesData, plotType) => {
-      if (!Array.isArray(seriesData) || seriesData.length === 0) return null;
-
-      for (let i = seriesData.length - 1; i >= 0; i -= 1) {
-        const point = seriesData[i];
-        if (!point || typeof point !== "object") continue;
-
-        if (plotType === "candle") {
-          if (Number.isFinite(Number(point.close))) {
-            return Number(point.close);
-          }
-          continue;
-        }
-
-        if (Number.isFinite(Number(point.value))) {
-          return Number(point.value);
-        }
-      }
-
-      return null;
-    };
-
-    plots.forEach((plot) => {
-      const paneKey = getSandboxPaneKey(plot?.pane);
-      if (paneKey) {
-        sandboxPaneKeys.add(paneKey);
-      }
-
-      const series = addSeries(
-        paneKey || "__sandbox_overlay__",
-        getSeriesType(plot?.type),
-        getSeriesOptions(plot),
-        paneKey,
-      );
-      const seriesData = getSeriesData(plot);
-
-      if (series && seriesData.length > 0) {
-        series.setData(seriesData);
-      }
-
-      if (!series) return;
-
-      createdSeries.push({
-        id: plot?.id || plot?.title || `sandbox_plot_${createdSeries.length + 1}`,
-        paneKey,
-        series,
-        data: seriesData,
-        baseVisible: plot?.style?.visible !== false,
-      });
-
-      const plotEntry = {
-        id: plot?.id || plot?.title || `sandbox_plot_${createdSeries.length}`,
-        paneKey,
-        plotType: String(plot?.type || "line").toLowerCase(),
-        series,
-        data: seriesData,
-        baseVisible: plot?.style?.visible !== false,
-      };
-      if (plot?.id) {
-        plotEntriesById.set(plot.id, plotEntry);
-      }
-      if (plot?.title && !plotEntriesById.has(plot.title)) {
-        plotEntriesById.set(plot.title, plotEntry);
-      }
-
-      const paneSeriesKey = paneKey || SANDBOX_OVERLAY_KEY;
-      if (!paneSeriesMap.has(paneSeriesKey)) {
-        paneSeriesMap.set(paneSeriesKey, []);
-      }
-      paneSeriesMap.get(paneSeriesKey).push(series);
-
-      const legendKey = paneKey || SANDBOX_OVERLAY_KEY;
-      if (!legendGroups[legendKey]) {
-        legendGroups[legendKey] = {
-          paneKey,
-          title: chartContract?.name || "Sandbox Indicator",
-          items: [],
-        };
-        legendGroupsMeta[legendKey] = {
-          paneKey,
-          title: chartContract?.name || "Sandbox Indicator",
-          items: [],
-        };
-      }
-
-      const legendItem = {
-        id: plot?.id || plot?.title || `sandbox_plot_${createdSeries.length}`,
-        label: plot?.title || plot?.id || "Plot",
-        color:
-          seriesData[seriesData.length - 1]?.color ||
-          seriesData[seriesData.length - 1]?.lineColor ||
-          getIndexedPlotColor(
-            plot,
-            Math.max(seriesData.length - 1, 0),
-            getSeriesOptionColor(plot?.style?.topColor, null) ||
-              getSeriesOptionColor(plot?.style?.upColor, "#3b82f6"),
-          ),
-        value: getLastNumericValue(
-          seriesData,
-          String(plot?.type || "line").toLowerCase(),
-        ),
       };
 
-      legendGroups[legendKey].items.push(legendItem);
-      legendGroupsMeta[legendKey].items.push({
-        ...legendItem,
-        series,
-        plotType: String(plot?.type || "line").toLowerCase(),
-      });
-    });
+      const plots = Array.isArray(chartContract?.plots)
+        ? chartContract.plots
+        : [];
+      const plotEntriesById = new Map();
 
-    const drawings = Array.isArray(chartContract?.drawings)
-      ? chartContract.drawings
-      : [];
-    drawings.forEach((drawing) => {
-      const drawingType = String(drawing?.type || "line").toLowerCase();
-      if (!["line", "line_segment", "segment", "polyline"].includes(drawingType)) {
-        return;
-      }
+      const getLastNumericValue = (seriesData, plotType) => {
+        if (!Array.isArray(seriesData) || seriesData.length === 0) return null;
 
-      const points = Array.isArray(drawing?.points) ? drawing.points : [];
-      const seriesData = points
-        .map((point) => {
-          const time = toChartTimestamp(point?.time);
-          const value = Number(point?.value ?? point?.price);
-          if (time === null || !Number.isFinite(value)) return null;
-          return { time, value };
-        })
-        .filter(Boolean);
+        for (let i = seriesData.length - 1; i >= 0; i -= 1) {
+          const point = seriesData[i];
+          if (!point || typeof point !== "object") continue;
 
-      if (seriesData.length < 2) return;
+          if (plotType === "candle") {
+            if (Number.isFinite(Number(point.close))) {
+              return Number(point.close);
+            }
+            continue;
+          }
 
-      const paneKey = getSandboxPaneKey(drawing?.pane);
-      if (paneKey) {
-        sandboxPaneKeys.add(paneKey);
-      }
+          if (Number.isFinite(Number(point.value))) {
+            return Number(point.value);
+          }
+        }
 
-      const style = drawing?.style || {};
-      const baseVisible = style.visible !== false;
-      const visible = isStrategyVisualVisible(baseVisible);
-      const series = addSeries(
-        paneKey || "__sandbox_overlay__",
-        LineSeries,
-        {
-          visible,
-          color: getSeriesOptionColor(style.color, "#22c55e"),
-          lineWidth: Number(style.width) || 2,
-          lineStyle: toLineStyleValue(style.lineStyle),
-          priceLineVisible: false,
-          lastValueVisible: false,
-          crosshairMarkerVisible: false,
-        },
-        paneKey,
-      );
+        return null;
+      };
 
-      if (!series) return;
+      plots.forEach((plot) => {
+        const paneKey = getSandboxPaneKey(plot?.pane);
+        if (paneKey) {
+          sandboxPaneKeys.add(paneKey);
+        }
 
-      try {
-        series.setData(seriesData);
-      } catch (error) {
-        console.warn("[Sandbox] Drawing setData failed:", error);
-        return;
-      }
+        const series = addSeries(
+          paneKey || "__sandbox_overlay__",
+          getSeriesType(plot?.type),
+          getSeriesOptions(plot),
+          paneKey,
+        );
+        const seriesData = getSeriesData(plot);
 
-      const drawingId =
-        drawing?.id || drawing?.title || `sandbox_drawing_${createdSeries.length + 1}`;
-      createdSeries.push({
-        id: drawingId,
-        paneKey,
-        series,
-        data: seriesData,
-        baseVisible,
-        isDrawing: true,
-      });
+        if (series && seriesData.length > 0) {
+          series.setData(seriesData);
+        }
 
-      const paneSeriesKey = paneKey || SANDBOX_OVERLAY_KEY;
-      if (!paneSeriesMap.has(paneSeriesKey)) {
-        paneSeriesMap.set(paneSeriesKey, []);
-      }
-      paneSeriesMap.get(paneSeriesKey).push(series);
+        if (!series) return;
 
-      if (style.showInLegend === true) {
+        createdSeries.push({
+          id:
+            plot?.id ||
+            plot?.title ||
+            `sandbox_plot_${createdSeries.length + 1}`,
+          paneKey,
+          series,
+          data: seriesData,
+          baseVisible: plot?.style?.visible !== false,
+        });
+
+        const plotEntry = {
+          id: plot?.id || plot?.title || `sandbox_plot_${createdSeries.length}`,
+          paneKey,
+          plotType: String(plot?.type || "line").toLowerCase(),
+          series,
+          data: seriesData,
+          baseVisible: plot?.style?.visible !== false,
+        };
+        if (plot?.id) {
+          plotEntriesById.set(plot.id, plotEntry);
+        }
+        if (plot?.title && !plotEntriesById.has(plot.title)) {
+          plotEntriesById.set(plot.title, plotEntry);
+        }
+
+        const paneSeriesKey = paneKey || SANDBOX_OVERLAY_KEY;
+        if (!paneSeriesMap.has(paneSeriesKey)) {
+          paneSeriesMap.set(paneSeriesKey, []);
+        }
+        paneSeriesMap.get(paneSeriesKey).push(series);
+
         const legendKey = paneKey || SANDBOX_OVERLAY_KEY;
         if (!legendGroups[legendKey]) {
           legendGroups[legendKey] = {
@@ -1580,654 +1539,817 @@ export default function Candlestick() {
         }
 
         const legendItem = {
-          id: drawingId,
-          label: drawing?.title || drawingId,
-          color: getSeriesOptionColor(style.color, "#22c55e"),
-          value: getLastNumericValue(seriesData, "line"),
+          id: plot?.id || plot?.title || `sandbox_plot_${createdSeries.length}`,
+          label: plot?.title || plot?.id || "Plot",
+          color:
+            seriesData[seriesData.length - 1]?.color ||
+            seriesData[seriesData.length - 1]?.lineColor ||
+            getIndexedPlotColor(
+              plot,
+              Math.max(seriesData.length - 1, 0),
+              getSeriesOptionColor(plot?.style?.topColor, null) ||
+                getSeriesOptionColor(plot?.style?.upColor, "#3b82f6"),
+            ),
+          value: getLastNumericValue(
+            seriesData,
+            String(plot?.type || "line").toLowerCase(),
+          ),
         };
+
         legendGroups[legendKey].items.push(legendItem);
         legendGroupsMeta[legendKey].items.push({
           ...legendItem,
           series,
-          plotType: "line",
+          plotType: String(plot?.type || "line").toLowerCase(),
         });
-      }
-    });
-
-    const getPaneElement = (paneKey) =>
-      paneKey
-        ? panesRef.current?.[paneKey]?.div ||
-          panesRef.current?.[paneKey]?.pane?.getHTMLElement?.()
-        : containerRef.current;
-
-    const getPrimarySeriesForPane = (paneKey) =>
-      paneSeriesMap.get(paneKey || SANDBOX_OVERLAY_KEY)?.[0] ||
-      (paneKey ? null : seriesRef.current);
-
-    const addCanvasLayer = (paneKey, drawLayer, zIndex = 2, baseVisible = true) => {
-      const paneElement = getPaneElement(paneKey);
-      const hostElement = containerRef.current;
-      if (!paneElement || !hostElement || typeof drawLayer !== "function") {
-        return;
-      }
-
-      if (getComputedStyle(hostElement).position === "static") {
-        hostElement.style.position = "relative";
-      }
-
-      const canvas = document.createElement("canvas");
-      canvas.style.position = "absolute";
-      canvas.style.left = "0";
-      canvas.style.top = "0";
-      canvas.style.pointerEvents = "none";
-      canvas.style.zIndex = String(zIndex);
-      canvas.style.display = isStrategyVisualVisible(baseVisible)
-        ? "block"
-        : "none";
-      hostElement.appendChild(canvas);
-
-      const draw = () => {
-        const hostRect = hostElement.getBoundingClientRect();
-        const paneRect = paneElement.getBoundingClientRect();
-        const left = paneRect.left - hostRect.left;
-        const top = paneRect.top - hostRect.top;
-        const width = paneRect.width;
-        const height = paneRect.height;
-        if (!width || !height) return;
-
-        const dpr = window.devicePixelRatio || 1;
-        canvas.width = Math.floor(width * dpr);
-        canvas.height = Math.floor(height * dpr);
-        canvas.style.width = `${width}px`;
-        canvas.style.height = `${height}px`;
-        canvas.style.left = `${left}px`;
-        canvas.style.top = `${top}px`;
-
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.scale(dpr, dpr);
-
-        drawLayer({ ctx, width, height, paneKey });
-      };
-
-      const redraw = () => draw();
-      chartRef.current.timeScale().subscribeVisibleTimeRangeChange(redraw);
-      chartRef.current.subscribeCrosshairMove(redraw);
-
-      let resizeObserver = null;
-      if (typeof ResizeObserver !== "undefined") {
-        resizeObserver = new ResizeObserver(() => draw());
-        resizeObserver.observe(hostElement);
-        if (paneElement !== hostElement) {
-          resizeObserver.observe(paneElement);
-        }
-      }
-
-      requestAnimationFrame(draw);
-      setTimeout(draw, 0);
-
-      createdFillLayers.push({
-        canvas,
-        baseVisible,
-        unsubscribe: () => {
-          chartRef.current?.timeScale()?.unsubscribeVisibleTimeRangeChange?.(
-            redraw,
-          );
-          chartRef.current?.unsubscribeCrosshairMove?.(redraw);
-          resizeObserver?.disconnect?.();
-        },
       });
-    };
 
-    const groupByPane = (items) => {
-      const grouped = new Map();
-      items.forEach((item) => {
-        const paneKey = getSandboxPaneKey(item?.pane);
-        const key = paneKey || SANDBOX_OVERLAY_KEY;
-        if (!grouped.has(key)) {
-          grouped.set(key, { paneKey, items: [] });
+      const drawings = Array.isArray(chartContract?.drawings)
+        ? chartContract.drawings
+        : [];
+      drawings.forEach((drawing) => {
+        const drawingType = String(drawing?.type || "line").toLowerCase();
+        if (
+          !["line", "line_segment", "segment", "polyline"].includes(drawingType)
+        ) {
+          return;
         }
-        grouped.get(key).items.push(item);
-      });
-      return grouped;
-    };
 
-    const getNumberValue = (...values) => {
-      for (const value of values) {
-        const numeric = Number(value);
-        if (Number.isFinite(numeric)) return numeric;
-      }
-      return null;
-    };
+        const points = Array.isArray(drawing?.points) ? drawing.points : [];
+        const seriesData = points
+          .map((point) => {
+            const time = toChartTimestamp(point?.time);
+            const value = Number(point?.value ?? point?.price);
+            if (time === null || !Number.isFinite(value)) return null;
+            return { time, value };
+          })
+          .filter(Boolean);
 
-    const bgColors = Array.isArray(chartContract?.bgColors)
-      ? chartContract.bgColors
-      : [];
-    groupByPane(bgColors).forEach(({ paneKey, items }) => {
-      addCanvasLayer(
-        paneKey,
-        ({ ctx, width, height }) => {
-          const halfInterval = Math.max(
-            1,
-            Math.floor((TIMEFRAME_TO_SECONDS[timeframeValue] || 300) / 2),
-          );
-          items.forEach((item) => {
-            const time = toChartTimestamp(item?.time);
-            const color = getIndexedStyleString(item?.color, 0, null);
-            if (time === null || !color) return;
+        if (seriesData.length < 2) return;
 
-            const x = chartRef.current.timeScale().timeToCoordinate(time);
-            let left = chartRef.current
-              .timeScale()
-              .timeToCoordinate(time - halfInterval);
-            let right = chartRef.current
-              .timeScale()
-              .timeToCoordinate(time + halfInterval);
+        const paneKey = getSandboxPaneKey(drawing?.pane);
+        if (paneKey) {
+          sandboxPaneKeys.add(paneKey);
+        }
 
-            if (x == null) return;
-            if (left == null || right == null || left === right) {
-              left = x - 3;
-              right = x + 3;
-            }
+        const style = drawing?.style || {};
+        const baseVisible = style.visible !== false;
+        const visible = isStrategyVisualVisible(baseVisible);
+        const series = addSeries(
+          paneKey || "__sandbox_overlay__",
+          LineSeries,
+          {
+            visible,
+            color: getSeriesOptionColor(style.color, "#22c55e"),
+            lineWidth: Number(style.width) || 2,
+            lineStyle: toLineStyleValue(style.lineStyle),
+            priceLineVisible: false,
+            lastValueVisible: false,
+            crosshairMarkerVisible: false,
+          },
+          paneKey,
+        );
 
-            const bandLeft = Math.max(0, Math.min(left, right));
-            const bandWidth = Math.min(width - bandLeft, Math.abs(right - left));
-            if (bandWidth <= 0) return;
-            ctx.fillStyle = color;
-            ctx.fillRect(bandLeft, 0, bandWidth, height);
+        if (!series) return;
+
+        try {
+          series.setData(seriesData);
+        } catch (error) {
+          console.warn("[Sandbox] Drawing setData failed:", error);
+          return;
+        }
+
+        const drawingId =
+          drawing?.id ||
+          drawing?.title ||
+          `sandbox_drawing_${createdSeries.length + 1}`;
+        createdSeries.push({
+          id: drawingId,
+          paneKey,
+          series,
+          data: seriesData,
+          baseVisible,
+          isDrawing: true,
+        });
+
+        const paneSeriesKey = paneKey || SANDBOX_OVERLAY_KEY;
+        if (!paneSeriesMap.has(paneSeriesKey)) {
+          paneSeriesMap.set(paneSeriesKey, []);
+        }
+        paneSeriesMap.get(paneSeriesKey).push(series);
+
+        if (style.showInLegend === true) {
+          const legendKey = paneKey || SANDBOX_OVERLAY_KEY;
+          if (!legendGroups[legendKey]) {
+            legendGroups[legendKey] = {
+              paneKey,
+              title: chartContract?.name || "Sandbox Indicator",
+              items: [],
+            };
+            legendGroupsMeta[legendKey] = {
+              paneKey,
+              title: chartContract?.name || "Sandbox Indicator",
+              items: [],
+            };
+          }
+
+          const legendItem = {
+            id: drawingId,
+            label: drawing?.title || drawingId,
+            color: getSeriesOptionColor(style.color, "#22c55e"),
+            value: getLastNumericValue(seriesData, "line"),
+          };
+          legendGroups[legendKey].items.push(legendItem);
+          legendGroupsMeta[legendKey].items.push({
+            ...legendItem,
+            series,
+            plotType: "line",
           });
-        },
-        1,
-      );
-    });
+        }
+      });
 
-    const fills = Array.isArray(chartContract?.fills) ? chartContract.fills : [];
-    fills.forEach((fillConfig) => {
-      const fromEntry = plotEntriesById.get(fillConfig?.from);
-      if (!fromEntry?.series || !Array.isArray(fromEntry?.data) || fromEntry.data.length === 0) {
-        return;
-      }
-
-      const toEntry =
-        typeof fillConfig?.to === "string" ? plotEntriesById.get(fillConfig.to) : null;
-      const paneKey = fromEntry.paneKey || toEntry?.paneKey || null;
-
-      if (toEntry?.paneKey !== undefined && fromEntry.paneKey !== toEntry?.paneKey) {
-        return;
-      }
-
-      const baseVisible =
-        fillConfig?.visible !== false &&
-        fromEntry?.baseVisible !== false &&
-        toEntry?.baseVisible !== false;
-      const paneElement =
+      const getPaneElement = (paneKey) =>
         paneKey
           ? panesRef.current?.[paneKey]?.div ||
             panesRef.current?.[paneKey]?.pane?.getHTMLElement?.()
           : containerRef.current;
-      const hostElement = containerRef.current;
 
-      if (!paneElement || !hostElement) {
-        return;
-      }
+      const getPrimarySeriesForPane = (paneKey) =>
+        paneSeriesMap.get(paneKey || SANDBOX_OVERLAY_KEY)?.[0] ||
+        (paneKey ? null : seriesRef.current);
 
-      if (getComputedStyle(hostElement).position === "static") {
-        hostElement.style.position = "relative";
-      }
-
-      const canvas = document.createElement("canvas");
-      canvas.style.position = "absolute";
-      canvas.style.left = "0";
-      canvas.style.top = "0";
-      canvas.style.pointerEvents = "none";
-      canvas.style.zIndex = "2";
-      canvas.style.display = isStrategyVisualVisible(baseVisible)
-        ? "block"
-        : "none";
-      hostElement.appendChild(canvas);
-
-      const drawFill = () => {
-        const hostRect = hostElement.getBoundingClientRect();
-        const paneRect = paneElement.getBoundingClientRect();
-        const left = paneRect.left - hostRect.left;
-        const top = paneRect.top - hostRect.top;
-        const width = paneRect.width;
-        const height = paneRect.height;
-        if (!width || !height) return;
-
-        const dpr = window.devicePixelRatio || 1;
-        canvas.width = Math.floor(width * dpr);
-        canvas.height = Math.floor(height * dpr);
-        canvas.style.width = `${width}px`;
-        canvas.style.height = `${height}px`;
-        canvas.style.left = `${left}px`;
-        canvas.style.top = `${top}px`;
-
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.scale(dpr, dpr);
-
-        const topData = fromEntry.data || [];
-        const bottomData = Array.isArray(toEntry?.data) ? toEntry.data : [];
-        if (!topData.length) return;
-
-        const topPoints = topData
-          .map((point) => {
-            if (!Number.isFinite(Number(point?.value))) return null;
-            const x = chartRef.current.timeScale().timeToCoordinate(point.time);
-            const y = fromEntry.series.priceToCoordinate(point.value);
-            if (x == null || y == null) return null;
-            return { x, y };
-          })
-          .filter(Boolean);
-
-        if (topPoints.length < 2) {
+      const addCanvasLayer = (
+        paneKey,
+        drawLayer,
+        zIndex = 2,
+        baseVisible = true,
+      ) => {
+        const paneElement = getPaneElement(paneKey);
+        const hostElement = containerRef.current;
+        if (!paneElement || !hostElement || typeof drawLayer !== "function") {
           return;
         }
 
-        const bottomPoints = toEntry?.series
-          ? bottomData
-              .map((point) => {
-                if (!Number.isFinite(Number(point?.value))) return null;
-                const x = chartRef.current.timeScale().timeToCoordinate(point.time);
-                const y = toEntry.series.priceToCoordinate(point.value);
-                if (x == null || y == null) return null;
-                return { x, y };
-              })
-              .filter(Boolean)
-          : [];
+        if (getComputedStyle(hostElement).position === "static") {
+          hostElement.style.position = "relative";
+        }
 
-        ctx.save();
-        ctx.rect(0, 0, width, height);
-        ctx.clip();
-        ctx.beginPath();
+        const canvas = document.createElement("canvas");
+        canvas.style.position = "absolute";
+        canvas.style.left = "0";
+        canvas.style.top = "0";
+        canvas.style.pointerEvents = "none";
+        canvas.style.zIndex = String(zIndex);
+        canvas.style.display = isStrategyVisualVisible(baseVisible)
+          ? "block"
+          : "none";
+        hostElement.appendChild(canvas);
 
-        ctx.moveTo(topPoints[0].x, topPoints[0].y);
-        topPoints.slice(1).forEach((point) => {
-          ctx.lineTo(point.x, point.y);
+        const draw = () => {
+          const hostRect = hostElement.getBoundingClientRect();
+          const paneRect = paneElement.getBoundingClientRect();
+          const left = paneRect.left - hostRect.left;
+          const top = paneRect.top - hostRect.top;
+          const width = paneRect.width;
+          const height = paneRect.height;
+          if (!width || !height) return;
+
+          const dpr = window.devicePixelRatio || 1;
+          canvas.width = Math.floor(width * dpr);
+          canvas.height = Math.floor(height * dpr);
+          canvas.style.width = `${width}px`;
+          canvas.style.height = `${height}px`;
+          canvas.style.left = `${left}px`;
+          canvas.style.top = `${top}px`;
+
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return;
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.scale(dpr, dpr);
+
+          drawLayer({ ctx, width, height, paneKey });
+        };
+
+        const redraw = () => draw();
+        chartRef.current.timeScale().subscribeVisibleTimeRangeChange(redraw);
+        chartRef.current.subscribeCrosshairMove(redraw);
+
+        let resizeObserver = null;
+        if (typeof ResizeObserver !== "undefined") {
+          resizeObserver = new ResizeObserver(() => draw());
+          resizeObserver.observe(hostElement);
+          if (paneElement !== hostElement) {
+            resizeObserver.observe(paneElement);
+          }
+        }
+
+        requestAnimationFrame(draw);
+        setTimeout(draw, 0);
+
+        createdFillLayers.push({
+          canvas,
+          baseVisible,
+          unsubscribe: () => {
+            chartRef.current
+              ?.timeScale()
+              ?.unsubscribeVisibleTimeRangeChange?.(redraw);
+            chartRef.current?.unsubscribeCrosshairMove?.(redraw);
+            resizeObserver?.disconnect?.();
+          },
         });
-
-        if (toEntry?.series && bottomPoints.length > 0) {
-          for (let i = bottomPoints.length - 1; i >= 0; i -= 1) {
-            const point = bottomPoints[i];
-            ctx.lineTo(point.x, point.y);
-          }
-        } else if (Number.isFinite(Number(fillConfig?.toValue))) {
-          const toValue = Number(fillConfig.toValue);
-          for (let i = topPoints.length - 1; i >= 0; i -= 1) {
-            const point = topPoints[i];
-            const y = fromEntry.series.priceToCoordinate(toValue);
-            if (y == null) continue;
-            ctx.lineTo(point.x, y);
-          }
-        } else {
-          ctx.restore();
-          return;
-        }
-
-        ctx.closePath();
-
-        if (fillConfig?.colorTop || fillConfig?.colorBottom) {
-          const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-          gradient.addColorStop(0, fillConfig.colorTop || fillConfig.color || "rgba(34,197,94,0.18)");
-          gradient.addColorStop(1, fillConfig.colorBottom || fillConfig.colorTop || fillConfig.color || "rgba(245,158,11,0.10)");
-          ctx.fillStyle = gradient;
-        } else {
-          ctx.fillStyle = fillConfig?.color || "rgba(34,197,94,0.18)";
-        }
-
-        ctx.fill();
-        ctx.restore();
       };
 
-      const redraw = () => drawFill();
-      chartRef.current.timeScale().subscribeVisibleTimeRangeChange(redraw);
-      chartRef.current.subscribeCrosshairMove(redraw);
+      const groupByPane = (items) => {
+        const grouped = new Map();
+        items.forEach((item) => {
+          const paneKey = getSandboxPaneKey(item?.pane);
+          const key = paneKey || SANDBOX_OVERLAY_KEY;
+          if (!grouped.has(key)) {
+            grouped.set(key, { paneKey, items: [] });
+          }
+          grouped.get(key).items.push(item);
+        });
+        return grouped;
+      };
 
-      let resizeObserver = null;
-      if (typeof ResizeObserver !== "undefined") {
-        resizeObserver = new ResizeObserver(() => drawFill());
-        resizeObserver.observe(hostElement);
-        if (paneElement !== hostElement) {
-          resizeObserver.observe(paneElement);
+      const getNumberValue = (...values) => {
+        for (const value of values) {
+          const numeric = Number(value);
+          if (Number.isFinite(numeric)) return numeric;
         }
-      }
+        return null;
+      };
 
-      requestAnimationFrame(drawFill);
-      setTimeout(drawFill, 0);
+      const bgColors = Array.isArray(chartContract?.bgColors)
+        ? chartContract.bgColors
+        : [];
+      groupByPane(bgColors).forEach(({ paneKey, items }) => {
+        addCanvasLayer(
+          paneKey,
+          ({ ctx, width, height }) => {
+            const halfInterval = Math.max(
+              1,
+              Math.floor((TIMEFRAME_TO_SECONDS[timeframeValue] || 300) / 2),
+            );
+            items.forEach((item) => {
+              const time = toChartTimestamp(item?.time);
+              const color = getIndexedStyleString(item?.color, 0, null);
+              if (time === null || !color) return;
 
-      createdFillLayers.push({
-        canvas,
-        baseVisible,
-        unsubscribe: () => {
-          chartRef.current?.timeScale()?.unsubscribeVisibleTimeRangeChange?.(redraw);
-          chartRef.current?.unsubscribeCrosshairMove?.(redraw);
-          resizeObserver?.disconnect?.();
-        },
-      });
-    });
+              const x = chartRef.current.timeScale().timeToCoordinate(time);
+              let left = chartRef.current
+                .timeScale()
+                .timeToCoordinate(time - halfInterval);
+              let right = chartRef.current
+                .timeScale()
+                .timeToCoordinate(time + halfInterval);
 
-    const zones = Array.isArray(chartContract?.zones) ? chartContract.zones : [];
-    groupByPane(zones).forEach(({ paneKey, items }) => {
-      const series = getPrimarySeriesForPane(paneKey);
-      if (!series) return;
-
-      addCanvasLayer(
-        paneKey,
-        ({ ctx, width }) => {
-          items.forEach((zoneItem) => {
-            const color =
-              getIndexedStyleString(
-                zoneItem?.color || zoneItem?.fillColor,
-                0,
-                "rgba(59,130,246,0.12)",
-              ) || "rgba(59,130,246,0.12)";
-
-            if (
-              Array.isArray(zoneItem?.upper) &&
-              Array.isArray(zoneItem?.lower)
-            ) {
-              const upperPoints = zoneItem.upper
-                .map((point) => {
-                  const time = toChartTimestamp(point?.time);
-                  const value = getNumberValue(point?.value);
-                  if (time === null || value === null) return null;
-                  const x = chartRef.current.timeScale().timeToCoordinate(time);
-                  const y = series.priceToCoordinate(value);
-                  if (x == null || y == null) return null;
-                  return { x, y };
-                })
-                .filter(Boolean);
-              const lowerPoints = zoneItem.lower
-                .map((point) => {
-                  const time = toChartTimestamp(point?.time);
-                  const value = getNumberValue(point?.value);
-                  if (time === null || value === null) return null;
-                  const x = chartRef.current.timeScale().timeToCoordinate(time);
-                  const y = series.priceToCoordinate(value);
-                  if (x == null || y == null) return null;
-                  return { x, y };
-                })
-                .filter(Boolean);
-
-              if (upperPoints.length < 2 || lowerPoints.length < 2) return;
-
-              ctx.beginPath();
-              ctx.moveTo(upperPoints[0].x, upperPoints[0].y);
-              upperPoints.slice(1).forEach((point) => ctx.lineTo(point.x, point.y));
-              for (let i = lowerPoints.length - 1; i >= 0; i -= 1) {
-                ctx.lineTo(lowerPoints[i].x, lowerPoints[i].y);
+              if (x == null) return;
+              if (left == null || right == null || left === right) {
+                left = x - 3;
+                right = x + 3;
               }
-              ctx.closePath();
+
+              const bandLeft = Math.max(0, Math.min(left, right));
+              const bandWidth = Math.min(
+                width - bandLeft,
+                Math.abs(right - left),
+              );
+              if (bandWidth <= 0) return;
               ctx.fillStyle = color;
-              ctx.fill();
-              return;
-            }
-
-            const fromValue = getNumberValue(
-              zoneItem?.from,
-              zoneItem?.fromValue,
-              zoneItem?.bottom,
-            );
-            const toValue = getNumberValue(
-              zoneItem?.to,
-              zoneItem?.toValue,
-              zoneItem?.top,
-            );
-            if (fromValue === null || toValue === null) return;
-
-            const y1 = series.priceToCoordinate(fromValue);
-            const y2 = series.priceToCoordinate(toValue);
-            if (y1 == null || y2 == null) return;
-
-            const top = Math.min(y1, y2);
-            const height = Math.abs(y2 - y1);
-            ctx.fillStyle = color;
-            ctx.fillRect(0, top, width, Math.max(1, height));
-          });
-        },
-        2,
-      );
-    });
-
-    const boxes = Array.isArray(chartContract?.boxes) ? chartContract.boxes : [];
-    groupByPane(boxes).forEach(({ paneKey, items }) => {
-      const series = getPrimarySeriesForPane(paneKey);
-      if (!series) return;
-
-      addCanvasLayer(
-        paneKey,
-        ({ ctx }) => {
-          items.forEach((boxItem) => {
-            const start = toChartTimestamp(boxItem?.start ?? boxItem?.from);
-            const end = toChartTimestamp(boxItem?.end ?? boxItem?.to);
-            const topValue = getNumberValue(boxItem?.top, boxItem?.high);
-            const bottomValue = getNumberValue(boxItem?.bottom, boxItem?.low);
-            if (
-              start === null ||
-              end === null ||
-              topValue === null ||
-              bottomValue === null
-            ) {
-              return;
-            }
-
-            const x1 = chartRef.current.timeScale().timeToCoordinate(start);
-            const x2 = chartRef.current.timeScale().timeToCoordinate(end);
-            const y1 = series.priceToCoordinate(topValue);
-            const y2 = series.priceToCoordinate(bottomValue);
-            if (x1 == null || x2 == null || y1 == null || y2 == null) return;
-
-            const left = Math.min(x1, x2);
-            const top = Math.min(y1, y2);
-            const width = Math.abs(x2 - x1);
-            const height = Math.abs(y2 - y1);
-            const fillColor = getIndexedStyleString(
-              boxItem?.fillColor || boxItem?.color,
-              0,
-              "rgba(59,130,246,0.10)",
-            );
-            const borderColor = getIndexedStyleString(
-              boxItem?.borderColor || boxItem?.color,
-              0,
-              "rgba(59,130,246,0.65)",
-            );
-
-            ctx.fillStyle = fillColor;
-            ctx.fillRect(left, top, Math.max(1, width), Math.max(1, height));
-            ctx.strokeStyle = borderColor;
-            ctx.lineWidth = Number(boxItem?.lineWidth) || 1;
-            ctx.strokeRect(left, top, Math.max(1, width), Math.max(1, height));
-          });
-        },
-        3,
-      );
-    });
-
-    const labels = Array.isArray(chartContract?.labels)
-      ? chartContract.labels
-      : [];
-    groupByPane(labels).forEach(({ paneKey, items }) => {
-      const series = getPrimarySeriesForPane(paneKey);
-      if (!series) return;
-
-      addCanvasLayer(
-        paneKey,
-        ({ ctx, width, height }) => {
-          ctx.font = "12px sans-serif";
-          ctx.textBaseline = "middle";
-          items.forEach((labelItem) => {
-            const time = toChartTimestamp(labelItem?.time);
-            const value = getNumberValue(
-              labelItem?.value,
-              labelItem?.price,
-              labelItem?.y,
-            );
-            const text = String(labelItem?.text || labelItem?.label || "").trim();
-            if (time === null || value === null || !text) return;
-
-            const x = chartRef.current.timeScale().timeToCoordinate(time);
-            const y = series.priceToCoordinate(value);
-            if (x == null || y == null) return;
-
-            const color = getIndexedStyleString(
-              labelItem?.color || labelItem?.textColor,
-              0,
-              "#e5e7eb",
-            );
-            const backgroundColor = getIndexedStyleString(
-              labelItem?.backgroundColor || labelItem?.bgColor,
-              0,
-              "rgba(15,23,42,0.78)",
-            );
-            const offset =
-              String(labelItem?.position || "").toLowerCase() === "abovebar"
-                ? -14
-                : String(labelItem?.position || "").toLowerCase() ===
-                    "belowbar"
-                  ? 14
-                  : 0;
-            const textWidth = ctx.measureText(text).width;
-            const boxWidth = textWidth + 8;
-            const boxHeight = 18;
-            const left = Math.max(0, Math.min(width - boxWidth, x - boxWidth / 2));
-            const top = Math.max(
-              0,
-              Math.min(height - boxHeight, y + offset - boxHeight / 2),
-            );
-
-            ctx.fillStyle = backgroundColor;
-            ctx.fillRect(left, top, boxWidth, boxHeight);
-            ctx.fillStyle = color;
-            ctx.fillText(text, left + 4, top + boxHeight / 2);
-          });
-        },
-        4,
-      );
-    });
-
-    const barColors = Array.isArray(chartContract?.barColors)
-      ? chartContract.barColors
-      : [];
-    if (
-      barColors.length > 0 &&
-      seriesRef.current &&
-      Array.isArray(candlesRef.current) &&
-      candlesRef.current.length > 0
-    ) {
-      const colorByTime = new Map();
-      barColors.forEach((item) => {
-        const time = normalizeChartTime(item?.time);
-        if (time === null || !item?.color) return;
-        colorByTime.set(time, item.color);
-        colorByTime.set(time + CHART_TIME_OFFSET_SECONDS, item.color);
+              ctx.fillRect(bandLeft, 0, bandWidth, height);
+            });
+          },
+          1,
+        );
       });
-      customScriptBarColorMapRef.current = colorByTime;
 
-      try {
-        const chartKind = seriesRef.current.customChartType || chartType;
-        if (chartKind === "candlestick" || chartKind === "hollowcandles") {
-          seriesRef.current.setData(
-            applySandboxBarColorsToData(candlesRef.current, chartKind),
-          );
-          customScriptBarColorsAppliedRef.current = true;
-        } else if (chartKind === "heikinashi") {
-          seriesRef.current.setData(
-            applySandboxBarColorsToData(candlesRef.current, chartKind),
-          );
-          customScriptBarColorsAppliedRef.current = true;
-        }
-      } catch (error) {
-        console.warn("Unable to apply sandbox bar colors:", error);
-      }
-    } else {
-      customScriptBarColorsAppliedRef.current = false;
-      customScriptBarColorMapRef.current = null;
-    }
-
-    const levelPaneKey =
-      getSandboxPaneKey(chartContract?.pane) || "__sandbox_overlay__";
-    const levelSeries =
-      paneSeriesMap.get(levelPaneKey)?.[0] ||
-      paneSeriesMap.values().next().value?.[0];
-
-    if (levelSeries?.createPriceLine) {
-      const levels = Array.isArray(chartContract?.levels)
-        ? chartContract.levels
+      const fills = Array.isArray(chartContract?.fills)
+        ? chartContract.fills
         : [];
-      levels.forEach((level) => {
-        const price = Number(level?.value);
-        if (!Number.isFinite(price)) return;
-
-        const baseVisible = level?.visible !== false;
-        const baseAxisLabelVisible = level?.axisLabelVisible ?? true;
-        try {
-          const priceLine = levelSeries.createPriceLine({
-            price,
-            color: level?.color || "#94a3b8",
-            lineWidth: Number(level?.lineWidth) || 1,
-            lineStyle: toLineStyleValue(level?.lineStyle || "dashed"),
-            title: level?.label || "",
-            axisLabelVisible:
-              baseAxisLabelVisible && isStrategyVisualVisible(baseVisible),
-            lineVisible: isStrategyVisualVisible(baseVisible),
-          });
-          createdPriceLines.push({
-            series: levelSeries,
-            priceLine,
-            baseVisible,
-            baseAxisLabelVisible,
-          });
-        } catch (error) {
-          console.warn("Unable to create sandbox price line:", error);
+      fills.forEach((fillConfig) => {
+        const fromEntry = plotEntriesById.get(fillConfig?.from);
+        if (
+          !fromEntry?.series ||
+          !Array.isArray(fromEntry?.data) ||
+          fromEntry.data.length === 0
+        ) {
+          return;
         }
+
+        const toEntry =
+          typeof fillConfig?.to === "string"
+            ? plotEntriesById.get(fillConfig.to)
+            : null;
+        const paneKey = fromEntry.paneKey || toEntry?.paneKey || null;
+
+        if (
+          toEntry?.paneKey !== undefined &&
+          fromEntry.paneKey !== toEntry?.paneKey
+        ) {
+          return;
+        }
+
+        const baseVisible =
+          fillConfig?.visible !== false &&
+          fromEntry?.baseVisible !== false &&
+          toEntry?.baseVisible !== false;
+        const paneElement = paneKey
+          ? panesRef.current?.[paneKey]?.div ||
+            panesRef.current?.[paneKey]?.pane?.getHTMLElement?.()
+          : containerRef.current;
+        const hostElement = containerRef.current;
+
+        if (!paneElement || !hostElement) {
+          return;
+        }
+
+        if (getComputedStyle(hostElement).position === "static") {
+          hostElement.style.position = "relative";
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.style.position = "absolute";
+        canvas.style.left = "0";
+        canvas.style.top = "0";
+        canvas.style.pointerEvents = "none";
+        canvas.style.zIndex = "2";
+        canvas.style.display = isStrategyVisualVisible(baseVisible)
+          ? "block"
+          : "none";
+        hostElement.appendChild(canvas);
+
+        const drawFill = () => {
+          const hostRect = hostElement.getBoundingClientRect();
+          const paneRect = paneElement.getBoundingClientRect();
+          const left = paneRect.left - hostRect.left;
+          const top = paneRect.top - hostRect.top;
+          const width = paneRect.width;
+          const height = paneRect.height;
+          if (!width || !height) return;
+
+          const dpr = window.devicePixelRatio || 1;
+          canvas.width = Math.floor(width * dpr);
+          canvas.height = Math.floor(height * dpr);
+          canvas.style.width = `${width}px`;
+          canvas.style.height = `${height}px`;
+          canvas.style.left = `${left}px`;
+          canvas.style.top = `${top}px`;
+
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return;
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.scale(dpr, dpr);
+
+          const topData = fromEntry.data || [];
+          const bottomData = Array.isArray(toEntry?.data) ? toEntry.data : [];
+          if (!topData.length) return;
+
+          const topPoints = topData
+            .map((point) => {
+              if (!Number.isFinite(Number(point?.value))) return null;
+              const x = chartRef.current
+                .timeScale()
+                .timeToCoordinate(point.time);
+              const y = fromEntry.series.priceToCoordinate(point.value);
+              if (x == null || y == null) return null;
+              return { x, y };
+            })
+            .filter(Boolean);
+
+          if (topPoints.length < 2) {
+            return;
+          }
+
+          const bottomPoints = toEntry?.series
+            ? bottomData
+                .map((point) => {
+                  if (!Number.isFinite(Number(point?.value))) return null;
+                  const x = chartRef.current
+                    .timeScale()
+                    .timeToCoordinate(point.time);
+                  const y = toEntry.series.priceToCoordinate(point.value);
+                  if (x == null || y == null) return null;
+                  return { x, y };
+                })
+                .filter(Boolean)
+            : [];
+
+          ctx.save();
+          ctx.rect(0, 0, width, height);
+          ctx.clip();
+          ctx.beginPath();
+
+          ctx.moveTo(topPoints[0].x, topPoints[0].y);
+          topPoints.slice(1).forEach((point) => {
+            ctx.lineTo(point.x, point.y);
+          });
+
+          if (toEntry?.series && bottomPoints.length > 0) {
+            for (let i = bottomPoints.length - 1; i >= 0; i -= 1) {
+              const point = bottomPoints[i];
+              ctx.lineTo(point.x, point.y);
+            }
+          } else if (Number.isFinite(Number(fillConfig?.toValue))) {
+            const toValue = Number(fillConfig.toValue);
+            for (let i = topPoints.length - 1; i >= 0; i -= 1) {
+              const point = topPoints[i];
+              const y = fromEntry.series.priceToCoordinate(toValue);
+              if (y == null) continue;
+              ctx.lineTo(point.x, y);
+            }
+          } else {
+            ctx.restore();
+            return;
+          }
+
+          ctx.closePath();
+
+          if (fillConfig?.colorTop || fillConfig?.colorBottom) {
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(
+              0,
+              fillConfig.colorTop || fillConfig.color || "rgba(34,197,94,0.18)",
+            );
+            gradient.addColorStop(
+              1,
+              fillConfig.colorBottom ||
+                fillConfig.colorTop ||
+                fillConfig.color ||
+                "rgba(245,158,11,0.10)",
+            );
+            ctx.fillStyle = gradient;
+          } else {
+            ctx.fillStyle = fillConfig?.color || "rgba(34,197,94,0.18)";
+          }
+
+          ctx.fill();
+          ctx.restore();
+        };
+
+        const redraw = () => drawFill();
+        chartRef.current.timeScale().subscribeVisibleTimeRangeChange(redraw);
+        chartRef.current.subscribeCrosshairMove(redraw);
+
+        let resizeObserver = null;
+        if (typeof ResizeObserver !== "undefined") {
+          resizeObserver = new ResizeObserver(() => drawFill());
+          resizeObserver.observe(hostElement);
+          if (paneElement !== hostElement) {
+            resizeObserver.observe(paneElement);
+          }
+        }
+
+        requestAnimationFrame(drawFill);
+        setTimeout(drawFill, 0);
+
+        createdFillLayers.push({
+          canvas,
+          baseVisible,
+          unsubscribe: () => {
+            chartRef.current
+              ?.timeScale()
+              ?.unsubscribeVisibleTimeRangeChange?.(redraw);
+            chartRef.current?.unsubscribeCrosshairMove?.(redraw);
+            resizeObserver?.disconnect?.();
+          },
+        });
       });
-    }
 
-    customScriptSeriesRef.current = createdSeries;
-    customScriptPriceLinesRef.current = createdPriceLines;
-    customScriptFillLayersRef.current = createdFillLayers;
-    customScriptPaneKeysRef.current = Array.from(sandboxPaneKeys);
-    sandboxLegendGroupsRef.current = legendGroupsMeta;
-    setSandboxLegendGroups(legendGroups);
-  }, [
-    applySandboxBarColorsToData,
-    chartType,
-    timeframeValue,
-  ]);
-
-  const applyStrategyVisualVisibility = useCallback(
-    (visible) => {
-      const seriesList = Array.isArray(customScriptSeriesRef.current)
-        ? customScriptSeriesRef.current
+      const zones = Array.isArray(chartContract?.zones)
+        ? chartContract.zones
         : [];
+      groupByPane(zones).forEach(({ paneKey, items }) => {
+        const series = getPrimarySeriesForPane(paneKey);
+        if (!series) return;
 
-      seriesList.forEach((entry) => {
-        const series = entry?.series || entry;
-        const nextVisible = visible && entry?.baseVisible !== false;
-        try {
-          series.applyOptions({ visible: nextVisible });
-        } catch (error) {
-          console.warn("Unable to toggle strategy series visibility:", error);
-        }
+        addCanvasLayer(
+          paneKey,
+          ({ ctx, width }) => {
+            items.forEach((zoneItem) => {
+              const color =
+                getIndexedStyleString(
+                  zoneItem?.color || zoneItem?.fillColor,
+                  0,
+                  "rgba(59,130,246,0.12)",
+                ) || "rgba(59,130,246,0.12)";
+
+              if (
+                Array.isArray(zoneItem?.upper) &&
+                Array.isArray(zoneItem?.lower)
+              ) {
+                const upperPoints = zoneItem.upper
+                  .map((point) => {
+                    const time = toChartTimestamp(point?.time);
+                    const value = getNumberValue(point?.value);
+                    if (time === null || value === null) return null;
+                    const x = chartRef.current
+                      .timeScale()
+                      .timeToCoordinate(time);
+                    const y = series.priceToCoordinate(value);
+                    if (x == null || y == null) return null;
+                    return { x, y };
+                  })
+                  .filter(Boolean);
+                const lowerPoints = zoneItem.lower
+                  .map((point) => {
+                    const time = toChartTimestamp(point?.time);
+                    const value = getNumberValue(point?.value);
+                    if (time === null || value === null) return null;
+                    const x = chartRef.current
+                      .timeScale()
+                      .timeToCoordinate(time);
+                    const y = series.priceToCoordinate(value);
+                    if (x == null || y == null) return null;
+                    return { x, y };
+                  })
+                  .filter(Boolean);
+
+                if (upperPoints.length < 2 || lowerPoints.length < 2) return;
+
+                ctx.beginPath();
+                ctx.moveTo(upperPoints[0].x, upperPoints[0].y);
+                upperPoints
+                  .slice(1)
+                  .forEach((point) => ctx.lineTo(point.x, point.y));
+                for (let i = lowerPoints.length - 1; i >= 0; i -= 1) {
+                  ctx.lineTo(lowerPoints[i].x, lowerPoints[i].y);
+                }
+                ctx.closePath();
+                ctx.fillStyle = color;
+                ctx.fill();
+                return;
+              }
+
+              const fromValue = getNumberValue(
+                zoneItem?.from,
+                zoneItem?.fromValue,
+                zoneItem?.bottom,
+              );
+              const toValue = getNumberValue(
+                zoneItem?.to,
+                zoneItem?.toValue,
+                zoneItem?.top,
+              );
+              if (fromValue === null || toValue === null) return;
+
+              const y1 = series.priceToCoordinate(fromValue);
+              const y2 = series.priceToCoordinate(toValue);
+              if (y1 == null || y2 == null) return;
+
+              const top = Math.min(y1, y2);
+              const height = Math.abs(y2 - y1);
+              ctx.fillStyle = color;
+              ctx.fillRect(0, top, width, Math.max(1, height));
+            });
+          },
+          2,
+        );
       });
 
-      if (customScriptMarkersRef.current) {
+      const boxes = Array.isArray(chartContract?.boxes)
+        ? chartContract.boxes
+        : [];
+      groupByPane(boxes).forEach(({ paneKey, items }) => {
+        const series = getPrimarySeriesForPane(paneKey);
+        if (!series) return;
+
+        addCanvasLayer(
+          paneKey,
+          ({ ctx }) => {
+            items.forEach((boxItem) => {
+              const start = toChartTimestamp(boxItem?.start ?? boxItem?.from);
+              const end = toChartTimestamp(boxItem?.end ?? boxItem?.to);
+              const topValue = getNumberValue(boxItem?.top, boxItem?.high);
+              const bottomValue = getNumberValue(boxItem?.bottom, boxItem?.low);
+              if (
+                start === null ||
+                end === null ||
+                topValue === null ||
+                bottomValue === null
+              ) {
+                return;
+              }
+
+              const x1 = chartRef.current.timeScale().timeToCoordinate(start);
+              const x2 = chartRef.current.timeScale().timeToCoordinate(end);
+              const y1 = series.priceToCoordinate(topValue);
+              const y2 = series.priceToCoordinate(bottomValue);
+              if (x1 == null || x2 == null || y1 == null || y2 == null) return;
+
+              const left = Math.min(x1, x2);
+              const top = Math.min(y1, y2);
+              const width = Math.abs(x2 - x1);
+              const height = Math.abs(y2 - y1);
+              const fillColor = getIndexedStyleString(
+                boxItem?.fillColor || boxItem?.color,
+                0,
+                "rgba(59,130,246,0.10)",
+              );
+              const borderColor = getIndexedStyleString(
+                boxItem?.borderColor || boxItem?.color,
+                0,
+                "rgba(59,130,246,0.65)",
+              );
+
+              ctx.fillStyle = fillColor;
+              ctx.fillRect(left, top, Math.max(1, width), Math.max(1, height));
+              ctx.strokeStyle = borderColor;
+              ctx.lineWidth = Number(boxItem?.lineWidth) || 1;
+              ctx.strokeRect(
+                left,
+                top,
+                Math.max(1, width),
+                Math.max(1, height),
+              );
+            });
+          },
+          3,
+        );
+      });
+
+      const labels = Array.isArray(chartContract?.labels)
+        ? chartContract.labels
+        : [];
+      groupByPane(labels).forEach(({ paneKey, items }) => {
+        const series = getPrimarySeriesForPane(paneKey);
+        if (!series) return;
+
+        addCanvasLayer(
+          paneKey,
+          ({ ctx, width, height }) => {
+            ctx.font = "12px sans-serif";
+            ctx.textBaseline = "middle";
+            items.forEach((labelItem) => {
+              const time = toChartTimestamp(labelItem?.time);
+              const value = getNumberValue(
+                labelItem?.value,
+                labelItem?.price,
+                labelItem?.y,
+              );
+              const text = String(
+                labelItem?.text || labelItem?.label || "",
+              ).trim();
+              if (time === null || value === null || !text) return;
+
+              const x = chartRef.current.timeScale().timeToCoordinate(time);
+              const y = series.priceToCoordinate(value);
+              if (x == null || y == null) return;
+
+              const color = getIndexedStyleString(
+                labelItem?.color || labelItem?.textColor,
+                0,
+                "#e5e7eb",
+              );
+              const backgroundColor = getIndexedStyleString(
+                labelItem?.backgroundColor || labelItem?.bgColor,
+                0,
+                "rgba(15,23,42,0.78)",
+              );
+              const offset =
+                String(labelItem?.position || "").toLowerCase() === "abovebar"
+                  ? -14
+                  : String(labelItem?.position || "").toLowerCase() ===
+                      "belowbar"
+                    ? 14
+                    : 0;
+              const textWidth = ctx.measureText(text).width;
+              const boxWidth = textWidth + 8;
+              const boxHeight = 18;
+              const left = Math.max(
+                0,
+                Math.min(width - boxWidth, x - boxWidth / 2),
+              );
+              const top = Math.max(
+                0,
+                Math.min(height - boxHeight, y + offset - boxHeight / 2),
+              );
+
+              ctx.fillStyle = backgroundColor;
+              ctx.fillRect(left, top, boxWidth, boxHeight);
+              ctx.fillStyle = color;
+              ctx.fillText(text, left + 4, top + boxHeight / 2);
+            });
+          },
+          4,
+        );
+      });
+
+      const barColors = Array.isArray(chartContract?.barColors)
+        ? chartContract.barColors
+        : [];
+      if (
+        barColors.length > 0 &&
+        seriesRef.current &&
+        Array.isArray(candlesRef.current) &&
+        candlesRef.current.length > 0
+      ) {
+        const colorByTime = new Map();
+        barColors.forEach((item) => {
+          const time = normalizeChartTime(item?.time);
+          if (time === null || !item?.color) return;
+          colorByTime.set(time, item.color);
+          colorByTime.set(time + CHART_TIME_OFFSET_SECONDS, item.color);
+        });
+        customScriptBarColorMapRef.current = colorByTime;
+
         try {
-          customScriptMarkersRef.current.setMarkers(
-            visible ? lastDeployedMarkersRef.current || [] : [],
-          );
+          const chartKind = seriesRef.current.customChartType || chartType;
+          if (chartKind === "candlestick" || chartKind === "hollowcandles") {
+            seriesRef.current.setData(
+              applySandboxBarColorsToData(candlesRef.current, chartKind),
+            );
+            customScriptBarColorsAppliedRef.current = true;
+          } else if (chartKind === "heikinashi") {
+            seriesRef.current.setData(
+              applySandboxBarColorsToData(candlesRef.current, chartKind),
+            );
+            customScriptBarColorsAppliedRef.current = true;
+          }
         } catch (error) {
-          console.warn("Unable to toggle strategy markers visibility:", error);
+          console.warn("Unable to apply sandbox bar colors:", error);
         }
+      } else {
+        customScriptBarColorsAppliedRef.current = false;
+        customScriptBarColorMapRef.current = null;
       }
+
+      const levelPaneKey =
+        getSandboxPaneKey(chartContract?.pane) || "__sandbox_overlay__";
+      const levelSeries =
+        paneSeriesMap.get(levelPaneKey)?.[0] ||
+        paneSeriesMap.values().next().value?.[0];
+
+      if (levelSeries?.createPriceLine) {
+        const levels = Array.isArray(chartContract?.levels)
+          ? chartContract.levels
+          : [];
+        levels.forEach((level) => {
+          const price = Number(level?.value);
+          if (!Number.isFinite(price)) return;
+
+          const baseVisible = level?.visible !== false;
+          const baseAxisLabelVisible = level?.axisLabelVisible ?? true;
+          try {
+            const priceLine = levelSeries.createPriceLine({
+              price,
+              color: level?.color || "#94a3b8",
+              lineWidth: Number(level?.lineWidth) || 1,
+              lineStyle: toLineStyleValue(level?.lineStyle || "dashed"),
+              title: level?.label || "",
+              axisLabelVisible:
+                baseAxisLabelVisible && isStrategyVisualVisible(baseVisible),
+              lineVisible: isStrategyVisualVisible(baseVisible),
+            });
+            createdPriceLines.push({
+              series: levelSeries,
+              priceLine,
+              baseVisible,
+              baseAxisLabelVisible,
+            });
+          } catch (error) {
+            console.warn("Unable to create sandbox price line:", error);
+          }
+        });
+      }
+
+      customScriptSeriesRef.current = createdSeries;
+      customScriptPriceLinesRef.current = createdPriceLines;
+      customScriptFillLayersRef.current = createdFillLayers;
+      customScriptPaneKeysRef.current = Array.from(sandboxPaneKeys);
+      sandboxLegendGroupsRef.current = legendGroupsMeta;
+      setSandboxLegendGroups(legendGroups);
     },
-    [],
+    [applySandboxBarColorsToData, chartType, timeframeValue],
   );
+
+  const applyStrategyVisualVisibility = useCallback((visible) => {
+    const seriesList = Array.isArray(customScriptSeriesRef.current)
+      ? customScriptSeriesRef.current
+      : [];
+
+    seriesList.forEach((entry) => {
+      const series = entry?.series || entry;
+      const nextVisible = visible && entry?.baseVisible !== false;
+      try {
+        series.applyOptions({ visible: nextVisible });
+      } catch (error) {
+        console.warn("Unable to toggle strategy series visibility:", error);
+      }
+    });
+
+    if (customScriptMarkersRef.current) {
+      try {
+        customScriptMarkersRef.current.setMarkers(
+          visible ? lastDeployedMarkersRef.current || [] : [],
+        );
+      } catch (error) {
+        console.warn("Unable to toggle strategy markers visibility:", error);
+      }
+    }
+  }, []);
 
   const handleToggleStrategyVisuals = useCallback(() => {
     setAreStrategyVisualsVisible((prev) => {
@@ -2373,16 +2495,14 @@ export default function Candlestick() {
       );
 
       // Force a new object reference to guarantee a React state update
-      const newData = typeof data === 'object' && data !== null ? { ...data } : data;
+      const newData =
+        typeof data === "object" && data !== null ? { ...data } : data;
       setPredictionStatus(newData);
-      
+
       if (newData.status === "running") {
         setIsPredicting(true);
       } else if (newData.status === "done" || newData.status === "complete") {
         setIsPredicting(false);
-
-
-    
 
         // ✅ FALLBACK: If no trade signals arrived via socket, fetch from REST API
         // Wait briefly to allow any in-flight socket events to arrive first
@@ -2487,7 +2607,9 @@ export default function Candlestick() {
         },
       };
 
-      setPredictResultData((prev) => deduplicateTrades([mappedSignal, ...prev]));
+      setPredictResultData((prev) =>
+        deduplicateTrades([mappedSignal, ...prev]),
+      );
 
       // Add to dashboardSignals so it plots on the chart
       let timeStr =
@@ -2552,8 +2674,11 @@ export default function Candlestick() {
           uniqueDashboardSignals.push(signal);
         }
       });
-      
-      console.log("Processing dashboardSignals for markers:", uniqueDashboardSignals);
+
+      console.log(
+        "Processing dashboardSignals for markers:",
+        uniqueDashboardSignals,
+      );
       console.log("Currently selected stock:", selectedCurrency);
 
       uniqueDashboardSignals.forEach((item) => {
@@ -2582,14 +2707,14 @@ export default function Candlestick() {
           } else {
             utcTime = Math.floor(new Date(utcStr).getTime() / 1000);
           }
-          
+
           const intervalSeconds = (() => {
             const val = parseInt(timeframeValue || "5");
             if (String(timeframeValue).includes("h")) return val * 3600;
             if (String(timeframeValue).includes("d")) return val * 86400;
             return val * 60;
           })();
-          
+
           const chartTime = Number(utcTime) + 19800; // IST_OFFSET (Removed intervalSeconds shift to ensure it plots on the exact entry_time candle)
 
           // Only plot marker if the signal is for the CURRENTLY selected stock
@@ -3595,13 +3720,13 @@ json.dumps(result)
       TIMEFRAME_TO_SECONDS[timeframeValue] ?? 60,
     );
     const filteredSignals = backtestSourceSignals.filter((signal) => {
-        if (!signal?.symbol) return true;
+      if (!signal?.symbol) return true;
 
-        return (
-          isSameSymbolName(signal.symbol, selectedName) ||
-          isSameSymbolName(signal.symbol, selectedSymbol)
-        );
-      });
+      return (
+        isSameSymbolName(signal.symbol, selectedName) ||
+        isSameSymbolName(signal.symbol, selectedSymbol)
+      );
+    });
     const signalsToUse =
       filteredSignals.length > 0 ? filteredSignals : backtestSourceSignals;
 
@@ -3863,7 +3988,7 @@ json.dumps(result)
       indicatorBlockedRef.current.clear();
       indicatorInFlightRef.current.clear();
       indicatorErrorShownRef.current.clear();
-      
+
       prevTimeframeRef.current = timeframeValue;
       prevCurrencyRef.current = selectedCurrency?.name;
       prevChartTypeRef.current = chartType;
@@ -3919,7 +4044,11 @@ json.dumps(result)
         );
         // Remove tracking data
         fetchedIndicatorsRef.current.delete(id);
-        for (const key of [...indicatorFailureCountRef.current.keys(), ...indicatorBlockedRef.current, ...indicatorErrorShownRef.current]) {
+        for (const key of [
+          ...indicatorFailureCountRef.current.keys(),
+          ...indicatorBlockedRef.current,
+          ...indicatorErrorShownRef.current,
+        ]) {
           if (key.endsWith(`|${id}`)) {
             indicatorFailureCountRef.current.delete(key);
             indicatorBlockedRef.current.delete(key);
@@ -4130,11 +4259,7 @@ json.dumps(result)
 
     let series;
     try {
-      series = chartRef.current.addSeries(
-        SeriesType,
-        finalOptions,
-        paneIndex,
-      );
+      series = chartRef.current.addSeries(SeriesType, finalOptions, paneIndex);
     } catch (e) {
       if (!e?.message?.includes("Object is disposed")) throw e;
       return {
@@ -4144,8 +4269,6 @@ json.dumps(result)
         priceScale: () => ({ applyOptions: () => {} }),
       };
     }
-
-
 
     allCreatedSeriesRef.current.push({ id: paneKey, series });
 
@@ -4478,17 +4601,29 @@ json.dumps(result)
 
     const origSub = chart.subscribeCrosshairMove.bind(chart);
     chart.subscribeCrosshairMove = (handler) => {
-      try { origSub(handler); } catch(e) { if (!e?.message?.includes("Object is disposed")) throw e; }
+      try {
+        origSub(handler);
+      } catch (e) {
+        if (!e?.message?.includes("Object is disposed")) throw e;
+      }
     };
 
     const origUnsub = chart.unsubscribeCrosshairMove.bind(chart);
     chart.unsubscribeCrosshairMove = (handler) => {
-      try { origUnsub(handler); } catch(e) { if (!e?.message?.includes("Object is disposed")) throw e; }
+      try {
+        origUnsub(handler);
+      } catch (e) {
+        if (!e?.message?.includes("Object is disposed")) throw e;
+      }
     };
 
     const origSetCrosshair = chart.setCrosshairPosition.bind(chart);
     chart.setCrosshairPosition = (...args) => {
-      try { origSetCrosshair(...args); } catch(e) { if (!e?.message?.includes("Object is disposed")) throw e; }
+      try {
+        origSetCrosshair(...args);
+      } catch (e) {
+        if (!e?.message?.includes("Object is disposed")) throw e;
+      }
     };
 
     const origTimeScale = chart.timeScale.bind(chart);
@@ -4497,13 +4632,22 @@ json.dumps(result)
       if (!ts.__patched) {
         ts.__patched = true;
         const methods = [
-          'getVisibleLogicalRange', 'setVisibleLogicalRange', 'getVisibleRange', 'setVisibleRange',
-          'fitContent', 'scrollToRealTime', 'scrollToPosition', 'timeToCoordinate', 'coordinateToTime',
-          'subscribeVisibleTimeRangeChange', 'unsubscribeVisibleTimeRangeChange',
-          'subscribeVisibleLogicalRangeChange', 'unsubscribeVisibleLogicalRangeChange'
+          "getVisibleLogicalRange",
+          "setVisibleLogicalRange",
+          "getVisibleRange",
+          "setVisibleRange",
+          "fitContent",
+          "scrollToRealTime",
+          "scrollToPosition",
+          "timeToCoordinate",
+          "coordinateToTime",
+          "subscribeVisibleTimeRangeChange",
+          "unsubscribeVisibleTimeRangeChange",
+          "subscribeVisibleLogicalRangeChange",
+          "unsubscribeVisibleLogicalRangeChange",
         ];
-        methods.forEach(method => {
-          if (typeof ts[method] === 'function') {
+        methods.forEach((method) => {
+          if (typeof ts[method] === "function") {
             const origMethod = ts[method].bind(ts);
             ts[method] = (...args) => {
               try {
@@ -4524,9 +4668,9 @@ json.dumps(result)
       const ps = origPriceScale(id);
       if (!ps.__patched) {
         ps.__patched = true;
-        const methods = ['applyOptions', 'options', 'width'];
-        methods.forEach(method => {
-          if (typeof ps[method] === 'function') {
+        const methods = ["applyOptions", "options", "width"];
+        methods.forEach((method) => {
+          if (typeof ps[method] === "function") {
             const origMethod = ps[method].bind(ps);
             ps[method] = (...args) => {
               try {
@@ -4632,10 +4776,16 @@ json.dumps(result)
       if (group) {
         if (typeof group.options === "function") {
           const opts = group.options();
-          color = opts.color || opts.lineColor || opts.topColor || opts.topLineColor || color;
+          color =
+            opts.color ||
+            opts.lineColor ||
+            opts.topColor ||
+            opts.topLineColor ||
+            color;
           if (opts.topLineColor && opts.bottomLineColor && val != null) {
             const baseVal = opts.baseValue?.price ?? 0;
-            color = Number(val) < baseVal ? opts.bottomLineColor : opts.topLineColor;
+            color =
+              Number(val) < baseVal ? opts.bottomLineColor : opts.topLineColor;
           }
         } else {
           const seriesKey = Object.keys(group).find(
@@ -4643,10 +4793,18 @@ json.dumps(result)
           );
           if (seriesKey) {
             const opts = group[seriesKey].options();
-            color = opts.color || opts.lineColor || opts.topColor || opts.topLineColor || color;
+            color =
+              opts.color ||
+              opts.lineColor ||
+              opts.topColor ||
+              opts.topLineColor ||
+              color;
             if (opts.topLineColor && opts.bottomLineColor && val != null) {
               const baseVal = opts.baseValue?.price ?? 0;
-              color = Number(val) < baseVal ? opts.bottomLineColor : opts.topLineColor;
+              color =
+                Number(val) < baseVal
+                  ? opts.bottomLineColor
+                  : opts.topLineColor;
             }
           }
         }
@@ -4689,7 +4847,7 @@ json.dumps(result)
         "oscillatorFill",
         "bbLowerBand",
         "bbUperBand",
-        "_bg"
+        "_bg",
       ];
 
       return keysToShow
@@ -4720,10 +4878,18 @@ json.dumps(result)
           const group = indicatorSeriesRef.current?.[id];
           if (group && group[key] && typeof group[key].options === "function") {
             const opts = group[key].options();
-            color = opts.color || opts.lineColor || opts.topColor || opts.topLineColor || color;
+            color =
+              opts.color ||
+              opts.lineColor ||
+              opts.topColor ||
+              opts.topLineColor ||
+              color;
             if (opts.topLineColor && opts.bottomLineColor && val != null) {
               const baseVal = opts.baseValue?.price ?? 0;
-              color = Number(val) < baseVal ? opts.bottomLineColor : opts.topLineColor;
+              color =
+                Number(val) < baseVal
+                  ? opts.bottomLineColor
+                  : opts.topLineColor;
             }
           }
 
@@ -4782,10 +4948,7 @@ json.dumps(result)
       const currentUser = getUser();
       const userId = currentUser?.id || currentUser?._id || "123";
 
-      setAgentMessages((prev) => [
-        ...prev,
-        createAgentMessage("user", prompt),
-      ]);
+      setAgentMessages((prev) => [...prev, createAgentMessage("user", prompt)]);
       setAgentDraft("");
       setIsAgentLoading(true);
 
@@ -5095,139 +5258,143 @@ json.dumps(result)
   };
   // ATTACH CROSSHAIR
 
-  const attachCrosshair = useCallback((chart) => {
-    if (!chart) return () => {};
-    const handler = (param) => {
-      const charts = [
-        chartRef.current,
-        ...Object.values(panesRef.current)?.map((p) => p.chart),
-      ].filter(Boolean);
+  const attachCrosshair = useCallback(
+    (chart) => {
+      if (!chart) return () => {};
+      const handler = (param) => {
+        const charts = [
+          chartRef.current,
+          ...Object.values(panesRef.current)?.map((p) => p.chart),
+        ].filter(Boolean);
 
-      // clear crosshair if invalid
-      if (!param?.point || param.time === undefined) {
-        crosshairActiveRef.current = false;
-        charts.forEach((c) => c.clearCrosshairPosition?.());
-        restoreLiveHeader();
-        // Since we bypassed React state for live indicators, we need to show the last available data if crosshair leaves
-        Object.keys(indicatorSeriesRef.current).forEach((indicator) => {
-          const mainEl = document.getElementById(
-            `indicator-val-${indicator}-main`,
-          );
-          const group = indicatorSeriesRef.current[indicator];
+        // clear crosshair if invalid
+        if (!param?.point || param.time === undefined) {
+          crosshairActiveRef.current = false;
+          charts.forEach((c) => c.clearCrosshairPosition?.());
+          restoreLiveHeader();
+          // Since we bypassed React state for live indicators, we need to show the last available data if crosshair leaves
+          Object.keys(indicatorSeriesRef.current).forEach((indicator) => {
+            const mainEl = document.getElementById(
+              `indicator-val-${indicator}-main`,
+            );
+            const group = indicatorSeriesRef.current[indicator];
 
-          if (mainEl) {
-            let val = null;
-            if (group) {
-              const seriesKey = Object.keys(group).find(
-                (k) => group[k] && typeof group[k].data === "function",
-              );
-              if (seriesKey) {
-                const dataArr = group[seriesKey].data();
-                if (dataArr && dataArr.length > 0) {
-                  const lastData = dataArr[dataArr.length - 1];
-                  val =
-                    lastData.value !== undefined
-                      ? lastData.value
-                      : lastData.close;
-                  if (lastData.color) {
-                    mainEl.style.color = lastData.color;
-                  } else {
-                    const defaultColor =
-                      mainEl.getAttribute("data-default-color");
-                    if (defaultColor) mainEl.style.color = defaultColor;
+            if (mainEl) {
+              let val = null;
+              if (group) {
+                const seriesKey = Object.keys(group).find(
+                  (k) => group[k] && typeof group[k].data === "function",
+                );
+                if (seriesKey) {
+                  const dataArr = group[seriesKey].data();
+                  if (dataArr && dataArr.length > 0) {
+                    const lastData = dataArr[dataArr.length - 1];
+                    val =
+                      lastData.value !== undefined
+                        ? lastData.value
+                        : lastData.close;
+                    if (lastData.color) {
+                      mainEl.style.color = lastData.color;
+                    } else {
+                      const defaultColor =
+                        mainEl.getAttribute("data-default-color");
+                      if (defaultColor) mainEl.style.color = defaultColor;
+                    }
                   }
                 }
               }
+              const isAroon = mainEl.getAttribute("data-type") === "AROON";
+              mainEl.textContent =
+                val != null && Number.isFinite(Number(val))
+                  ? `${Number(val).toFixed(2)}${isAroon ? "%" : ""}`
+                  : "Ø";
+            } else if (group) {
+              Object.keys(group).forEach((key) => {
+                const el = document.getElementById(
+                  `indicator-val-${indicator}-${key}`,
+                );
+                const series = group[key];
+                if (el && series && typeof series.data === "function") {
+                  const dataArr = series.data();
+                  if (dataArr && dataArr.length > 0) {
+                    const lastData = dataArr[dataArr.length - 1];
+                    let val =
+                      lastData.value !== undefined
+                        ? lastData.value
+                        : lastData.close;
+                    const isAroon = el.getAttribute("data-type") === "AROON";
+                    el.textContent =
+                      val != null && Number.isFinite(Number(val))
+                        ? `${Number(val).toFixed(2)}${isAroon ? "%" : ""}`
+                        : "Ø";
+                    if (lastData.color) {
+                      el.style.color = lastData.color;
+                    } else {
+                      const defaultColor =
+                        el.getAttribute("data-default-color");
+                      if (defaultColor) el.style.color = defaultColor;
+                    }
+                  } else {
+                    el.textContent = "Ø";
+                  }
+                }
+              });
             }
-            const isAroon = mainEl.getAttribute("data-type") === "AROON";
-            mainEl.textContent =
-              val != null && Number.isFinite(Number(val))
-                ? `${Number(val).toFixed(2)}${isAroon ? "%" : ""}`
-                : "Ø";
-          } else if (group) {
-            Object.keys(group).forEach((key) => {
-              const el = document.getElementById(
-                `indicator-val-${indicator}-${key}`,
-              );
-              const series = group[key];
-              if (el && series && typeof series.data === "function") {
-                const dataArr = series.data();
-                if (dataArr && dataArr.length > 0) {
-                  const lastData = dataArr[dataArr.length - 1];
-                  let val =
-                    lastData.value !== undefined
-                      ? lastData.value
-                      : lastData.close;
-                  const isAroon = el.getAttribute("data-type") === "AROON";
-                  el.textContent =
-                    val != null && Number.isFinite(Number(val))
-                      ? `${Number(val).toFixed(2)}${isAroon ? "%" : ""}`
-                      : "Ø";
-                  if (lastData.color) {
-                    el.style.color = lastData.color;
-                  } else {
-                    const defaultColor = el.getAttribute("data-default-color");
-                    if (defaultColor) el.style.color = defaultColor;
-                  }
-                } else {
-                  el.textContent = "Ø";
-                }
-              }
-            });
+          });
+          updateSandboxLegendValues(null);
+          return;
+        }
+
+        crosshairActiveRef.current = true;
+
+        // sync crosshair
+        charts.forEach((c) => {
+          try {
+            c.setCrosshairPosition(
+              param.point?.x ?? 0,
+              param.point?.y ?? 0,
+              param.time,
+            );
+          } catch (e) {
+            if (!e?.message?.includes("Object is disposed")) console.warn(e);
           }
         });
-        updateSandboxLegendValues(null);
-        return;
-      }
 
-      crosshairActiveRef.current = true;
-
-      // sync crosshair
-      charts.forEach((c) => {
-        try {
-          c.setCrosshairPosition(
-            param.point?.x ?? 0,
-            param.point?.y ?? 0,
-            param.time,
+        // update candles
+        const candle = param.seriesData?.get(seriesRef.current);
+        if (candle && ohlcvDisplayRef.current) {
+          const el = ohlcvDisplayRef.current;
+          const isUp = candle.close >= candle.open;
+          const color = isUp ? "#22c55e" : "#ef4444";
+          const o = el.querySelector("[data-o]");
+          const h = el.querySelector("[data-h]");
+          const l = el.querySelector("[data-l]");
+          const c = el.querySelector("[data-c]");
+          if (o) o.textContent = Number(candle.open).toFixed(2);
+          if (h) h.textContent = Number(candle.high).toFixed(2);
+          if (l) l.textContent = Number(candle.low).toFixed(2);
+          if (c) c.textContent = Number(candle.close).toFixed(2);
+          el.querySelectorAll("[data-val]").forEach(
+            (s) => (s.style.color = color),
           );
-        } catch (e) {
-          if (!e?.message?.includes("Object is disposed")) console.warn(e);
         }
-      });
+        // update indicators
+        updateIndicatorValues(param);
+        updateSandboxLegendValues(param);
+      };
 
-      // update candles
-      const candle = param.seriesData?.get(seriesRef.current);
-      if (candle && ohlcvDisplayRef.current) {
-        const el = ohlcvDisplayRef.current;
-        const isUp = candle.close >= candle.open;
-        const color = isUp ? "#22c55e" : "#ef4444";
-        const o = el.querySelector("[data-o]");
-        const h = el.querySelector("[data-h]");
-        const l = el.querySelector("[data-l]");
-        const c = el.querySelector("[data-c]");
-        if (o) o.textContent = Number(candle.open).toFixed(2);
-        if (h) h.textContent = Number(candle.high).toFixed(2);
-        if (l) l.textContent = Number(candle.low).toFixed(2);
-        if (c) c.textContent = Number(candle.close).toFixed(2);
-        el.querySelectorAll("[data-val]").forEach(
-          (s) => (s.style.color = color),
-        );
-      }
-      // update indicators
-      updateIndicatorValues(param);
-      updateSandboxLegendValues(param);
-    };
-
-    try {
-      chart.subscribeCrosshairMove(handler);
-    } catch (e) {}
-    
-    return () => {
       try {
-        chart.unsubscribeCrosshairMove?.(handler);
+        chart.subscribeCrosshairMove(handler);
       } catch (e) {}
-    };
-  }, [updateSandboxLegendValues]);
+
+      return () => {
+        try {
+          chart.unsubscribeCrosshairMove?.(handler);
+        } catch (e) {}
+      };
+    },
+    [updateSandboxLegendValues],
+  );
 
   const { fetchIndicatorData } = useChartFunctions({
     indicatorSeriesRef,
@@ -5243,48 +5410,71 @@ json.dumps(result)
     },
   });
 
-  const getIndicatorRequestKey = useCallback((indicator, currency, timeframe) => {
-    const type = typeof indicator === "object" ? indicator?.type : indicator;
-    const symbol = currency?.symbol || currency?.name || "";
-    return [String(symbol).toUpperCase(), timeframe || "", String(type || "").toUpperCase()].join("|");
-  }, []);
+  const getIndicatorRequestKey = useCallback(
+    (indicator, currency, timeframe) => {
+      const type = typeof indicator === "object" ? indicator?.type : indicator;
+      const symbol = currency?.symbol || currency?.name || "";
+      return [
+        String(symbol).toUpperCase(),
+        timeframe || "",
+        String(type || "").toUpperCase(),
+      ].join("|");
+    },
+    [],
+  );
 
-  const safeFetchIndicatorData = useCallback(async (indicators, currency, timeframe, customFromDate, customToDate) => {
-    if (!Array.isArray(indicators) || indicators.length === 0) return;
-    const allowed = indicators.filter((indicator) => {
-      const key = getIndicatorRequestKey(indicator, currency, timeframe);
-      return !indicatorBlockedRef.current.has(key) && !indicatorInFlightRef.current.has(key);
-    });
-    if (!allowed.length) return;
-    const keys = allowed.map((indicator) => getIndicatorRequestKey(indicator, currency, timeframe));
-    keys.forEach((key) => indicatorInFlightRef.current.add(key));
-    try {
-      const result = await fetchIndicatorData(allowed, currency, timeframe, customFromDate, customToDate);
-      return result;
-    } catch (error) {
-      allowed.forEach((indicator) => {
+  const safeFetchIndicatorData = useCallback(
+    async (indicators, currency, timeframe, customFromDate, customToDate) => {
+      if (!Array.isArray(indicators) || indicators.length === 0) return;
+      const allowed = indicators.filter((indicator) => {
         const key = getIndicatorRequestKey(indicator, currency, timeframe);
-        const count = (indicatorFailureCountRef.current.get(key) || 0) + 1;
-        indicatorFailureCountRef.current.set(key, count);
-        if (count >= MAX_INDICATOR_FAILURES) {
-          indicatorBlockedRef.current.add(key);
-          fetchedIndicatorsRef.current.add(indicator.id);
-          if (!indicatorErrorShownRef.current.has(key)) {
-            indicatorErrorShownRef.current.add(key);
-            Swal.fire({
-              icon: "error",
-              title: "Indicator Error",
-              text: `${indicator?.type || indicator?.name || "This indicator"} could not be loaded. `,
-              background: "var(--bg-secondary)",
-              color: "var(--text-primary)",
-              confirmButtonText: "OK",
-            });
-          }
-        }
+        return (
+          !indicatorBlockedRef.current.has(key) &&
+          !indicatorInFlightRef.current.has(key)
+        );
       });
-      return null;
-    } finally { keys.forEach((key) => indicatorInFlightRef.current.delete(key)); }
-  }, [fetchIndicatorData, getIndicatorRequestKey]);
+      if (!allowed.length) return;
+      const keys = allowed.map((indicator) =>
+        getIndicatorRequestKey(indicator, currency, timeframe),
+      );
+      keys.forEach((key) => indicatorInFlightRef.current.add(key));
+      try {
+        const result = await fetchIndicatorData(
+          allowed,
+          currency,
+          timeframe,
+          customFromDate,
+          customToDate,
+        );
+        return result;
+      } catch (error) {
+        allowed.forEach((indicator) => {
+          const key = getIndicatorRequestKey(indicator, currency, timeframe);
+          const count = (indicatorFailureCountRef.current.get(key) || 0) + 1;
+          indicatorFailureCountRef.current.set(key, count);
+          if (count >= MAX_INDICATOR_FAILURES) {
+            indicatorBlockedRef.current.add(key);
+            fetchedIndicatorsRef.current.add(indicator.id);
+            if (!indicatorErrorShownRef.current.has(key)) {
+              indicatorErrorShownRef.current.add(key);
+              Swal.fire({
+                icon: "error",
+                title: "Indicator Error",
+                text: `${indicator?.type || indicator?.name || "This indicator"} could not be loaded. `,
+                background: "var(--bg-secondary)",
+                color: "var(--text-primary)",
+                confirmButtonText: "OK",
+              });
+            }
+          }
+        });
+        return null;
+      } finally {
+        keys.forEach((key) => indicatorInFlightRef.current.delete(key));
+      }
+    },
+    [fetchIndicatorData, getIndicatorRequestKey],
+  );
   // ATTACH MAIN CHART
 
   useEffect(() => {
@@ -5328,7 +5518,8 @@ json.dumps(result)
         ...overrides,
       };
       historicalPayloadBase.fromDate =
-        String(historicalPayloadBase.fromDate).split("T")[0] < MIN_HISTORICAL_DATE
+        String(historicalPayloadBase.fromDate).split("T")[0] <
+        MIN_HISTORICAL_DATE
           ? MIN_HISTORICAL_DATE
           : historicalPayloadBase.fromDate;
       const requestKey = JSON.stringify(historicalPayloadBase);
@@ -5430,7 +5621,8 @@ json.dumps(result)
 
     if (
       newFromDate === currentFromDate ||
-      (lastAutoBackfillFromRef.current === newFromDate && historyBackfillInFlightRef.current)
+      (lastAutoBackfillFromRef.current === newFromDate &&
+        historyBackfillInFlightRef.current)
     ) {
       return false;
     }
@@ -5499,7 +5691,8 @@ json.dumps(result)
 
     if (
       newToDate === toDate ||
-      (lastAutoForwardToRef.current === newToDate && historyBackfillInFlightRef.current)
+      (lastAutoForwardToRef.current === newToDate &&
+        historyBackfillInFlightRef.current)
     ) {
       return false;
     }
@@ -5647,48 +5840,92 @@ json.dumps(result)
     reconciliationRunningRef.current = true;
     const now = new Date();
     const recentFromDate = new Date(now.getTime() - 10 * 60 * 1000);
-    const requested = requestHistoricalData(true, { fromDate: recentFromDate.toISOString(), toDate: now.toISOString() }, { mergeMode: 'reconcile', preserveVisibleRange: true });
-    window.setTimeout(() => { reconciliationRunningRef.current = false; }, 10000);
+    const requested = requestHistoricalData(
+      true,
+      { fromDate: recentFromDate.toISOString(), toDate: now.toISOString() },
+      { mergeMode: "reconcile", preserveVisibleRange: true },
+    );
+    window.setTimeout(() => {
+      reconciliationRunningRef.current = false;
+    }, 10000);
     return requested;
-  }, [selectedCurrency, timeframeValue, requestHistoricalData]);  // ── Central Socket Hook ──
+  }, [selectedCurrency, timeframeValue, requestHistoricalData]); // ── Central Socket Hook ──
   const normalizeCandle = useCallback((candle) => {
     if (!candle) return null;
     let time = Number(candle.time ?? candle.timestamp ?? candle.datetime);
-    if (!Number.isFinite(time)) time = Math.floor(new Date(candle.datetime).getTime() / 1000);
+    if (!Number.isFinite(time))
+      time = Math.floor(new Date(candle.datetime).getTime() / 1000);
     if (time > 10000000000) time = Math.floor(time / 1000);
-    return { ...candle, time: time + IST_OFFSET, open: Number(candle.open), high: Number(candle.high), low: Number(candle.low), close: Number(candle.close), volume: Number(candle.volume ?? 0) };
+    return {
+      ...candle,
+      time: time + IST_OFFSET,
+      open: Number(candle.open),
+      high: Number(candle.high),
+      low: Number(candle.low),
+      close: Number(candle.close),
+      volume: Number(candle.volume ?? 0),
+    };
   }, []);
-  const { emit, once, connected, off, socket: dataSocket } = useSocket({
+  const {
+    emit,
+    once,
+    connected,
+    off,
+    socket: dataSocket,
+  } = useSocket({
     disableOverviewLiveTickFallback: true,
     handleAiPredictionStatus: (data) => {
-      const newData = typeof data === 'object' && data !== null ? { ...data } : data;
+      const newData =
+        typeof data === "object" && data !== null ? { ...data } : data;
       setPredictionStatus(newData);
-      
+
       if (newData.status === "running") {
         setIsPredicting(true);
       } else if (newData.status === "done" || newData.status === "complete") {
         setIsPredicting(false);
         setTimeout(async () => {
           setPredictResultData((currentResults) => {
-            if (currentResults && currentResults.length > 0) return currentResults;
+            if (currentResults && currentResults.length > 0)
+              return currentResults;
             apiService.get("/api/predictResult").then((res) => {
-              const results = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+              const results = Array.isArray(res?.data)
+                ? res.data
+                : Array.isArray(res)
+                  ? res
+                  : [];
               if (results.length > 0) {
                 const mapped = results.map((item) => ({
                   symbol: item.symbol,
                   response: {
-                    type: item.trade_type, entry_time: item.entry_time, entry_price: item.entry_price,
-                    signal: item.signal, trend: item.trend, status: item.status, rsi: item.rsi,
-                    candle_open: item.candle_open, candle_high: item.candle_high, candle_low: item.candle_low,
-                    candle_close: item.candle_close, candle_volume: item.candle_volume,
+                    type: item.trade_type,
+                    entry_time: item.entry_time,
+                    entry_price: item.entry_price,
+                    signal: item.signal,
+                    trend: item.trend,
+                    status: item.status,
+                    rsi: item.rsi,
+                    candle_open: item.candle_open,
+                    candle_high: item.candle_high,
+                    candle_low: item.candle_low,
+                    candle_close: item.candle_close,
+                    candle_volume: item.candle_volume,
                   },
                   tick: { datetime: item.entry_time },
-                  uuid: item.uuid, created_at: item.created_at,
+                  uuid: item.uuid,
+                  created_at: item.created_at,
                 }));
                 setPredictResultData(deduplicateTrades(mapped));
                 const signals = results.map((item) => {
-                  let timeStr = item.entry_time || item.created_at || new Date().toISOString();
-                  return { symbol: item.symbol, signalType: item.trade_type, timestamp: timeStr.replace(" ", "T"), segment: "SCRIPT" };
+                  let timeStr =
+                    item.entry_time ||
+                    item.created_at ||
+                    new Date().toISOString();
+                  return {
+                    symbol: item.symbol,
+                    signalType: item.trade_type,
+                    timestamp: timeStr.replace(" ", "T"),
+                    segment: "SCRIPT",
+                  };
                 });
                 setDashboardSignals((prev) => [...prev, ...signals]);
                 setIsDeployed(true);
@@ -5703,12 +5940,28 @@ json.dumps(result)
     handleAiTradeSignal: (tradeData) => {
       const mappedSignal = {
         symbol: tradeData.symbol,
-        response: { type: tradeData.trade_type, entry_time: tradeData.entry_time, entry_price: tradeData.entry_price, signal: tradeData.signal },
+        response: {
+          type: tradeData.trade_type,
+          entry_time: tradeData.entry_time,
+          entry_price: tradeData.entry_price,
+          signal: tradeData.signal,
+        },
         tick: { datetime: tradeData.entry_time },
       };
-      setPredictResultData((prev) => deduplicateTrades([mappedSignal, ...prev]));
-      let timeStr = tradeData.entry_time || tradeData.timestamp || new Date().toISOString();
-      setDashboardSignals((prev) => [ ...prev, { symbol: tradeData.symbol, signalType: tradeData.trade_type, timestamp: timeStr.replace(" ", "T"), segment: "SCRIPT" } ]);
+      setPredictResultData((prev) =>
+        deduplicateTrades([mappedSignal, ...prev]),
+      );
+      let timeStr =
+        tradeData.entry_time || tradeData.timestamp || new Date().toISOString();
+      setDashboardSignals((prev) => [
+        ...prev,
+        {
+          symbol: tradeData.symbol,
+          signalType: tradeData.trade_type,
+          timestamp: timeStr.replace(" ", "T"),
+          segment: "SCRIPT",
+        },
+      ]);
       setIsDeployed(true);
       setDeployedStrategyCode("API_PREDICTION");
     },
@@ -5735,7 +5988,11 @@ json.dumps(result)
     handleHistoricalData: (response) => {
       console.log("HISTORICAL DATA RESPONSE", response?.data);
       if (!chartRef.current || chartDisposedRef.current) return;
-      const requestId = response?.requestId || response?.meta?.requestId || response?.data?.requestId || null;
+      const requestId =
+        response?.requestId ||
+        response?.meta?.requestId ||
+        response?.data?.requestId ||
+        null;
       const requestMeta = requestId
         ? historicalRequestOptionsRef.current.get(requestId)
         : activeHistoricalRequestRef.current;
@@ -5779,18 +6036,30 @@ json.dumps(result)
         : response?.candles || response?.data?.candles || response?.data || [];
       const incomingCandles = rawCandles
         .map(normalizeCandle)
-        .filter((candle) => candle && Number.isFinite(candle.time) && Number.isFinite(candle.open) && Number.isFinite(candle.high) && Number.isFinite(candle.low) && Number.isFinite(candle.close))
+        .filter(
+          (candle) =>
+            candle &&
+            Number.isFinite(candle.time) &&
+            Number.isFinite(candle.open) &&
+            Number.isFinite(candle.high) &&
+            Number.isFinite(candle.low) &&
+            Number.isFinite(candle.close),
+        )
         .sort((a, b) => a.time - b.time);
       const raw = rawCandles;
 
       if (requestMeta?.mergeMode === "reconcile") {
         const latestThreeCandles = incomingCandles.slice(-3);
-        const candleMap = new Map(candlesRef.current.map((candle) => [Number(candle.time), candle]));
+        const candleMap = new Map(
+          candlesRef.current.map((candle) => [Number(candle.time), candle]),
+        );
         const changedCandles = latestThreeCandles;
         latestThreeCandles.forEach((incoming) => {
           candleMap.set(Number(incoming.time), incoming);
         });
-        candlesRef.current = Array.from(candleMap.values()).sort((a, b) => Number(a.time) - Number(b.time));
+        candlesRef.current = Array.from(candleMap.values()).sort(
+          (a, b) => Number(a.time) - Number(b.time),
+        );
         const chartCandles = changedCandles.sort((a, b) => a.time - b.time);
 
         console.log("[RECONCILIATION] Candles received:", latestThreeCandles);
@@ -5800,12 +6069,16 @@ json.dumps(result)
           // `update` only reliably changes the newest bar. Rebuild the series so
           // corrections to any reconciled historical candle are painted.
           seriesRef.current?.setData(
-            buildSeriesDataForChartType(candlesRef.current, chartTypeRef.current),
+            buildSeriesDataForChartType(
+              candlesRef.current,
+              chartTypeRef.current,
+            ),
           );
         } catch (error) {
           console.warn("[RECONCILIATION] Chart redraw failed:", error);
         }
-        const latestCandle = candlesRef.current[candlesRef.current.length - 1] || null;
+        const latestCandle =
+          candlesRef.current[candlesRef.current.length - 1] || null;
         currentCandleRef.current = latestCandle;
         lastCandleTimeRef.current = latestCandle?.time || null;
         if (!crosshairActiveRef.current) {
@@ -5819,7 +6092,10 @@ json.dumps(result)
         // Release that shared lock so scroll-back pagination can request older bars.
         historyBackfillInFlightRef.current = false;
         inFlightBackfillModeRef.current = null;
-        if (!requestId || activeHistoricalRequestRef.current?.requestId === requestId) {
+        if (
+          !requestId ||
+          activeHistoricalRequestRef.current?.requestId === requestId
+        ) {
           activeHistoricalRequestRef.current = null;
         }
         setIsFetchingCandles(false);
@@ -5837,7 +6113,10 @@ json.dumps(result)
         historyBackfillInFlightRef.current = false;
         lastAutoBackfillFromRef.current = null;
         lastAutoForwardToRef.current = null;
-        if (!requestId || activeHistoricalRequestRef.current?.requestId === requestId) {
+        if (
+          !requestId ||
+          activeHistoricalRequestRef.current?.requestId === requestId
+        ) {
           activeHistoricalRequestRef.current = null;
         }
         setIsFetchingCandles(false);
@@ -5910,7 +6189,10 @@ json.dumps(result)
       historyBackfillInFlightRef.current = false;
       lastAutoBackfillFromRef.current = null;
       lastAutoForwardToRef.current = null;
-      if (!requestId || activeHistoricalRequestRef.current?.requestId === requestId) {
+      if (
+        !requestId ||
+        activeHistoricalRequestRef.current?.requestId === requestId
+      ) {
         activeHistoricalRequestRef.current = null;
       }
       setIsFetchingCandles(false);
@@ -6169,10 +6451,7 @@ json.dumps(result)
       // Sequential indicator fetch removed to enable parallel loading.
       // Indicators are fetched simultaneously via the selectedIndicator useEffect.
 
-      if (
-        lastDeployedMarkersRef.current?.length > 0 &&
-        seriesRef.current
-      ) {
+      if (lastDeployedMarkersRef.current?.length > 0 && seriesRef.current) {
         const shouldShowStrategyVisuals =
           areStrategyVisualsVisibleRef.current !== false;
         if (!customScriptMarkersRef.current) {
@@ -6182,7 +6461,7 @@ json.dumps(result)
           );
           try {
             seriesRef.current.attachPrimitive(customScriptMarkersRef.current);
-          } catch(e) {
+          } catch (e) {
             if (!e?.message?.includes("Object is disposed")) throw e;
           }
         } else {
@@ -6190,7 +6469,7 @@ json.dumps(result)
             customScriptMarkersRef.current.setMarkers(
               areStrategyVisualsVisible ? lastDeployedMarkersRef.current : [],
             );
-          } catch(e) {
+          } catch (e) {
             if (!e?.message?.includes("Object is disposed")) throw e;
           }
         }
@@ -6220,8 +6499,9 @@ json.dumps(result)
           } else if (mergeMode === "replace") {
             chartRef.current?.timeScale().fitContent();
           }
-        } catch(e) {
-          if (!e?.message?.includes("Object is disposed")) console.error("timeScale error:", e);
+        } catch (e) {
+          if (!e?.message?.includes("Object is disposed"))
+            console.error("timeScale error:", e);
         }
 
         if (
@@ -6305,7 +6585,7 @@ json.dumps(result)
       setSymbolTransitioning(false);
     },
     handleLiveTick: (tickOrArray) => {
-      console.log("Live tick received:", tickOrArray);
+      // console.log("Live tick received:", tickOrArray);
       const ticks = Array.isArray(tickOrArray) ? tickOrArray : [tickOrArray];
 
       ticks.forEach((tick) => {
@@ -6314,10 +6594,10 @@ json.dumps(result)
 
         if (!isSameSymbolName(tickSymbol, activeSymbol)) return;
 
-        console.log(
-          `[LIVE TICK] Symbol: ${tickSymbol}, Active: ${activeSymbol}`,
-          tick,
-        );
+        // console.log(
+        //   `[LIVE TICK] Symbol: ${tickSymbol}, Active: ${activeSymbol}`,
+        //   tick,
+        // );
 
         if (
           !seriesRef.current ||
@@ -6352,11 +6632,11 @@ json.dumps(result)
         // Use LTP (last_traded_price) as the real current price
         const ltp = Number(
           tick?.raw?.last_traded_price ??
-          tick?.overview?.ltp ??
-          tick?.overview?.last_traded_price ??
-          liveData?.last_traded_price ??
-          liveData?.ltp ??
-          liveData?.price
+            tick?.overview?.ltp ??
+            tick?.overview?.last_traded_price ??
+            liveData?.last_traded_price ??
+            liveData?.ltp ??
+            liveData?.price,
         );
 
         if (!Number.isFinite(ltp) || ltp <= 0) {
@@ -6387,11 +6667,19 @@ json.dumps(result)
             ? candlesRef.current[candlesRef.current.length - 1]
             : null;
 
-        const rawOpen = rawData?.open != null ? Number(rawData.open) : undefined;
-        const rawHigh = rawData?.high != null ? Number(rawData.high) : undefined;
+        const rawOpen =
+          rawData?.open != null ? Number(rawData.open) : undefined;
+        const rawHigh =
+          rawData?.high != null ? Number(rawData.high) : undefined;
         const rawLow = rawData?.low != null ? Number(rawData.low) : undefined;
-        const rawClose = rawData?.close != null ? Number(rawData.close) : undefined;
-        const rawVolume = tick?.raw?.volume != null ? Number(tick.raw.volume) : (tick?.overview?.volume != null ? Number(tick.overview.volume) : undefined);
+        const rawClose =
+          rawData?.close != null ? Number(rawData.close) : undefined;
+        const rawVolume =
+          tick?.raw?.volume != null
+            ? Number(tick.raw.volume)
+            : tick?.overview?.volume != null
+              ? Number(tick.overview.volume)
+              : undefined;
 
         let updatedBar;
         if (existingCandle) {
@@ -6399,17 +6687,31 @@ json.dumps(result)
           updatedBar = {
             ...existingCandle,
             open: rawOpen !== undefined ? rawOpen : existingCandle.open,
-            high: rawHigh !== undefined ? rawHigh : Math.max(Number(existingCandle.high), ltp),
-            low: rawLow !== undefined ? rawLow : Math.min(Number(existingCandle.low), ltp),
+            high:
+              rawHigh !== undefined
+                ? rawHigh
+                : Math.max(Number(existingCandle.high), ltp),
+            low:
+              rawLow !== undefined
+                ? rawLow
+                : Math.min(Number(existingCandle.low), ltp),
             close: rawClose !== undefined ? rawClose : ltp,
-            volume: rawVolume !== undefined ? rawVolume : (liveVolume || Number(existingCandle.volume || 0)),
+            volume:
+              rawVolume !== undefined
+                ? rawVolume
+                : liveVolume || Number(existingCandle.volume || 0),
           };
         } else if (!latestCandle || normalizedTime > latestCandle.time) {
           // New candle
           const newCandleOpen = latestCandle ? Number(latestCandle.close) : ltp;
           updatedBar = {
             time: normalizedTime,
-            open: rawOpen !== undefined ? rawOpen : (Number.isFinite(newCandleOpen) ? newCandleOpen : ltp),
+            open:
+              rawOpen !== undefined
+                ? rawOpen
+                : Number.isFinite(newCandleOpen)
+                  ? newCandleOpen
+                  : ltp,
             high: rawHigh !== undefined ? rawHigh : ltp,
             low: rawLow !== undefined ? rawLow : ltp,
             close: rawClose !== undefined ? rawClose : ltp,
@@ -6423,10 +6725,19 @@ json.dumps(result)
           updatedBar = {
             ...latestCandle,
             open: rawOpen !== undefined ? rawOpen : latestCandle.open,
-            high: rawHigh !== undefined ? rawHigh : Math.max(Number(latestCandle.high), ltp),
-            low: rawLow !== undefined ? rawLow : Math.min(Number(latestCandle.low), ltp),
+            high:
+              rawHigh !== undefined
+                ? rawHigh
+                : Math.max(Number(latestCandle.high), ltp),
+            low:
+              rawLow !== undefined
+                ? rawLow
+                : Math.min(Number(latestCandle.low), ltp),
             close: rawClose !== undefined ? rawClose : ltp,
-            volume: rawVolume !== undefined ? rawVolume : (liveVolume || Number(latestCandle.volume || 0)),
+            volume:
+              rawVolume !== undefined
+                ? rawVolume
+                : liveVolume || Number(latestCandle.volume || 0),
           };
         }
 
@@ -6504,7 +6815,8 @@ json.dumps(result)
         selectedCurrency?.name || selectedCurrency?.symbol,
       );
       const payloadSymbol = normalize(payload?.symbol);
-      if (payload?.symbol && !isSameSymbolName(payloadSymbol, activeSymbol)) return;
+      if (payload?.symbol && !isSameSymbolName(payloadSymbol, activeSymbol))
+        return;
 
       const indicatorType = payload.type;
       const requestKey = getIndicatorRequestKey(
@@ -6516,7 +6828,8 @@ json.dumps(result)
       if (payload.success === false) {
         if (indicatorBlockedRef.current.has(requestKey)) return;
 
-        const failureCount = (indicatorFailureCountRef.current.get(requestKey) || 0) + 1;
+        const failureCount =
+          (indicatorFailureCountRef.current.get(requestKey) || 0) + 1;
         indicatorFailureCountRef.current.set(requestKey, failureCount);
         console.warn(
           `[INDICATOR FAILURE] ${indicatorType} ${failureCount}/${MAX_INDICATOR_FAILURES}`,
@@ -6532,7 +6845,8 @@ json.dumps(result)
             Swal.fire({
               icon: "error",
               title: "Indicator unavailable",
-              text: payload.error || `${indicatorType} could not be calculated.`,
+              text:
+                payload.error || `${indicatorType} could not be calculated.`,
               confirmButtonText: "OK",
               background: "var(--bg-secondary)",
               color: "var(--text-primary)",
@@ -6585,21 +6899,22 @@ json.dumps(result)
         Object.entries(seriesGroup).forEach(([lineName, series]) => {
           if (lineName.startsWith("_")) {
             if (instType === "SMA_RIBBON_DISTANCE" && lineName === "_bg") {
-               try {
-                 const tightCount = lastPoint.tightBarCount ?? 0;
-                 const cScore = lastPoint.compressionScore ?? lastPoint.oscillator ?? 0;
-                 const minTight = 20; 
-                 const compThresh = 80;
-                 let bgColor = "transparent";
-                 if (tightCount >= minTight) bgColor = "rgba(255,0,255,0.13)";
-                 else if (cScore >= compThresh) bgColor = "rgba(0,255,255,0.08)";
-                 
-                 series.update({
-                   time: pointTime,
-                   value: bgColor !== "transparent" ? 100000 : 0,
-                   color: bgColor
-                 });
-               } catch (e) {}
+              try {
+                const tightCount = lastPoint.tightBarCount ?? 0;
+                const cScore =
+                  lastPoint.compressionScore ?? lastPoint.oscillator ?? 0;
+                const minTight = 20;
+                const compThresh = 80;
+                let bgColor = "transparent";
+                if (tightCount >= minTight) bgColor = "rgba(255,0,255,0.13)";
+                else if (cScore >= compThresh) bgColor = "rgba(0,255,255,0.08)";
+
+                series.update({
+                  time: pointTime,
+                  value: bgColor !== "transparent" ? 100000 : 0,
+                  color: bgColor,
+                });
+              } catch (e) {}
             }
             return;
           }
@@ -6607,9 +6922,15 @@ json.dumps(result)
 
           let mappedLineName = lineName;
           if (instType === "SMA_RIBBON_DISTANCE") {
-            if (lineName === "compressionScore" && lastPoint.compressionScore === undefined) mappedLineName = "oscillator";
-            if (lineName === "maxDistance") mappedLineName = "maximumRibbonDistance";
-            if (lineName === "avgDistance") mappedLineName = "averagePairDistance";
+            if (
+              lineName === "compressionScore" &&
+              lastPoint.compressionScore === undefined
+            )
+              mappedLineName = "oscillator";
+            if (lineName === "maxDistance")
+              mappedLineName = "maximumRibbonDistance";
+            if (lineName === "avgDistance")
+              mappedLineName = "averagePairDistance";
           }
 
           let value;
@@ -6623,7 +6944,10 @@ json.dumps(result)
 
           if (dynamicValue !== undefined && dynamicValue !== null) {
             value = dynamicValue;
-          } else if (lineName === "oscillatorFill" && instType === "SUPERSMOOTHER") {
+          } else if (
+            lineName === "oscillatorFill" &&
+            instType === "SUPERSMOOTHER"
+          ) {
             value = lastPoint.oscillator;
           } else if (staticKeys.includes(lineName)) {
             // Fallback to static style lines (e.g., RSI 70/30) if no dynamic data is provided
@@ -6642,15 +6966,19 @@ json.dumps(result)
                 instType === "CCI"
                   ? (style?.upperBand?.value ?? 100)
                   : instType === "RSI"
-                  ? (style?.upperRSI?.value ?? 70)
-                  : (style?.upper?.value ?? 70);
-            } else if (lineName === "middle" || lineName === "middleBand" || lineName === "middleRSI") {
+                    ? (style?.upperRSI?.value ?? 70)
+                    : (style?.upper?.value ?? 70);
+            } else if (
+              lineName === "middle" ||
+              lineName === "middleBand" ||
+              lineName === "middleRSI"
+            ) {
               value =
                 instType === "CCI"
                   ? (style?.middleBand?.value ?? 0)
                   : instType === "RSI"
-                  ? (style?.middleRSI?.value ?? 50)
-                  : (style?.middle?.value ?? 50);
+                    ? (style?.middleRSI?.value ?? 50)
+                    : (style?.middle?.value ?? 50);
             } else if (
               lineName === "lower" ||
               lineName === "lowerBand" ||
@@ -6661,8 +6989,8 @@ json.dumps(result)
                 instType === "CCI"
                   ? (style?.lowerBand?.value ?? -100)
                   : instType === "RSI"
-                  ? (style?.lowerRSI?.value ?? 30)
-                  : (style?.lower?.value ?? 30);
+                    ? (style?.lowerRSI?.value ?? 30)
+                    : (style?.lower?.value ?? 30);
             } else if (lineName === "zeroLine" || lineName === "zero") {
               value = style?.zeroLine?.value ?? style?.zero?.value ?? 0;
             } else if (lineName === "perfectCompression") {
@@ -6677,7 +7005,7 @@ json.dumps(result)
             const lineStyleCfg =
               indicatorStyleRef.current?.[instId]?.[lineName] ||
               indicatorStyleRef.current?.[instType]?.[lineName];
-            
+
             if (lineStyleCfg?.value !== undefined) {
               value = lineStyleCfg.value;
             } else {
@@ -6692,32 +7020,46 @@ json.dumps(result)
             const updateObj = { time: pointTime, value: Number(value) };
             if (lineName === "histogram") {
               const isRising = Number(value) >= 0;
-              updateObj.color = lastPoint.histogramColor
-                || lastPoint.color
-                || (isRising ? "rgba(0,255,127,0.6)" : "rgba(255,0,0,0.6)");
-            } else if (lineName === "directionalScore" && instType === "HEALTHY_BOX") {
+              updateObj.color =
+                lastPoint.histogramColor ||
+                lastPoint.color ||
+                (isRising ? "rgba(0,255,127,0.6)" : "rgba(255,0,0,0.6)");
+            } else if (
+              lineName === "directionalScore" &&
+              instType === "HEALTHY_BOX"
+            ) {
               let hColor = "rgba(128,128,128,1)";
               if (lastPoint.healthy || lastPoint.healthySignal) {
-                hColor = (lastPoint.bull || lastPoint.bullSignal)
-                  ? "rgba(0,255,0,1)"
-                  : "rgba(255,0,0,1)";
+                hColor =
+                  lastPoint.bull || lastPoint.bullSignal
+                    ? "rgba(0,255,0,1)"
+                    : "rgba(255,0,0,1)";
               }
               updateObj.color = hColor;
-            } else if (lineName === "oscillator" && instType === "SUPERSMOOTHER") {
+            } else if (
+              lineName === "oscillator" &&
+              instType === "SUPERSMOOTHER"
+            ) {
               const isRising = Number(value) >= 0;
-              updateObj.color = lastPoint.color || (isRising ? "rgba(0, 255, 0, 1)" : "rgba(255, 20, 147, 1)");
-            } else if (lineName === "compressionScore" && instType === "SMA_RIBBON_DISTANCE") {
+              updateObj.color =
+                lastPoint.color ||
+                (isRising ? "rgba(0, 255, 0, 1)" : "rgba(255, 20, 147, 1)");
+            } else if (
+              lineName === "compressionScore" &&
+              instType === "SMA_RIBBON_DISTANCE"
+            ) {
               const styleCfg =
                 indicatorStyleRef.current?.[instId]?.compressionScore ||
                 indicatorStyleRef.current?.[instType]?.compressionScore;
-              
+
               const c0 = styleCfg?.color0 || "rgba(255,0,255,1)";
               const c1 = styleCfg?.color1 || "rgba(0,255,255,1)";
               const c2 = styleCfg?.color2 || "rgba(255,165,0,1)";
               const c3 = styleCfg?.color3 || "rgba(128,128,128,1)";
 
               const tightCount = lastPoint.tightBarCount ?? 0;
-              const indicatorConfig = indicatorConfigs[instId] || indicatorConfigDefault[instType];
+              const indicatorConfig =
+                indicatorConfigs[instId] || indicatorConfigDefault[instType];
               const minTight = indicatorConfig?.minimumTightBars || 20;
               const compThresh = indicatorConfig?.compressionThreshold || 80;
 
@@ -6843,8 +7185,12 @@ json.dumps(result)
     timeScale.subscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
     return () => {
       try {
-        timeScale.unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
-        timeScale.unsubscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
+        timeScale.unsubscribeVisibleLogicalRangeChange(
+          handleVisibleRangeChange,
+        );
+        timeScale.unsubscribeVisibleTimeRangeChange(
+          handleVisibleTimeRangeChange,
+        );
       } catch (e) {}
     };
   }, [
@@ -6896,18 +7242,58 @@ json.dumps(result)
   useEffect(() => {
     if (!selectedCurrency || !timeframeValue) return;
     let intervalId;
-    const delay = Math.max(0, Math.ceil(Date.now() / 60000) * 60000 + 3000 - Date.now());
-    const run = () => { if (document.visibilityState === 'visible' && navigator.onLine) requestLastThreeCandles(); };
-    const timeoutId = window.setTimeout(() => { run(); intervalId = window.setInterval(run, 60000); }, delay);
-    return () => { window.clearTimeout(timeoutId); if (intervalId) window.clearInterval(intervalId); reconciliationAbortRef.current?.abort(); reconciliationRunningRef.current = false; reconciliationGenerationRef.current += 1; };
-  }, [selectedCurrency?.symbol, selectedCurrency?.name, selectedCurrency?.exchange, selectedCurrency?.token, timeframeValue, requestLastThreeCandles]);
+    const delay = Math.max(
+      0,
+      Math.ceil(Date.now() / 60000) * 60000 + 3000 - Date.now(),
+    );
+    const run = () => {
+      if (document.visibilityState === "visible" && navigator.onLine)
+        requestLastThreeCandles();
+    };
+    const timeoutId = window.setTimeout(() => {
+      run();
+      intervalId = window.setInterval(run, 60000);
+    }, delay);
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (intervalId) window.clearInterval(intervalId);
+      reconciliationAbortRef.current?.abort();
+      reconciliationRunningRef.current = false;
+      reconciliationGenerationRef.current += 1;
+    };
+  }, [
+    selectedCurrency?.symbol,
+    selectedCurrency?.name,
+    selectedCurrency?.exchange,
+    selectedCurrency?.token,
+    timeframeValue,
+    requestLastThreeCandles,
+  ]);
 
   useEffect(() => {
     let lastRecoveryAt = 0;
-    const recover = () => { if (document.visibilityState !== 'visible' || !navigator.onLine || Date.now() - lastRecoveryAt < 2000) return; lastRecoveryAt = Date.now(); requestLastThreeCandles(); requestLiveTick(); };
-    const visibility = () => { if (document.visibilityState === 'visible') recover(); };
-    window.addEventListener('focus', recover); window.addEventListener('online', recover); document.addEventListener('visibilitychange', visibility);
-    return () => { window.removeEventListener('focus', recover); window.removeEventListener('online', recover); document.removeEventListener('visibilitychange', visibility); };
+    const recover = () => {
+      if (
+        document.visibilityState !== "visible" ||
+        !navigator.onLine ||
+        Date.now() - lastRecoveryAt < 2000
+      )
+        return;
+      lastRecoveryAt = Date.now();
+      requestLastThreeCandles();
+      requestLiveTick();
+    };
+    const visibility = () => {
+      if (document.visibilityState === "visible") recover();
+    };
+    window.addEventListener("focus", recover);
+    window.addEventListener("online", recover);
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      window.removeEventListener("focus", recover);
+      window.removeEventListener("online", recover);
+      document.removeEventListener("visibilitychange", visibility);
+    };
   }, [requestLastThreeCandles, requestLiveTick]);
   const zoomCharts = (delta) => {
     const charts = [
@@ -7399,7 +7785,10 @@ json.dumps(result)
                   }}
                 >
                   <LeftDepth
-                    onClose={() => { setIsDepthOpen(false); localStorage.setItem("leftDepthOpen", "false"); }}
+                    onClose={() => {
+                      setIsDepthOpen(false);
+                      localStorage.setItem("leftDepthOpen", "false");
+                    }}
                     predictResults={predictResultData}
                     setSelectedCurrency={setSelectedCurrency}
                     isPredicting={isPredicting}
@@ -7459,8 +7848,6 @@ json.dumps(result)
                   <ChartHeader
                     timeframeValue={timeframeValue}
                     setTimeframeValue={setTimeframeValue}
-                    rangeValue={rangeValue}
-                    setRangeValue={setRangeValue}
                     selectedCurrency={selectedCurrency}
                     setSelectedCurrency={setSelectedCurrency}
                     setChartType={setChartType}
@@ -8022,7 +8409,9 @@ json.dumps(result)
                                 if (ind.type === "VP") return true;
                                 if (!PANE_INDICATORS.has(ind.type)) return true;
                                 const paneDiv =
-                                  panesRef.current[ind.id]?.pane?.getHTMLElement();
+                                  panesRef.current[
+                                    ind.id
+                                  ]?.pane?.getHTMLElement();
                                 return !paneDiv;
                               })
                               .map((ind) => {
@@ -8066,7 +8455,9 @@ json.dumps(result)
                               if (ind.type === "VP") return false;
                               if (!PANE_INDICATORS.has(ind.type)) return false;
                               const paneDiv =
-                                panesRef.current[ind.id]?.pane?.getHTMLElement();
+                                panesRef.current[
+                                  ind.id
+                                ]?.pane?.getHTMLElement();
                               return Boolean(paneDiv);
                             })
                             .map((ind) => {
@@ -8156,7 +8547,9 @@ json.dumps(result)
                           )
                           .map((group) => {
                             const paneDiv =
-                              panesRef.current[group.paneKey]?.pane?.getHTMLElement();
+                              panesRef.current[
+                                group.paneKey
+                              ]?.pane?.getHTMLElement();
 
                             if (!paneDiv) return null;
                             const portalTarget =
@@ -8181,31 +8574,6 @@ json.dumps(result)
                               portalTarget,
                             );
                           })}
-
-                      {/* -----------------OLD INDICATOR BAR (COMMENTED)------------------- */}
-
-                      {/* {selectedIndicator?.map((indicator, index) => {
-                const value = liveIndicatorData[indicator];
-                const paneIndex = paneIndexRef.current[indicator];
-                if (paneIndex === undefined || paneIndex === 0) return null;
-                return (
-                  <IndicatorBar
-                    key={indicator}
-                    indicator={indicator}
-                    timeframeValue={timeframeValue}
-                    value={value}
-                    renderValue={renderValue}
-                    indicatorVisibility={indicatorVisibility}
-                    toggleIndicatorVisibility={toggleIndicatorVisibility}
-                    removeIndicator={removeIndicator}
-                    setActiveBarIndicator={setActiveBarIndicator}
-                    setIndicatorProperty={setIndicatorProperty}
-                    setActiveSourceIndicator={setActiveSourceIndicator}
-                    setShowSourcePanel={setShowSourcePanel}
-                    setShowAlertForm={setShowAlertForm}
-                  />
-                );
-              })} */}
                     </div>
 
                     {/* Indicator Panes */}
@@ -8322,7 +8690,9 @@ json.dumps(result)
                       isDeploying={isDeploying}
                       isSaving={isSavingStrategy}
                       isUpdating={isUpdatingStrategy}
-                      canUpdate={Boolean(activeStrategyRecord?.id) && isStrategyDirty}
+                      canUpdate={
+                        Boolean(activeStrategyRecord?.id) && isStrategyDirty
+                      }
                       canShowUpdate={Boolean(activeStrategyRecord?.id)}
                       loadedStrategyName={activeStrategyRecord?.name || ""}
                     />
@@ -8385,7 +8755,8 @@ json.dumps(result)
                         marginTop: "4px",
                       }}
                     >
-                      Signal timestamps matched to chart candles for OHLC-based backtesting.
+                      Signal timestamps matched to chart candles for OHLC-based
+                      backtesting.
                     </div>
                   </div>
                   <div
@@ -8446,7 +8817,8 @@ json.dumps(result)
                         textAlign: "center",
                       }}
                     >
-                      No backtest rows yet. Run or deploy a strategy so matching candles can be captured here.
+                      No backtest rows yet. Run or deploy a strategy so matching
+                      candles can be captured here.
                     </div>
                   ) : (
                     <div
@@ -8551,7 +8923,8 @@ json.dumps(result)
                                   key={field}
                                   style={{
                                     padding: "12px 14px",
-                                    borderBottom: "1px solid var(--border-color)",
+                                    borderBottom:
+                                      "1px solid var(--border-color)",
                                     color: "var(--text-primary)",
                                     fontVariantNumeric: "tabular-nums",
                                   }}

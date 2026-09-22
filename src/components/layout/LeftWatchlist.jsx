@@ -112,7 +112,7 @@ const LeftWatchlist = ({ onClose, setSelectedCurrency }) => {
       const combined = [...indices, ...equity, ...futures, ...options].map(
         normalizeWatchlistItem,
       );
-      console.log("LeftWatchlist mapped stocks count:", combined.length);
+      // console.log("LeftWatchlist mapped stocks count:", combined.length);
       setStocksData(combined);
       setIsLoading(false);
     },

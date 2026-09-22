@@ -305,7 +305,7 @@ const Overview = ({ selectedCurrency, onBack }) => {
 
   const { emit } = useSocket({
     handleOverviewTick: (payload) => {
-      console.log("strategyLiveTick response:", payload);
+      // console.log("strategyLiveTick response:", payload);
       const actualPayload = payload;
       const symbol =
         actualPayload?.symbol ||
