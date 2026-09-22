@@ -4509,7 +4509,36 @@ json.dumps(result)
 
   //  ✅ INDICATOR REMOVAL — accepts instance id
   const removeIndicator = useCallback((instanceId) => {
-    setSelectedIndicator((prev) => prev.filter((i) => i.id !== instanceId));
+    const activeIndicators = selectedIndicatorRef.current || [];
+    const removedIndicator = activeIndicators.find(
+      (indicator) => indicator?.id === instanceId,
+    );
+    const remainingIndicators = activeIndicators.filter(
+      (indicator) => indicator?.id !== instanceId,
+    );
+
+    // Update the ref immediately so the next live tick cannot request this
+    // indicator while React is waiting to apply the state update.
+    selectedIndicatorRef.current = remainingIndicators;
+    setSelectedIndicator(remainingIndicators);
+
+    const removedType = removedIndicator?.type;
+    const hasSameTypeRemaining = remainingIndicators.some(
+      (indicator) => indicator?.type === removedType,
+    );
+
+    // Live requests are shared by indicator type. Unsubscribe only once the
+    // final instance of that type has been removed from this chart.
+    if (removedType && !hasSameTypeRemaining) {
+      const unsubscribePayload = {
+        symbol: selectedCurrency?.name,
+        interval: timeframeValue,
+        type: removedType,
+        // exchange: selectedCurrency?.segment,
+      };
+      console.log('[INDICATOR] unsubscribeIndicator payload:', unsubscribePayload);
+      emitRef.current?.(EVENTS.INDICATOR.LIVE_UNSUBSCRIBE, unsubscribePayload);
+    }
 
     const entry = indicatorSeriesRef.current[instanceId];
     if (!entry) return;
@@ -4602,7 +4631,7 @@ json.dumps(result)
 
     // the DOM pane cleanup
     delete panesRef.current[paneKey];
-  }, []);
+  }, [selectedCurrency?.name, selectedCurrency?.segment, timeframeValue]);
   // ----------Main chart------------
   useEffect(() => {
     chartDisposedRef.current = false;
