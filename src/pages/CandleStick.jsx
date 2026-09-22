@@ -565,6 +565,37 @@ export default function Candlestick() {
     };
   });
 
+  // Preserve the existing selection when a selector is clicked again for the
+  // same instrument. Returning `prev` keeps React from rerunning the chart
+  // reload effect and emitting another historical-data request.
+  const handleSetSelectedCurrency = useCallback((nextCurrencyOrUpdater) => {
+    setSelectedCurrency((prev) => {
+      const next =
+        typeof nextCurrencyOrUpdater === 'function'
+          ? nextCurrencyOrUpdater(prev)
+          : nextCurrencyOrUpdater;
+
+      if (!prev || !next) return next;
+
+      const prevToken = String(prev.token ?? '').trim();
+      const nextToken = String(next.token ?? '').trim();
+      const prevSymbol = String(prev.symbol || prev.name || '')
+        .trim()
+        .toUpperCase();
+      const nextSymbol = String(next.symbol || next.name || '')
+        .trim()
+        .toUpperCase();
+      const isSameCurrency =
+        (prevToken && nextToken && prevToken === nextToken) ||
+        ((!prevToken || !nextToken) &&
+          prevSymbol &&
+          nextSymbol &&
+          prevSymbol === nextSymbol);
+
+      return isSameCurrency ? prev : next;
+    });
+  }, []);
+
   const {
     activeTool,
     setActiveTool,
@@ -7632,7 +7663,7 @@ json.dumps(result)
     <>
       {!isFullscreen && (
         <Navbar
-          setSelectedCurrency={setSelectedCurrency}
+          setSelectedCurrency={handleSetSelectedCurrency}
           predictCount={predictResultData?.length}
           onBellClick={() => {
             if (activeTab === "Alerts") setActiveTab("Chart");
@@ -7734,7 +7765,7 @@ json.dumps(result)
                     onClose={() => setIsWatchlistOpen(false)}
                     alertResult={customSignals}
                     setAlertResult={setCustomSignals}
-                    setSelectedCurrency={setSelectedCurrency}
+                    setSelectedCurrency={handleSetSelectedCurrency}
                     setActiveTab={setActiveTab}
                   />
                 </div>
@@ -7749,7 +7780,7 @@ json.dumps(result)
                 >
                   <LeftWatchlist
                     onClose={() => setIsWatchlistOpen(false)}
-                    setSelectedCurrency={setSelectedCurrency}
+                    setSelectedCurrency={handleSetSelectedCurrency}
                   />
                 </div>
                 <div
@@ -7767,7 +7798,7 @@ json.dumps(result)
                     detailsList={detailsList}
                     onAddStock={addStockToDetails}
                     onRemoveStock={removeStockFromDetails}
-                    setSelectedCurrency={setSelectedCurrency}
+                    setSelectedCurrency={handleSetSelectedCurrency}
                     addAlert={addAlert}
                     clearAllCoins={clearAllCoins}
                     scanner={scanner}
@@ -7790,7 +7821,7 @@ json.dumps(result)
                       localStorage.setItem("leftDepthOpen", "false");
                     }}
                     predictResults={predictResultData}
-                    setSelectedCurrency={setSelectedCurrency}
+                    setSelectedCurrency={handleSetSelectedCurrency}
                     isPredicting={isPredicting}
                     predictionStatus={predictionStatus}
                   />
@@ -7849,7 +7880,7 @@ json.dumps(result)
                     timeframeValue={timeframeValue}
                     setTimeframeValue={setTimeframeValue}
                     selectedCurrency={selectedCurrency}
-                    setSelectedCurrency={setSelectedCurrency}
+                    setSelectedCurrency={handleSetSelectedCurrency}
                     setChartType={setChartType}
                     chartType={chartType}
                     selectedIndicator={selectedIndicator}
