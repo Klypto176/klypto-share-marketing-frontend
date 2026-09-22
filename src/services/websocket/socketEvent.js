@@ -14,6 +14,7 @@ const EVENTS = {
     BATCH_ERROR: "indicatorDetailsBatchError",
     LIVE: "getLiveIndicatorUpdate",
     LIVE_RESPONSE: "liveIndicatorResponse",
+    LIVE_UNSUBSCRIBE:"unsubscribeIndicator",
     GET_UPDATE: "updateIndicator",
     UPDATE_RESPONSE: "updateIndicatorResponse",
   },
