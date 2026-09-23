@@ -4534,7 +4534,8 @@ json.dumps(result)
         symbol: selectedCurrency?.name,
         interval: timeframeValue,
         type: removedType,
-        // exchange: selectedCurrency?.segment,
+        id: instanceId,
+        exchange: selectedCurrency?.segment,
       };
       console.log('[INDICATOR] unsubscribeIndicator payload:', unsubscribePayload);
       emitRef.current?.(EVENTS.INDICATOR.LIVE_UNSUBSCRIBE, unsubscribePayload);
@@ -4589,7 +4590,14 @@ json.dumps(result)
         if (panesCountAfterDummy === panesCountBefore) {
           // Lightweight charts STILL didn't auto-remove it, so we manually remove it
           try {
-            if (typeof chart.removePane === "function") {
+            const currentPanes =
+              typeof chart.panes === "function" ? chart.panes() : [];
+            if (
+              typeof chart.removePane === "function" &&
+              Number.isInteger(paneIndex) &&
+              paneIndex > 0 &&
+              paneIndex < currentPanes.length
+            ) {
               chart.removePane(paneIndex);
             }
           } catch (err) {
