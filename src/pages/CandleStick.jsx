@@ -3475,6 +3475,11 @@ json.dumps(result)
   const lastLiveBarPaintAtRef = useRef(0);
   const seriesReadyRef = useRef(false);
   const selectedIndicatorRef = useRef(selectedIndicator);
+  const liveIndicatorContextRef = useRef({
+    symbol: selectedCurrency?.name || selectedCurrency?.symbol,
+    interval: timeframeValue,
+    exchange: selectedCurrency?.segment,
+  });
   const chartTypeRef = useRef(chartType);
   const crosshairActiveRef = useRef(false);
   const ohlcvDisplayRef = useRef(null);
@@ -4523,18 +4528,13 @@ json.dumps(result)
     setSelectedIndicator(remainingIndicators);
 
     const removedType = removedIndicator?.type;
-    const hasSameTypeRemaining = remainingIndicators.some(
-      (indicator) => indicator?.type === removedType,
-    );
 
-    // Live requests are shared by indicator type. Unsubscribe only once the
-    // final instance of that type has been removed from this chart.
-    if (removedType && !hasSameTypeRemaining) {
+    if (removedType) {
       const unsubscribePayload = {
         symbol: selectedCurrency?.name,
         interval: timeframeValue,
         type: removedType,
-        id: instanceId,
+        requestId: instanceId,
         exchange: selectedCurrency?.segment,
       };
       console.log('[INDICATOR] unsubscribeIndicator payload:', unsubscribePayload);
@@ -6869,6 +6869,7 @@ json.dumps(result)
                 interval: timeframeValue,
                 type: indType,
                 exchange: selectedCurrency?.segment,
+                requestId: ind?.id
               });
             });
           }
@@ -6877,6 +6878,7 @@ json.dumps(result)
     },
     // Note: We've combined liveTick logic into a single handleLiveTick,
     handleLiveIndicator: (payload) => {
+      console.log("[INDICATOR] liveIndicatorResponse payload:", payload);
       if (!payload?.type) return;
 
       const activeSymbol = normalize(
@@ -7196,6 +7198,43 @@ json.dumps(result)
       indicatorSocket: getStrategySocket(),
     };
   }, [connected, dataSocket, emit, off, once]);
+
+  useEffect(() => {
+    const previousContext = liveIndicatorContextRef.current;
+    const nextContext = {
+      symbol: selectedCurrency?.name || selectedCurrency?.symbol,
+      interval: timeframeValue,
+      exchange: selectedCurrency?.segment,
+    };
+
+    const hasContextChanged =
+      previousContext.symbol !== nextContext.symbol ||
+      previousContext.interval !== nextContext.interval ||
+      previousContext.exchange !== nextContext.exchange;
+
+    if (!hasContextChanged) return;
+
+    const requestIdsByType = new Map();
+    selectedIndicatorRef.current.forEach((indicator) => {
+      const type = typeof indicator === "object" ? indicator?.type : indicator;
+      const requestId = typeof indicator === "object" ? indicator?.id : indicator;
+      if (type && requestId && !requestIdsByType.has(type)) {
+        requestIdsByType.set(type, requestId);
+      }
+    });
+
+    requestIdsByType.forEach((requestId, type) => {
+      emit(EVENTS.INDICATOR.LIVE_UNSUBSCRIBE, {
+        symbol: previousContext.symbol,
+        interval: previousContext.interval,
+        type,
+        requestId,
+        exchange: previousContext.exchange,
+      });
+    });
+
+    liveIndicatorContextRef.current = nextContext;
+  }, [emit, selectedCurrency?.name, selectedCurrency?.segment, selectedCurrency?.symbol, timeframeValue]);
 
   useEffect(() => {
     if (!chartRef.current) return;
