@@ -41,6 +41,7 @@ export default function RSIPlot({
     let bbLowerData = [];
 
     const style = indicatorStyle?.[id] || indicatorStyle?.RSI;
+    console.log("[RSIPlot] RSI style:", style);
     const upper = style?.upperRSI?.value ?? 70;
     const middle = style?.middleRSI?.value ?? 50;
     const lower = style?.lowerRSI?.value ?? 30;
@@ -55,7 +56,7 @@ export default function RSIPlot({
 
       const series = addSeries(id, LineSeries, {
         color: styleConfig?.color || rowConfig?.color || "rgba(38,166,154,1)",
-        lineWidth: styleConfig?.width || 2,
+        lineWidth: styleConfig?.width || 1,
         visible: styleConfig?.visible ?? true,
         priceLineVisible: false,
         lastValueVisible: lineName === "rsi" || lineName === "smoothingMA",

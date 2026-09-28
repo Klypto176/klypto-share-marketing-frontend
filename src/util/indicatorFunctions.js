@@ -445,12 +445,12 @@ export let indicatorStyleDefault = {
   RSI: {
     rsi: {
       color: "rgba(38,166,154,1)",
-      width: 2,
+      width: 1,
       visible: true,
     },
     smoothingMA: {
       color: "rgba(255,193,7,1)",
-      width: 2,
+      width: 1,
       visible: true,
     },
     bbUpper: {
@@ -488,13 +488,13 @@ export let indicatorStyleDefault = {
   KVO: {
     kvoLine: {
       color: "rgba(33,150,243,1)", // blue
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
     signalLine: {
       color: "rgba(255,152,0,1)", // orange
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
@@ -502,7 +502,7 @@ export let indicatorStyleDefault = {
   SMA: {
     sma: {
       color: "rgba(0, 140, 255, 1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
@@ -533,7 +533,7 @@ export let indicatorStyleDefault = {
   TMA: {
     tmaLine: {
       color: "rgba(156,39,176,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
@@ -541,7 +541,7 @@ export let indicatorStyleDefault = {
   RMA: {
     rmaLine: {
       color: "rgba(33,150,243,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
@@ -549,7 +549,7 @@ export let indicatorStyleDefault = {
   TR: {
     trLine: {
       color: "rgba(33,150,243,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
@@ -558,7 +558,7 @@ export let indicatorStyleDefault = {
   BBW: {
     bbwLine: {
       color: "rgba(33,150,243,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
@@ -579,7 +579,7 @@ export let indicatorStyleDefault = {
   BBPERB: {
     percentB: {
       color: "rgba(33,150,243,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
@@ -618,7 +618,7 @@ export let indicatorStyleDefault = {
   STDDEV: {
     stddev: {
       color: "rgba(33,150,243,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
@@ -737,7 +737,7 @@ export let indicatorStyleDefault = {
   ZIGZAG: {
     z: {
       color: "rgba(38,166,154,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       opacity: 100,
       visible: true,
@@ -911,7 +911,7 @@ export let indicatorStyleDefault = {
   VWMA: {
     vwmaLine: {
       color: "rgba(33,150,243,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
@@ -1004,7 +1004,7 @@ export let indicatorStyleDefault = {
   ROC: {
     roc: {
       color: "rgba(33,150,243,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
       opacity: 100,
@@ -1021,7 +1021,7 @@ export let indicatorStyleDefault = {
     r: {
       visible: true,
       color: "rgba(38,166,154,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       opacity: 100,
     },
@@ -1057,7 +1057,7 @@ export let indicatorStyleDefault = {
     atr: {
       visible: true,
       color: "rgba(255, 165, 255,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       opacity: 100,
     },
@@ -1107,7 +1107,7 @@ export let indicatorStyleDefault = {
   MFI: {
     mfiLine: {
       color: "rgba(41, 98, 255, 1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
       opacity: 1,
@@ -1161,7 +1161,7 @@ export let indicatorStyleDefault = {
     },
     volumeMA: {
       color: "rgba(255,193,7,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
@@ -1173,7 +1173,7 @@ export let indicatorStyleDefault = {
     },
     volumeMA: {
       color: "rgba(255,193,7,1)",
-      width: 2,
+      width: 1,
       visible: true,
     },
   },
@@ -1311,7 +1311,7 @@ export let indicatorStyleDefault = {
   UO: {
     uoLine: {
       color: "rgba(33,150,243,1)", // blue
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
@@ -1319,7 +1319,7 @@ export let indicatorStyleDefault = {
   PVI: {
     pvi: {
       color: "rgba(41,98,255,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
@@ -1431,13 +1431,13 @@ export let indicatorStyleDefault = {
   CKS: {
     long: {
       color: "rgba(33,150,243,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
     short: {
       color: "rgba(244,67,54,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
@@ -1446,14 +1446,14 @@ export let indicatorStyleDefault = {
     hv: {
       visible: true,
       color: "rgba(255,152,0,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
     },
   },
   CMF: {
     cmfLine: {
       color: "rgba(255,193,7,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
@@ -1468,7 +1468,7 @@ export let indicatorStyleDefault = {
   NVI: {
     nvi: {
       color: "rgba(41,98,255,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
@@ -1528,7 +1528,7 @@ export let indicatorStyleDefault = {
   CMO: {
     cmoLine: {
       color: "rgba(38,166,154,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
@@ -1543,7 +1543,7 @@ export let indicatorStyleDefault = {
   TRIX: {
     trixLine: {
       color: "rgba(33,150,243,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
@@ -1559,13 +1559,13 @@ export let indicatorStyleDefault = {
   FT: {
     fisherLine: {
       color: "rgba(38,166,154,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
     triggerLine: {
       color: "rgba(255,152,0,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
@@ -1609,7 +1609,7 @@ export let indicatorStyleDefault = {
     baseline: {
       visible: true,
       color: "rgba(0, 140, 255, 1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
     },
     upperChannel: {
@@ -1627,13 +1627,13 @@ export let indicatorStyleDefault = {
     ssl1: {
       visible: true,
       color: "rgba(76,175,80,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
     },
     ssl2: {
       visible: true,
       color: "rgba(244,67,54,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
     },
     atrUpper: {
@@ -1697,7 +1697,7 @@ export let indicatorStyleDefault = {
   SUPERSMOOTHER: {
     oscillator: {
       color: "rgba(1,255,0,1)",
-      width: 2,
+      width: 1,
       visible: true,
     },
 
@@ -1751,12 +1751,12 @@ export let indicatorStyleDefault = {
     },
     bodyBoxes: {
       color: "rgba(33,150,243,1)", // blue
-      width: 2,
+      width: 1,
       visible: true,
     },
     totalWickBoxes: {
       color: "rgba(255,235,59,1)", // yellow
-      width: 2,
+      width: 1,
       visible: true,
     },
     bullSignals: {
@@ -1806,37 +1806,37 @@ export let indicatorStyleDefault = {
 
     avgBoxes: {
       color: "rgba(255,255,0,1)", // Yellow
-      width: 2,
+      width: 1,
       visible: true,
     },
 
     maxBoxes: {
       color: "rgba(0,255,0,1)", // Green
-      width: 2,
+      width: 1,
       visible: true,
     },
 
     minBoxes: {
       color: "rgba(255,0,0,1)", // Red
-      width: 2,
+      width: 1,
       visible: true,
     },
 
     bodyPercentile: {
       color: "rgba(0,255,255,1)", // Aqua
-      width: 2,
+      width: 1,
       visible: true,
     },
 
     expansionScore: {
       color: "rgba(128,0,128,1)", // Purple
-      width: 2,
+      width: 1,
       visible: true,
     },
 
     zScore: {
       color: "rgba(255,165,0,1)", // Orange
-      width: 2,
+      width: 1,
       visible: true,
     },
 
@@ -1879,13 +1879,13 @@ export let indicatorStyleDefault = {
   HMA60_BOX_DISTANCE: {
     highToHmaBoxes: {
       color: "rgba(0,255,0,1)", // Green
-      width: 2,
+      width: 1,
       visible: true,
     },
 
     lowToHmaBoxes: {
       color: "rgba(255,0,0,1)", // Red
-      width: 2,
+      width: 1,
       visible: true,
     },
 
@@ -1926,25 +1926,25 @@ export let indicatorStyleDefault = {
   VOLATILITY_MOMENTUM_PRO: {
     openingRangeHigh: {
       color: "rgba(0,200,83,1)",
-      width: 2,
+      width: 1,
       visible: true,
     },
 
     openingRangeLow: {
       color: "rgba(244,67,54,1)",
-      width: 2,
+      width: 1,
       visible: true,
     },
 
     upperChannel: {
       color: "rgba(255,152,0,1)",
-      width: 2,
+      width: 1,
       visible: true,
     },
 
     lowerChannel: {
       color: "rgba(255,152,0,1)",
-      width: 2,
+      width: 1,
       visible: true,
     },
 
@@ -1987,42 +1987,42 @@ export let indicatorStyleDefault = {
   SMA_RIBBON_DISTANCE: {
     compressionScore: {
       color: "rgba(33,150,243,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: true,
     },
 
     maxDistance: {
       color: "rgba(76,175,80,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: false,
     },
 
     avgDistance: {
       color: "rgba(255,152,0,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: false,
     },
 
     distance12: {
       color: "rgba(244,67,54,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: false,
     },
 
     distance23: {
       color: "rgba(156,39,176,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: false,
     },
 
     distance34: {
       color: "rgba(0,188,212,1)",
-      width: 2,
+      width: 1,
       lineStyle: 0,
       visible: false,
     },

@@ -70,6 +70,7 @@ import NVIInput from "./NVI/NVIInput";
 import STOCHRSIInput from "./Stochastic RSI/StochRSIInput";
 import STOCHRSIPlot from "./Stochastic RSI/StochRSIPlot";
 import FTInput from "./FisherTransform/FisherTransformInput";
+import SSLInput from "./SSL/SSLInput";
 import FTPlot from "./FisherTransform/FisherTransformPlot";
 
 import MACDPlot from "./MACD/MACDPlot";
@@ -209,6 +210,7 @@ export const indicatorInputs = {
   MOM: MomentumInput,
   ROC: ROCInput,
   WPR: WilliamsRInput,
+  SSL_HYBRID: SSLInput,
   ATR: ATRInput,
   MFI: MFIInput,
   PSAR: PSARInput,

@@ -71,11 +71,11 @@ import DrawingToolbox from "../components/tradingModals/DrawingToolbox";
 
 const getInitialLookbackDate = (timeframe) => {
   const d = new Date();
-  if (["1m"].includes(timeframe)) {
+  if (["1m", "5m"].includes(timeframe)) {
     d.setDate(d.getDate() - 15);
   } else if (["15m", "30m"].includes(timeframe)) {
     d.setDate(d.getDate() - 30);
-  } else if (["5m","1h", "2h", "4h", "6h", "1d", "1w"].includes(timeframe)) {
+  } else if (["1h", "2h", "4h", "6h", "1d", "1w"].includes(timeframe)) {
     d.setDate(d.getDate() - 90);
   } else {
     d.setFullYear(d.getFullYear() - 1);
@@ -8504,10 +8504,10 @@ json.dumps(result)
                             style={{
                               position: "absolute",
                               top: 90,
-                              left: 8,
+                              left: 4,
                               display: "flex",
                               flexDirection: "column",
-                              gap: 4,
+                              gap: 2,
                               zIndex: 50,
                             }}
                           >
@@ -8586,10 +8586,10 @@ json.dumps(result)
                                   style={{
                                     position: "absolute",
                                     top: 5,
-                                    left: 8,
+                                    left: 4,
                                     display: "flex",
                                     flexDirection: "column",
-                                    gap: 4,
+                                    gap: 2,
                                     zIndex: 50,
                                   }}
                                 >
