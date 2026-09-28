@@ -63,18 +63,18 @@ const GoToDateDialog = ({ onClose, onGoTo }) => {
     <>
       <div className="fixed inset-0 z-[9998]" onClick={onClose}></div>
       <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[9999]">
-        <div className="bg-[#1e222d] w-[350px] rounded-lg shadow-2xl overflow-hidden flex flex-col text-[#d1d4dc] font-sans border border-[#434651]">
+        <div className="bg-[var(--bg-secondary)] w-[350px] rounded-lg shadow-2xl overflow-hidden flex flex-col text-[var(--text-primary)] font-sans border border-[var(--border-color)]">
         {/* Header */}
         <div className="flex justify-between items-center p-4 pb-2">
           <h2 className="text-xl font-bold">Go to</h2>
-          <button onClick={onClose} className="text-[#a3a6af] hover:text-white transition-colors cursor-pointer">
+          <button onClick={onClose} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer">
             <FiX size={20} />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="px-4 border-b border-[#2a2e39] flex gap-4 text-sm font-semibold">
-          <div className="border-b-2 border-[#2962ff] text-white pb-2 cursor-pointer">Date</div>
+        <div className="px-4 border-b border-[var(--border-color)] flex gap-4 text-sm font-semibold">
+          <div className="border-b-2 border-[var(--accent-color)] text-[var(--text-primary)] pb-2 cursor-pointer">Date</div>
         </div>
 
         {/* Inputs */}
@@ -82,10 +82,10 @@ const GoToDateDialog = ({ onClose, onGoTo }) => {
           className="p-4 flex gap-2" 
           onKeyDown={(e) => { if (e.key === 'Enter') handleGoTo(); }}
         >
-          <div className="flex-1 flex items-center bg-[#2a2e39] border border-[#2962ff] rounded p-2 focus-within:ring-1 ring-[#2962ff]">
+          <div className="flex-1 flex items-center bg-[var(--bg-tertiary)] border border-[var(--accent-color)] rounded p-2 focus-within:ring-1 ring-[var(--accent-color)]">
             <input 
               type="text" 
-              className="bg-transparent border-none outline-none text-[#d1d4dc] w-full text-sm font-semibold"
+              className="bg-transparent border-none outline-none text-[var(--text-primary)] w-full text-sm font-semibold"
               value={selectedDate}
               onChange={(e) => {
                 setSelectedDate(e.target.value);
@@ -96,30 +96,30 @@ const GoToDateDialog = ({ onClose, onGoTo }) => {
                 }
               }}
             />
-            <FiCalendar className="text-[#a3a6af] ml-2 shrink-0" size={16}/>
+            <FiCalendar className="text-[var(--text-secondary)] ml-2 shrink-0" size={16}/>
           </div>
-          <div className="flex-1 flex items-center bg-[#2a2e39] border border-[#434651] rounded p-2 focus-within:ring-1 ring-[#2962ff]">
+          <div className="flex-1 flex items-center bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded p-2 focus-within:ring-1 ring-[var(--accent-color)]">
             <input 
               type="text" 
-              className="bg-transparent border-none outline-none text-[#d1d4dc] w-full text-sm font-semibold"
+              className="bg-transparent border-none outline-none text-[var(--text-primary)] w-full text-sm font-semibold"
               value={selectedTime}
               onChange={(e) => {
                 setSelectedTime(e.target.value);
                 localStorage.setItem('goToDateDialog_time', e.target.value);
               }}
             />
-            <FiClock className="text-[#a3a6af] ml-2 shrink-0" size={16}/>
+            <FiClock className="text-[var(--text-secondary)] ml-2 shrink-0" size={16}/>
           </div>
         </div>
 
         {/* Calendar Widget */}
         <div className="px-4 pb-4 select-none">
           <div className="flex justify-between items-center mb-4">
-            <button onClick={handlePrevMonth} className="text-[#a3a6af] hover:text-white cursor-pointer"><FiChevronLeft size={20}/></button>
+            <button onClick={handlePrevMonth} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"><FiChevronLeft size={20}/></button>
             <div className="font-semibold text-[15px]">{months[currentMonth.getMonth()]} {currentMonth.getFullYear()}</div>
-            <button onClick={handleNextMonth} className="text-[#a3a6af] hover:text-white cursor-pointer"><FiChevronRight size={20}/></button>
+            <button onClick={handleNextMonth} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"><FiChevronRight size={20}/></button>
           </div>
-          <div className="grid grid-cols-7 gap-1 text-center text-[11px] mb-2 text-[#a3a6af] uppercase font-bold">
+          <div className="grid grid-cols-7 gap-1 text-center text-[11px] mb-2 text-[var(--text-secondary)] uppercase font-bold">
             <div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div><div>Su</div>
           </div>
           <div className="grid grid-cols-7 gap-1 text-center text-[13px] font-semibold">
@@ -136,8 +136,8 @@ const GoToDateDialog = ({ onClose, onGoTo }) => {
                   onClick={() => { if (!isDisabled) handleDateClick(day); }}
                   className={`py-[6px] rounded transition-colors ${
                     isDisabled 
-                      ? 'text-[#666] cursor-not-allowed opacity-50' 
-                      : `cursor-pointer hover:bg-[#2a2e39] ${isSelected ? 'bg-white text-black font-bold' : ''}`
+                      ? 'text-[var(--text-secondary)] cursor-not-allowed opacity-40' 
+                      : `cursor-pointer hover:bg-[var(--bg-tertiary)] ${isSelected ? 'bg-[var(--accent-color)] text-white font-bold' : 'text-[var(--text-primary)]'}`
                   }`}
                 >
                   {day}
@@ -148,11 +148,11 @@ const GoToDateDialog = ({ onClose, onGoTo }) => {
         </div>
 
         {/* Footer */}
-        <div className="border-t border-[#2a2e39] p-4 flex justify-end gap-2 bg-[#1e222d]">
-          <button onClick={handleGoToLatest} className="px-6 py-2 rounded border border-[#434651] text-[#d1d4dc] hover:bg-[#2a2e39] transition-colors text-sm font-semibold cursor-pointer">
+        <div className="border-t border-[var(--border-color)] p-4 flex justify-end gap-2 bg-[var(--bg-secondary)]">
+          <button onClick={handleGoToLatest} className="px-6 py-2 rounded border border-[var(--border-color)] text-[var(--text-primary)] bg-[var(--bg-tertiary)] hover:opacity-85 transition-colors text-sm font-semibold cursor-pointer">
             Today's Date
           </button>
-          <button onClick={handleGoTo} className="px-6 py-2 rounded bg-white text-black hover:bg-gray-200 transition-colors text-sm font-semibold cursor-pointer">
+          <button onClick={handleGoTo} className="px-6 py-2 rounded bg-[var(--accent-color)] text-white hover:opacity-90 transition-colors text-sm font-semibold cursor-pointer">
             Go to
           </button>
         </div>

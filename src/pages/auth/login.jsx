@@ -72,11 +72,13 @@ export default function Login() {
       else sessionStorage.setItem("session", JSON.stringify(sessionData));
 
       await Swal.fire({
+        toast: true,
+        position: "top-end",
         icon: "success",
-        title: "Login Successful",
-        text: "Welcome back!",
-        showConfirmButton: true,
-        confirmButtonText: "Okay",
+        title: "Login successful",
+        showConfirmButton: false,
+        timer: 1800,
+        timerProgressBar: true,
       });
       navigate("/");
     } catch (error) {

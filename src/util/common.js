@@ -318,7 +318,7 @@ export const chartSeriesStyles = {
   },
 
   line: {
-    color: "#fffc50",
+    color: "#2962ff",
   },
 
   bar: {

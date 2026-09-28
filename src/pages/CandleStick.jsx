@@ -3579,6 +3579,17 @@ json.dumps(result)
     if (!bar || !ohlcvDisplayRef.current) return;
 
     const el = ohlcvDisplayRef.current;
+    if (chartTypeRef.current === "line") {
+      const value = Number(bar.close);
+      if (!Number.isFinite(value)) return;
+      const o = el.querySelector("[data-o]");
+      if (o) o.textContent = value.toFixed(2);
+      el.querySelectorAll("[data-val]").forEach(
+        (span) => (span.style.color = "#2962ff"),
+      );
+      return;
+    }
+
     const isUp = Number(bar.close) >= Number(bar.open);
     const color = isUp ? "#22c55e" : "#ef4444";
     const o = el.querySelector("[data-o]");
@@ -5518,7 +5529,21 @@ json.dumps(result)
 
         // update candles
         const candle = param.seriesData?.get(seriesRef.current);
-        if (candle && ohlcvDisplayRef.current) {
+        if (
+          chartTypeRef.current === "line" &&
+          candle?.value != null &&
+          ohlcvDisplayRef.current
+        ) {
+          const value = Number(candle.value);
+          if (Number.isFinite(value)) {
+            const el = ohlcvDisplayRef.current;
+            const o = el.querySelector("[data-o]");
+            if (o) o.textContent = value.toFixed(2);
+            el.querySelectorAll("[data-val]").forEach(
+              (span) => (span.style.color = "#2962ff"),
+            );
+          }
+        } else if (candle && ohlcvDisplayRef.current) {
           const el = ohlcvDisplayRef.current;
           const isUp = candle.close >= candle.open;
           const color = isUp ? "#22c55e" : "#ef4444";
