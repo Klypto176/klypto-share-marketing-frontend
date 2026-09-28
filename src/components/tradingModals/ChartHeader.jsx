@@ -1,7 +1,7 @@
 import { FiPlus } from "react-icons/fi";
 import { VscGraphLine } from "react-icons/vsc";
 import { LuLibrary } from "react-icons/lu";
-import { FiEye, FiEyeOff, FiSettings } from "react-icons/fi";
+import { FiEye, FiEyeOff, FiSettings, FiCpu } from "react-icons/fi";
 import { useState, useEffect } from "react";
 import { ListingModal } from "./ListingModal";
 import apiService from "../../services/apiServices";
@@ -19,6 +19,7 @@ import { MdOutlineFullscreenExit } from "react-icons/md";
 import { TbCalendarShare } from "react-icons/tb";
 import GoToDateDialog from "../layout/GoToDateDialog";
 import { BsFillAlarmFill } from "react-icons/bs";
+import { FaCode } from "react-icons/fa6";
 const d = {
   bar: {
     display: "flex", alignItems: "center", gap: 12,
@@ -125,6 +126,8 @@ export default function ChartHeader({
   isFullscreen,
   onToggleFullscreen,
   onGoToDate,
+  onAgentClick,
+  onCodeClick,
 }) {
   const navigate = useNavigate();
   const [timeframe, setTimeframe] = useState(60);
@@ -405,6 +408,16 @@ export default function ChartHeader({
         {/* <ProfileDropDown /> */}
         
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+          <button style={d.btn} title="Open Agent" onClick={onAgentClick}>
+            <FiCpu size={14} />
+            <span className="hide-text-md">Agent</span>
+          </button>
+
+          <button style={d.btn} title="Open Code Editor" onClick={onCodeClick}>
+            <FaCode size={14} />
+            <span className="hide-text-md">Code Editor</span>
+          </button>
+
           {!isFullscreen && (
             <button
               style={d.btn}

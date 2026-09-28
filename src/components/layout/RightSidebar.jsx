@@ -23,7 +23,7 @@ const RightSidebar = ({
       borderLeft: "1px solid var(--border-color)",
       color: "var(--text-secondary)",
       paddingTop: "16px",
-      gap: "24px",
+      gap: "20px",
       fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     },
     iconItem: {
@@ -41,11 +41,10 @@ const RightSidebar = ({
   };
 
   const menuItems = [
-    { id: 'watchlist', icon: <FiList size={20} />, label: "Watchlist", active: isWatchlistOpen },
-    { id: 'depth', icon: <FiLayers size={20} />, label: "Results", active: isDepthOpen },
-    { id: 'details', icon: <FiBriefcase size={20} />, label: "Details", active: isDetailsOpen },
-    { id: 'alerts', icon: <FiAlignLeft size={20} />, label: "Alerts" ,active: isAlertsOpen},
-    { id: 'options', icon: <BsLink45Deg size={20} />, label: "Option\nChain" },
+    { id: 'details', icon: <FiList size={16} />, label: "Watchlist", active: isDetailsOpen },
+    { id: 'depth', icon: <FiLayers size={16} />, label: "Results", active: isDepthOpen },
+    { id: 'alerts', icon: <FiAlignLeft size={16} />, label: "Alerts" ,active: isAlertsOpen},
+    { id: 'options', icon: <BsLink45Deg size={16} />, label: "Option\nChain" },
     // { id: 'more', icon: <FiMoreVertical size={20} />, label: "More" },
   ];
 
@@ -58,6 +57,7 @@ const RightSidebar = ({
             ...styles.iconItem,
             ...(item.active ? styles.iconItemActive : {})
           }}
+          title={item.label}
           onMouseEnter={(e) => { if (!item.active) e.currentTarget.style.color = "var(--text-primary)"; }}
           onMouseLeave={(e) => { if (!item.active) e.currentTarget.style.color = "var(--text-secondary)"; }}
           onClick={() => {
@@ -75,7 +75,7 @@ const RightSidebar = ({
           }}
         >
           {item.icon}
-          <span style={{ textAlign: "center", whiteSpace: "pre-line" }}>{item.label}</span>
+          {/* <span style={{ textAlign: "center", whiteSpace: "pre-line" }}>{item.label}</span> */}
         </div>
       ))}
     </div>

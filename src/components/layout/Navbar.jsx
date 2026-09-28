@@ -5,8 +5,7 @@ import apiService from "../../services/apiServices";
 import { useNavigate } from "react-router-dom";
 import { isAuthenticated, logout, getUser } from "../../pages/auth/protected";
 import useSocket from "../../util/useSocket";
-import logoLight from "../../assets/logo-light.png";
-import logoDark from "../../assets/logo-dark.png";
+import logo from "../../assets/Logo.png";
 import Swal from "sweetalert2";
 
 const mergeRealtimeIntoStock = (stock, payload) => {
@@ -53,7 +52,13 @@ const mergeRealtimeIntoStock = (stock, payload) => {
   };
 };
 
-const Navbar = ({ setSelectedCurrency, predictCount = 0, onBellClick }) => {
+const Navbar = ({
+  setSelectedCurrency,
+  predictCount = 0,
+  onBellClick,
+  activeTab,
+  setActiveTab,
+}) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [showRecent, setShowRecent] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -258,16 +263,37 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0, onBellClick }) => {
     navbar: {
       display: "flex",
       alignItems: "center",
-      justifyContent: "space-between",
-      padding: "8px 24px",
+      justifyContent: "flex-start",
+      gap: "16px",
+      padding: "6px 24px",
       backgroundColor: "var(--bg-primary)",
       borderBottom: "1px solid var(--border-color)",
       color: "var(--text-primary)",
-      height: "60px",
+      height: "50px",
       fontFamily:
         "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     },
     leftSection: { display: "flex", alignItems: "center", gap: "24px" },
+    chartTabs: {
+      display: "flex",
+      alignItems: "center",
+      gap: "2px",
+      flexShrink: 0,
+    },
+    chartTab: (active) => ({
+      border: "none",
+      borderBottom: active
+        ? "2px solid var(--accent-color)"
+        : "2px solid transparent",
+      background: "transparent",
+      color: active ? "var(--accent-color)" : "var(--text-secondary)",
+      cursor: "pointer",
+      fontSize: "0.75rem",
+      fontWeight: active ? 600 : 500,
+      height: "38px",
+      padding: "0 8px",
+      whiteSpace: "nowrap",
+    }),
     logoContainer: {
       display: "flex",
       alignItems: "center",
@@ -310,7 +336,7 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0, onBellClick }) => {
       outline: "none",
       width: "100%",
       marginLeft: "8px",
-      fontSize: "0.9rem",
+      fontSize: "0.75rem",
     },
 
     // Dropdown
@@ -418,7 +444,12 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0, onBellClick }) => {
     priceChange: { fontSize: "0.7rem", marginTop: "2px" },
 
     // Right section
-    rightSection: { display: "flex", alignItems: "center", gap: "20px" },
+    rightSection: {
+      display: "flex",
+      alignItems: "center",
+      gap: "20px",
+      marginLeft: "auto",
+    },
     navLinks: { display: "flex", gap: "20px", alignItems: "center" },
     navLink: {
       color: "var(--text-primary)",
@@ -460,6 +491,13 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0, onBellClick }) => {
     if (s.includes("FO") || s.includes("NFO")) return styles.tagFO;
     return styles.tagNSE;
   };
+  const chartTabs = [
+    "Chart",
+    "Overview",
+    "Option Chain",
+    "OI Analytics",
+    "Backtest",
+  ];
 
   return (
     <div style={styles.navbar}>
@@ -474,26 +512,26 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0, onBellClick }) => {
             ☰
           </button>
           <img 
-            src={theme === "light" ? logoLight : logoDark} 
+            src={logo} 
             alt="Klypto Logo" 
-            style={{ height: "250px", width: "auto", objectFit: "contain", marginLeft:"-58px" }}
+            style={{ width:"30px", height:"30px" }}
           />
         </div>
-        {/* <div className="d-none d-xl-flex" style={styles.indexData}>
-          <div style={styles.indexName}>
-            <span>{topIndexDisplay.name || "NIFTY"}</span>
-            <span style={styles.expiryTag}>EXPIRY</span>
-          </div>
-          <div style={styles.indexValues}>
-            <span style={{ color: topIndexDisplay.color }}>
-              {topIndexDisplay.formattedLtp}
-            </span>
-            <span style={{ color: topIndexDisplay.color }}>
-              {topIndexDisplay.arrow} {topIndexDisplay.formattedChange} ({topIndexDisplay.formattedPercent})
-            </span>
-          </div>
-        </div> */}
       </div>
+
+      {activeTab && setActiveTab && (
+        <div className="d-none d-lg-flex" style={styles.chartTabs}>
+          {chartTabs.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={styles.chartTab(activeTab === tab)}
+            >
+              {tab === "OI Analytics" ? "OI Analytics" : tab}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Search */}
       <div className="d-none d-sm-block" style={styles.searchContainer} ref={searchContainerRef}>
@@ -664,36 +702,6 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0, onBellClick }) => {
 
       {/* Right */}
       <div style={styles.rightSection}>
-        <div className="d-none d-md-flex" style={styles.navLinks}>
-          {[
-            // "Markets",
-            "Trade",
-            "Portfolio",
-            "Orders",
-            "Positions",
-            // "Tools",
-          ].map((link) => (
-            <div
-              key={link}
-              onClick={() => {
-                Swal.fire({
-                  icon: "info",
-                  title: "Coming Soon",
-                  text: "We are still working on it",
-                  background: "var(--bg-secondary)",
-                  color: "var(--text-primary)",
-                });
-              }}
-              style={{
-                ...styles.navLink,
-                ...(link === "TradeOne" ? styles.navLinkActive : {}),
-                cursor: "pointer",
-              }}
-            >
-              {link}
-            </div>
-          ))}
-        </div>
         <div
           style={{
             display: "flex",
@@ -809,23 +817,6 @@ const Navbar = ({ setSelectedCurrency, predictCount = 0, onBellClick }) => {
             </div>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            {["TradeOne", "Orders", "Positions", "Tools"].map((link) => (
-              <div
-                key={link}
-                onClick={() => setIsMobileMenuOpen(false)}
-                style={{
-                  ...styles.navLink,
-                  fontSize: '1.2rem',
-                  padding: '10px 0',
-                  borderBottom: '1px solid rgba(255,255,255,0.05)',
-                  ...(link === "TradeOne" ? styles.navLinkActive : {}),
-                }}
-              >
-                {link}
-              </div>
-            ))}
-          </div>
         </div>
       )}
     </div>

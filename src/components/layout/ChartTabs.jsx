@@ -1,18 +1,14 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FaCode } from "react-icons/fa6";
 import { SiVitest } from "react-icons/si";
 import GoToDateDialog from "./GoToDateDialog";
 import { TbCalendarShare } from "react-icons/tb";
 import { CgMaximizeAlt } from "react-icons/cg";
 import { MdOutlineFullscreenExit } from "react-icons/md";
-import { FiCpu } from "react-icons/fi";
 
 const ChartTabs = ({
   activeTab,
   setActiveTab,
-  onCodeClick,
-  onAgentClick,
   onStrategyClick,
   onBacktestClick,
   onGoToDate,
@@ -95,7 +91,7 @@ const ChartTabs = ({
   const tabs = ["Chart", "Overview", "Option Chain", "OI Analytics"];
 
   return (
-    <div className="chart-tabs-container">
+    <div className="chart-tabs-container d-lg-none">
       <style>{`
         .chart-tabs-container {
           display: flex;
@@ -294,7 +290,7 @@ const ChartTabs = ({
           }
         }
       `}</style>
-      <div className="chart-tabs-group">
+      <div className="chart-tabs-group d-lg-none">
         {tabs.map((tab) => (
           <div
             key={tab}
@@ -317,25 +313,17 @@ const ChartTabs = ({
             if (onBacktestClick) onBacktestClick();
             else setActiveTab("Backtest");
           }}
-          className="chart-strategy-btn"
+          className="chart-strategy-btn d-lg-none"
         >
           <SiVitest size={14} /> BACKTEST
         </button>
-        <button
+        {/* <button
           title="Run Strategy"
           onClick={onStrategyClick}
           className="chart-strategy-btn"
         >
           <SiVitest size={14} /> STRATEGY
-        </button>
-        <button className="chart-agent-btn" onClick={onAgentClick}>
-          <FiCpu size={14} />
-          AGENT
-        </button>
-        <button className="chart-scalper-btn" onClick={onCodeClick}>
-          <FaCode />
-          CODE EDITOR
-        </button>
+        </button> */}
       </div>
 
 

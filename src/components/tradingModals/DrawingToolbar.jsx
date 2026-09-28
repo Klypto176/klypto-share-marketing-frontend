@@ -7,17 +7,17 @@ const DrawingToolbar = ({ activeTool, setActiveTool, clearAllDrawings }) => {
   const tools = [
     {
       id: 'cursor',
-      icon: <LuMousePointer2 size={20} />,
+      icon: <LuMousePointer2 size={16} />,
       title: 'Cursor'
     },
     {
       id: 'trendLine',
-      icon: <MdTimeline size={20} />,
+      icon: <MdTimeline size={16} />,
       title: 'Trend Line'
     },
     {
       id: 'horizontalLine',
-      icon: <LuMinus size={20} />,
+      icon: <LuMinus size={16} />,
       title: 'Horizontal Line'
     }
   ];
@@ -27,7 +27,7 @@ const DrawingToolbar = ({ activeTool, setActiveTool, clearAllDrawings }) => {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        width: '50px',
+        width: '40px',
         backgroundColor: 'transparent', // Inherit background from chart container
         borderRight: '1px solid #1e293b',
         padding: '10px 0',
@@ -45,7 +45,7 @@ const DrawingToolbar = ({ activeTool, setActiveTool, clearAllDrawings }) => {
             border: 'none',
             color: activeTool === tool.id ? '#2962FF' : '#94a3b8',
             cursor: 'pointer',
-            padding: '8px',
+            padding: '6px',
             borderRadius: '4px',
             display: 'flex',
             justifyContent: 'center',

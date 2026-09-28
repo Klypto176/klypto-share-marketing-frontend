@@ -12,6 +12,7 @@ import {
 import React from "react";
 import { createPortal } from "react-dom";
 import { LuCirclePlus, LuCircleMinus } from "react-icons/lu";
+import { IoChevronDown, IoChevronUp } from "react-icons/io5";
 import { RiResetRightLine } from "react-icons/ri";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import ChartHeader from "../components/tradingModals/ChartHeader";
@@ -653,6 +654,10 @@ export default function Candlestick() {
     } catch (e) {}
     return [];
   });
+  const [areIndicatorLegendsCollapsed, setAreIndicatorLegendsCollapsed] =
+    useState(false);
+  const [visibleMainIndicatorLegendCount, setVisibleMainIndicatorLegendCount] =
+    useState(null);
   const [chartType, setChartType] = useState("candlestick");
   const [isMarketOpen, setIsMarketOpen] = useState(false);
   const [liveOhlcv, setLiveOhlcv] = useState({});
@@ -3922,6 +3927,60 @@ json.dumps(result)
       indicatorDataRef.current?.[typeof ind === "object" ? ind.id : ind] !==
         undefined,
   );
+  const totalIndicatorCount = selectedIndicator.length;
+  const mainChartIndicatorLegendCount = selectedIndicator.filter((ind) => {
+    if (ind.type === "VP") return true;
+    if (!PANE_INDICATORS.has(ind.type)) return true;
+    const paneDiv = panesRef.current[ind.id]?.pane?.getHTMLElement();
+    return !paneDiv;
+  }).length;
+  const hiddenMainIndicatorLegendCount = Math.max(
+    0,
+    mainChartIndicatorLegendCount -
+      (visibleMainIndicatorLegendCount ?? Number.MAX_SAFE_INTEGER),
+  );
+
+  useEffect(() => {
+    let resizeObserver;
+    let animationFrame;
+
+    const updateVisibleLegendCount = () => {
+      const mainPane = chartRef.current
+        ?.panes?.()[0]
+        ?.getHTMLElement?.();
+      if (!mainPane) return;
+
+      const availableLegendHeight = mainPane.getBoundingClientRect().height - 90;
+      const visibleCountWithoutSummary = Math.max(
+        0,
+        Math.floor((availableLegendHeight - 20) / 20),
+      );
+      const nextVisibleCount =
+        mainChartIndicatorLegendCount > visibleCountWithoutSummary
+          ? Math.max(0, Math.floor((availableLegendHeight - 40) / 20))
+          : visibleCountWithoutSummary;
+
+      setVisibleMainIndicatorLegendCount((current) =>
+        current === nextVisibleCount ? current : nextVisibleCount,
+      );
+
+      if (!resizeObserver && typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(updateVisibleLegendCount);
+        resizeObserver.observe(mainPane);
+      }
+    };
+
+    updateVisibleLegendCount();
+    animationFrame = requestAnimationFrame(updateVisibleLegendCount);
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      resizeObserver?.disconnect();
+    };
+  }, [
+    selectedIndicator,
+    indicatorUpdateTrigger,
+    mainChartIndicatorLegendCount,
+  ]);
 
   const fetchStrategyMarkers = async () => {
     try {
@@ -7735,11 +7794,19 @@ json.dumps(result)
     };
   }, []);
 
+  const isSidePanelOpen =
+    activeTab === `Alerts` ||
+    isWatchlistOpen ||
+    isDetailsOpen ||
+    isDepthOpen;
+
   return (
     <>
       {!isFullscreen && (
         <Navbar
           setSelectedCurrency={handleSetSelectedCurrency}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
           predictCount={predictResultData?.length}
           onBellClick={() => {
             if (activeTab === "Alerts") setActiveTab("Chart");
@@ -7789,13 +7856,13 @@ json.dumps(result)
               @media (max-width: 768px) {
                 .left-panel-mobile.is-open {
                   position: absolute !important;
-                  left: 0;
+                  right: 0;
                   top: 0;
                   z-index: 1000;
                   background: var(--bg-primary);
                   width: 100% !important;
                   height: 100% !important;
-                  box-shadow: 2px 0 10px rgba(0,0,0,0.5);
+                  box-shadow: -2px 0 10px rgba(0,0,0,0.5);
                 }
                 .right-sidebar-mobile {
                   width: 60px !important;
@@ -7811,16 +7878,16 @@ json.dumps(result)
             `}</style>
             {/* Left Panel (Watchlist or Details) */}
             <div
-              className={`left-panel-mobile ${!isFullscreen && (isWatchlistOpen || isDetailsOpen || isDepthOpen) ? "is-open" : ""}`}
+              className={`left-panel-mobile ${!isFullscreen && isSidePanelOpen ? "is-open" : ""}`}
               style={{
                 width:
                   !isFullscreen &&
-                  (isWatchlistOpen || isDetailsOpen || isDepthOpen)
+                  isSidePanelOpen
                     ? "300px"
                     : "0px",
                 opacity:
                   !isFullscreen &&
-                  (isWatchlistOpen || isDetailsOpen || isDepthOpen)
+                  isSidePanelOpen
                     ? 1
                     : 0,
                 overflow: "hidden",
@@ -7828,6 +7895,7 @@ json.dumps(result)
                 transition:
                   "width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
                 flexShrink: 0,
+                order: 2,
               }}
             >
               <div style={{ width: "300px", height: "100%" }}>
@@ -7838,7 +7906,7 @@ json.dumps(result)
                   }}
                 >
                   <LeftAlertListing
-                    onClose={() => setIsWatchlistOpen(false)}
+                    onClose={() => setActiveTab(`Chart`)}
                     alertResult={customSignals}
                     setAlertResult={setCustomSignals}
                     setSelectedCurrency={handleSetSelectedCurrency}
@@ -7909,11 +7977,9 @@ json.dumps(result)
             <div
               style={{
                 flex: 1,
+                order: 1,
                 minWidth: 0, // important to prevent flex items from overflowing
-                borderLeft:
-                  isWatchlistOpen || isDetailsOpen || isDepthOpen
-                    ? "1px solid var(--border-color)"
-                    : "none",
+                borderLeft: "none",
                 borderRight: "1px solid var(--border-color)",
                 display: "flex",
                 flexDirection: "column",
@@ -7925,11 +7991,6 @@ json.dumps(result)
                 <ChartTabs
                   activeTab={activeTab}
                   setActiveTab={setActiveTab}
-                  onCodeClick={() => {
-                    setIsAgentPanelOpen(false);
-                    setIsCodeEditorOpen((prev) => !prev);
-                  }}
-                  onAgentClick={handleToggleAgentPanel}
                   onStrategyClick={handleStrategyClick}
                   onGoToDate={handleGoToDate}
                   isFullscreen={isFullscreen}
@@ -7976,6 +8037,11 @@ json.dumps(result)
                     isFullscreen={isFullscreen}
                     onToggleFullscreen={() => setIsFullscreen((prev) => !prev)}
                     onGoToDate={handleGoToDate}
+                    onAgentClick={handleToggleAgentPanel}
+                    onCodeClick={() => {
+                      setIsAgentPanelOpen(false);
+                      setIsCodeEditorOpen((prev) => !prev);
+                    }}
                     onOpenScanner={() => {
                       // Open details panel, close watchlist
                       setIsDetailsOpen(true);
@@ -8511,7 +8577,8 @@ json.dumps(result)
                               zIndex: 50,
                             }}
                           >
-                            {selectedIndicator
+                            {!areIndicatorLegendsCollapsed &&
+                              selectedIndicator
                               .filter((ind) => {
                                 if (ind.type === "VP") return true;
                                 if (!PANE_INDICATORS.has(ind.type)) return true;
@@ -8521,6 +8588,11 @@ json.dumps(result)
                                   ]?.pane?.getHTMLElement();
                                 return !paneDiv;
                               })
+                              .slice(
+                                0,
+                                visibleMainIndicatorLegendCount ??
+                                  Number.MAX_SAFE_INTEGER,
+                              )
                               .map((ind) => {
                                 const { id, type } = ind;
                                 const value = liveIndicatorData[id];
@@ -8554,10 +8626,36 @@ json.dumps(result)
                                   />
                                 );
                               })}
+                          {!areIndicatorLegendsCollapsed &&
+                            hiddenMainIndicatorLegendCount > 0 && (
+                              <span
+                                className={`inline-flex h-[18px] w-fit items-center rounded-[4px] px-1 text-[10px] text-[var(--text-secondary)]`}
+                              >
+                                +{hiddenMainIndicatorLegendCount}
+                              </span>
+                            )}
+                          <button
+                            onClick={() =>
+                              setAreIndicatorLegendsCollapsed((collapsed) => !collapsed)
+                            }
+                            className={`inline-flex h-[18px] border-1 border-[var(--border-color)] rounded-sm w-fit items-center gap-1 px-1 text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]`}
+                          >
+                            {areIndicatorLegendsCollapsed ? (
+                              <>
+                                <IoChevronUp />
+                                <span>
+                                  {totalIndicatorCount}
+                                </span>
+                              </>
+                            ) : (
+                              <IoChevronDown />
+                            )}
+                          </button>
                           </div>
 
                           {/* Pane Indicators (Portals) */}
-                          {selectedIndicator
+                          {!areIndicatorLegendsCollapsed &&
+                            selectedIndicator
                             .filter((ind) => {
                               if (ind.type === "VP") return false;
                               if (!PANE_INDICATORS.has(ind.type)) return false;
@@ -9118,11 +9216,12 @@ json.dumps(result)
               <div
                 className="right-sidebar-mobile"
                 style={{
-                  width: "70px",
+                  width: "40px",
                   height: "100%",
                   flexShrink: 0,
                   borderLeft: "1px solid var(--border-color)",
                   zIndex: 50,
+                  order: 3,
                 }}
               >
                 <RightSidebar

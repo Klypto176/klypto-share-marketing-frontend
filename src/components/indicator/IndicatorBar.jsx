@@ -26,9 +26,7 @@ export default function IndicatorBar({
 }) {
   const [isLabelHovered, setIsLabelHovered] = useState(false);
 
-  // ---------------------------------------------------------
   // INDICATOR CONFIG
-  // ---------------------------------------------------------
 
   const cfg = {
     ...(indicatorConfigDefault?.[type] || {}),
@@ -36,17 +34,12 @@ export default function IndicatorBar({
   };
 
   const len = cfg?.length ?? cfg?.baseLen ?? "";
-
   const src = cfg?.source ?? "";
-
   const maType = cfg?.maType ?? cfg?.matype ?? cfg?.ma_type ?? "";
-
   const configParts = [];
-
   if (maType) {
     configParts.push(maType);
   }
-
   if (len !== "" && len !== null && len !== undefined) {
     configParts.push(len);
   }
@@ -57,9 +50,7 @@ export default function IndicatorBar({
 
   const configString = configParts.join(" ");
 
-  // ---------------------------------------------------------
   // COMMON ICON BUTTON CLASS
-  // ---------------------------------------------------------
 
   const iconButtonClass = `
   inline-flex
@@ -85,9 +76,7 @@ export default function IndicatorBar({
   focus:outline-none
 `;
 
-  // ---------------------------------------------------------
   // RENDER
-  // ---------------------------------------------------------
 
   return (
     <div
@@ -110,16 +99,9 @@ export default function IndicatorBar({
       <div
         onMouseEnter={() => setIsLabelHovered(true)}
         onMouseLeave={() => setIsLabelHovered(false)}
-        className={`
-    inline-flex
-    h-[18px]
-    items-center
-    gap-[3px]
-    rounded-[4px]
-    cursor-default
-    transition-colors
-    duration-100
-
+        className={`inline-flex h-[18px] items-center gap-[3px] rounded-[4px] cursor-default
+          transition-colors
+          duration-100
     ${
       isLabelHovered
         ? `
@@ -134,59 +116,24 @@ export default function IndicatorBar({
     }
   `}
       >
-        {/* =====================================================
-            INDICATOR NAME
-           ===================================================== */}
+        {/* INDICATOR NAME */}
 
-        <span
-          className="
-            inline-flex
-            h-[18px] pl-[2px]
-            items-center
-            font-medium
-            leading-[18px]
-            text-[var(--text-primary)]
-          "
-        >
+        <span className="inline-flex h-[18px] pl-[2px] items-center font-medium leading-[18px] text-[var(--text-primary)]">
           {type}
         </span>
 
-        {/* =====================================================
-            INDICATOR CONFIGURATION
-           ===================================================== */}
+        {/* INDICATOR CONFIGURATION */}
 
         {configString && (
           <span
-            className="
-              inline-flex
-              h-[18px]
-              items-center
-
-              font-normal
-
-              leading-[18px]
-
-              text-[var(--text-secondary)]
-            "
+            className="inline-flex h-[18px] items-center font-normal leading-[18px] text-[var(--text-secondary)]"
           >
             {configString}
           </span>
         )}
         {isLabelHovered && (
-          <div
-            className="
-              ml-[2px]
-
-              inline-flex
-              h-[18px]
-              items-center
-
-              gap-[1px]
-            "
-          >
-            {/* =================================================
-                VISIBILITY
-               ================================================= */}
+          <div className="ml-[2px] inline-flex h-[18px] items-center gap-[1px]">
+            {/* VISIBILITY */}
 
             <button
               type="button"
@@ -200,7 +147,6 @@ export default function IndicatorBar({
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-
                 toggleIndicatorVisibility(indicator);
               }}
             >
@@ -211,9 +157,7 @@ export default function IndicatorBar({
               )}
             </button>
 
-            {/* =================================================
-                SETTINGS
-               ================================================= */}
+            {/* SETTINGS */}
 
             <button
               type="button"
@@ -223,21 +167,17 @@ export default function IndicatorBar({
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-
                 setActiveBarIndicator({
                   id: indicator,
                   type,
                 });
-
                 setIndicatorProperty(true);
               }}
             >
               <IoSettingsOutline size={13} />
             </button>
 
-            {/* =================================================
-                SOURCE CODE
-               ================================================= */}
+            {/* SOURCE CODE */}
 
             <button
               type="button"
@@ -247,7 +187,6 @@ export default function IndicatorBar({
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-
                 setActiveSourceIndicator(indicator);
                 setShowSourcePanel(true);
               }}
@@ -255,9 +194,7 @@ export default function IndicatorBar({
               <FaCode size={11} />
             </button>
 
-            {/* =================================================
-                REMOVE
-               ================================================= */}
+            {/* REMOVE */}
 
             <button
               type="button"
@@ -267,18 +204,15 @@ export default function IndicatorBar({
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-
                 removeIndicator(indicator);
               }}
             >
               <IoCloseSharp size={14} />
             </button>
 
-            {/* =================================================
-                MORE
-               ================================================= */}
+            {/* MORE */}
 
-            <button
+            {/* <button
               type="button"
               title="More"
               aria-label="More indicator options"
@@ -289,7 +223,7 @@ export default function IndicatorBar({
               }}
             >
               <FiMoreHorizontal size={13} />
-            </button>
+            </button> */}
           </div>
         )}
       </div>
