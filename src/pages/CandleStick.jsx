@@ -593,18 +593,18 @@ export default function Candlestick() {
   const handleSetSelectedCurrency = useCallback((nextCurrencyOrUpdater) => {
     setSelectedCurrency((prev) => {
       const next =
-        typeof nextCurrencyOrUpdater === 'function'
+        typeof nextCurrencyOrUpdater === "function"
           ? nextCurrencyOrUpdater(prev)
           : nextCurrencyOrUpdater;
 
       if (!prev || !next) return next;
 
-      const prevToken = String(prev.token ?? '').trim();
-      const nextToken = String(next.token ?? '').trim();
-      const prevSymbol = String(prev.symbol || prev.name || '')
+      const prevToken = String(prev.token ?? "").trim();
+      const nextToken = String(next.token ?? "").trim();
+      const prevSymbol = String(prev.symbol || prev.name || "")
         .trim()
         .toUpperCase();
-      const nextSymbol = String(next.symbol || next.name || '')
+      const nextSymbol = String(next.symbol || next.name || "")
         .trim()
         .toUpperCase();
       const isSameCurrency =
@@ -3966,12 +3966,11 @@ json.dumps(result)
     let animationFrame;
 
     const updateVisibleLegendCount = () => {
-      const mainPane = chartRef.current
-        ?.panes?.()[0]
-        ?.getHTMLElement?.();
+      const mainPane = chartRef.current?.panes?.()[0]?.getHTMLElement?.();
       if (!mainPane) return;
 
-      const availableLegendHeight = mainPane.getBoundingClientRect().height - 90;
+      const availableLegendHeight =
+        mainPane.getBoundingClientRect().height - 90;
       const visibleCountWithoutSummary = Math.max(
         0,
         Math.floor((availableLegendHeight - 20) / 20),
@@ -4593,133 +4592,142 @@ json.dumps(result)
   }
 
   //  ✅ INDICATOR REMOVAL — accepts instance id
-  const removeIndicator = useCallback((instanceId) => {
-    const activeIndicators = selectedIndicatorRef.current || [];
-    const removedIndicator = activeIndicators.find(
-      (indicator) => indicator?.id === instanceId,
-    );
-    const remainingIndicators = activeIndicators.filter(
-      (indicator) => indicator?.id !== instanceId,
-    );
-
-    // Update the ref immediately so the next live tick cannot request this
-    // indicator while React is waiting to apply the state update.
-    selectedIndicatorRef.current = remainingIndicators;
-    setSelectedIndicator(remainingIndicators);
-
-    const removedType = removedIndicator?.type;
-
-    if (removedType) {
-      const unsubscribePayload = {
-        symbol: selectedCurrency?.name,
-        interval: timeframeValue,
-        type: removedType,
-        requestId: instanceId,
-        exchange: selectedCurrency?.segment,
-      };
-      console.log('[INDICATOR] unsubscribeIndicator payload:', unsubscribePayload);
-      emitRef.current?.(EVENTS.INDICATOR.LIVE_UNSUBSCRIBE, unsubscribePayload);
-    }
-
-    const entry = indicatorSeriesRef.current[instanceId];
-    if (!entry) return;
-
-    const paneKey = instanceId; // each instance has its own pane key
-    const pane = panesRef.current[paneKey];
-    const chart = pane?.chart ?? chartRef.current;
-    if (!chart) return;
-
-    const panesCountBefore =
-      typeof chart.panes === "function" ? chart.panes().length : 0;
-
-    // Use global series tracking to remove ALL series associated with this indicator
-    if (allCreatedSeriesRef.current) {
-      allCreatedSeriesRef.current = allCreatedSeriesRef.current.filter(
-        (item) => {
-          if (item.id === instanceId) {
-            try {
-              chart.removeSeries(item.series);
-            } catch (e) {}
-            return false;
-          }
-          return true;
-        },
+  const removeIndicator = useCallback(
+    (instanceId) => {
+      const activeIndicators = selectedIndicatorRef.current || [];
+      const removedIndicator = activeIndicators.find(
+        (indicator) => indicator?.id === instanceId,
       );
-    }
+      const remainingIndicators = activeIndicators.filter(
+        (indicator) => indicator?.id !== instanceId,
+      );
 
-    const panesCountAfter =
-      typeof chart.panes === "function" ? chart.panes().length : 0;
+      // Update the ref immediately so the next live tick cannot request this
+      // indicator while React is waiting to apply the state update.
+      selectedIndicatorRef.current = remainingIndicators;
+      setSelectedIndicator(remainingIndicators);
 
-    const rootId = instanceId;
-    const paneIndex = paneIndexRef.current[rootId];
+      const removedType = removedIndicator?.type;
 
-    if (paneIndex !== undefined && paneIndex !== 0) {
-      if (panesCountAfter === panesCountBefore) {
-        // First remove the dummy series for this pane (so the pane becomes empty & auto-collapses)
-        const dummy = dummySeriesRef.current[paneIndex];
-        if (dummy) {
-          try {
-            chart.removeSeries(dummy);
-          } catch (e) {}
+      if (removedType) {
+        const unsubscribePayload = {
+          symbol: selectedCurrency?.name,
+          interval: timeframeValue,
+          type: removedType,
+          requestId: instanceId,
+          exchange: selectedCurrency?.segment,
+        };
+        console.log(
+          "[INDICATOR] unsubscribeIndicator payload:",
+          unsubscribePayload,
+        );
+        emitRef.current?.(
+          EVENTS.INDICATOR.LIVE_UNSUBSCRIBE,
+          unsubscribePayload,
+        );
+      }
+
+      const entry = indicatorSeriesRef.current[instanceId];
+      if (!entry) return;
+
+      const paneKey = instanceId; // each instance has its own pane key
+      const pane = panesRef.current[paneKey];
+      const chart = pane?.chart ?? chartRef.current;
+      if (!chart) return;
+
+      const panesCountBefore =
+        typeof chart.panes === "function" ? chart.panes().length : 0;
+
+      // Use global series tracking to remove ALL series associated with this indicator
+      if (allCreatedSeriesRef.current) {
+        allCreatedSeriesRef.current = allCreatedSeriesRef.current.filter(
+          (item) => {
+            if (item.id === instanceId) {
+              try {
+                chart.removeSeries(item.series);
+              } catch (e) {}
+              return false;
+            }
+            return true;
+          },
+        );
+      }
+
+      const panesCountAfter =
+        typeof chart.panes === "function" ? chart.panes().length : 0;
+
+      const rootId = instanceId;
+      const paneIndex = paneIndexRef.current[rootId];
+
+      if (paneIndex !== undefined && paneIndex !== 0) {
+        if (panesCountAfter === panesCountBefore) {
+          // First remove the dummy series for this pane (so the pane becomes empty & auto-collapses)
+          const dummy = dummySeriesRef.current[paneIndex];
+          if (dummy) {
+            try {
+              chart.removeSeries(dummy);
+            } catch (e) {}
+            delete dummySeriesRef.current[paneIndex];
+          }
+
+          const panesCountAfterDummy =
+            typeof chart.panes === "function" ? chart.panes().length : 0;
+
+          if (panesCountAfterDummy === panesCountBefore) {
+            // Lightweight charts STILL didn't auto-remove it, so we manually remove it
+            try {
+              const currentPanes =
+                typeof chart.panes === "function" ? chart.panes() : [];
+              if (
+                typeof chart.removePane === "function" &&
+                Number.isInteger(paneIndex) &&
+                paneIndex > 0 &&
+                paneIndex < currentPanes.length
+              ) {
+                chart.removePane(paneIndex);
+              }
+            } catch (err) {
+              console.warn("Failed to remove pane explicitly", err);
+            }
+          }
+        } else {
+          // Pane auto-removed — still need to clear the stale dummy ref
           delete dummySeriesRef.current[paneIndex];
         }
-
-        const panesCountAfterDummy =
-          typeof chart.panes === "function" ? chart.panes().length : 0;
-
-        if (panesCountAfterDummy === panesCountBefore) {
-          // Lightweight charts STILL didn't auto-remove it, so we manually remove it
-          try {
-            const currentPanes =
-              typeof chart.panes === "function" ? chart.panes() : [];
-            if (
-              typeof chart.removePane === "function" &&
-              Number.isInteger(paneIndex) &&
-              paneIndex > 0 &&
-              paneIndex < currentPanes.length
-            ) {
-              chart.removePane(paneIndex);
-            }
-          } catch (err) {
-            console.warn("Failed to remove pane explicitly", err);
-          }
-        }
-      } else {
-        // Pane auto-removed — still need to clear the stale dummy ref
-        delete dummySeriesRef.current[paneIndex];
       }
-    }
 
-    // ALWAYS shift paneIndexRef AND dummySeriesRef for all indicators whose index is above the removed pane.
-    // This must happen regardless of auto-remove vs manual-remove, because in both
-    // cases, LightweightCharts renumbers all subsequent panes by -1.
-    if (paneIndex !== undefined && paneIndex !== 0) {
-      Object.keys(paneIndexRef.current).forEach((key) => {
-        if (key !== rootId && paneIndexRef.current[key] > paneIndex) {
-          paneIndexRef.current[key] -= 1;
-        }
-      });
-      // Shift dummy series indices down too
-      const newDummyRef = {};
-      Object.keys(dummySeriesRef.current).forEach((k) => {
-        const ki = Number(k);
-        if (ki > paneIndex) {
-          newDummyRef[ki - 1] = dummySeriesRef.current[k];
-        } else {
-          newDummyRef[ki] = dummySeriesRef.current[k];
-        }
-      });
-      dummySeriesRef.current = newDummyRef;
-    }
+      // ALWAYS shift paneIndexRef AND dummySeriesRef for all indicators whose index is above the removed pane.
+      // This must happen regardless of auto-remove vs manual-remove, because in both
+      // cases, LightweightCharts renumbers all subsequent panes by -1.
+      if (paneIndex !== undefined && paneIndex !== 0) {
+        Object.keys(paneIndexRef.current).forEach((key) => {
+          if (key !== rootId && paneIndexRef.current[key] > paneIndex) {
+            paneIndexRef.current[key] -= 1;
+          }
+        });
+        // Shift dummy series indices down too
+        const newDummyRef = {};
+        Object.keys(dummySeriesRef.current).forEach((k) => {
+          const ki = Number(k);
+          if (ki > paneIndex) {
+            newDummyRef[ki - 1] = dummySeriesRef.current[k];
+          } else {
+            newDummyRef[ki] = dummySeriesRef.current[k];
+          }
+        });
+        dummySeriesRef.current = newDummyRef;
+      }
 
-    delete indicatorSeriesRef.current[instanceId];
-    delete latestIndicatorValuesRef.current[instanceId];
-    fetchedIndicatorsRef.current.delete(instanceId);
-    delete paneIndexRef.current[rootId];
+      delete indicatorSeriesRef.current[instanceId];
+      delete latestIndicatorValuesRef.current[instanceId];
+      fetchedIndicatorsRef.current.delete(instanceId);
+      delete paneIndexRef.current[rootId];
 
-    // the DOM pane cleanup
-    delete panesRef.current[paneKey];
-  }, [selectedCurrency?.name, selectedCurrency?.segment, timeframeValue]);
+      // the DOM pane cleanup
+      delete panesRef.current[paneKey];
+    },
+    [selectedCurrency?.name, selectedCurrency?.segment, timeframeValue],
+  );
   // ----------Main chart------------
   useEffect(() => {
     chartDisposedRef.current = false;
@@ -6949,7 +6957,7 @@ json.dumps(result)
                 interval: timeframeValue,
                 type: indType,
                 exchange: selectedCurrency?.segment,
-                requestId: ind?.id
+                requestId: ind?.id,
               });
             });
           }
@@ -7297,7 +7305,8 @@ json.dumps(result)
     const requestIdsByType = new Map();
     selectedIndicatorRef.current.forEach((indicator) => {
       const type = typeof indicator === "object" ? indicator?.type : indicator;
-      const requestId = typeof indicator === "object" ? indicator?.id : indicator;
+      const requestId =
+        typeof indicator === "object" ? indicator?.id : indicator;
       if (type && requestId && !requestIdsByType.has(type)) {
         requestIdsByType.set(type, requestId);
       }
@@ -7314,7 +7323,13 @@ json.dumps(result)
     });
 
     liveIndicatorContextRef.current = nextContext;
-  }, [emit, selectedCurrency?.name, selectedCurrency?.segment, selectedCurrency?.symbol, timeframeValue]);
+  }, [
+    emit,
+    selectedCurrency?.name,
+    selectedCurrency?.segment,
+    selectedCurrency?.symbol,
+    timeframeValue,
+  ]);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -7816,10 +7831,7 @@ json.dumps(result)
   }, []);
 
   const isSidePanelOpen =
-    activeTab === `Alerts` ||
-    isWatchlistOpen ||
-    isDetailsOpen ||
-    isDepthOpen;
+    activeTab === `Alerts` || isWatchlistOpen || isDetailsOpen || isDepthOpen;
 
   return (
     <>
@@ -7901,16 +7913,8 @@ json.dumps(result)
             <div
               className={`left-panel-mobile ${!isFullscreen && isSidePanelOpen ? "is-open" : ""}`}
               style={{
-                width:
-                  !isFullscreen &&
-                  isSidePanelOpen
-                    ? "300px"
-                    : "0px",
-                opacity:
-                  !isFullscreen &&
-                  isSidePanelOpen
-                    ? 1
-                    : 0,
+                width: !isFullscreen && isSidePanelOpen ? "300px" : "0px",
+                opacity: !isFullscreen && isSidePanelOpen ? 1 : 0,
                 overflow: "hidden",
                 height: "100%",
                 transition:
@@ -8506,15 +8510,23 @@ json.dumps(result)
                             )}
                           </div>
                         </div>
+                      </div>
 
+                      {/* Buy / Sell - Top Right */}
                         <div
+                          ref={actionButtonsRef}
                           style={{
+                            position: "absolute",
+                            top: "8px",
+                            right: "90px",
+                            zIndex: 50,
                             display: "flex",
+                            alignItems: "center",
                             gap: "8px",
                             opacity: currentCandleRef.current ? 1 : 0,
                             transition: "opacity 0.2s ease-in-out",
+                            pointerEvents: "auto",
                           }}
-                          ref={actionButtonsRef}
                         >
                           <button
                             className="buy-sell-btn"
@@ -8580,7 +8592,6 @@ json.dumps(result)
                             Sell @<span data-sell-price>--</span>
                           </button>
                         </div>
-                      </div>
 
                       {/* -----------------INDICATOR BAR------------------- */}
 
@@ -8590,7 +8601,7 @@ json.dumps(result)
                           <div
                             style={{
                               position: "absolute",
-                              top: 90,
+                              top: 40,
                               left: 4,
                               display: "flex",
                               flexDirection: "column",
@@ -8600,148 +8611,154 @@ json.dumps(result)
                           >
                             {!areIndicatorLegendsCollapsed &&
                               selectedIndicator
-                              .filter((ind) => {
-                                if (ind.type === "VP") return true;
-                                if (!PANE_INDICATORS.has(ind.type)) return true;
-                                const paneDiv =
-                                  panesRef.current[
-                                    ind.id
-                                  ]?.pane?.getHTMLElement();
-                                return !paneDiv;
-                              })
-                              .slice(
-                                0,
-                                visibleMainIndicatorLegendCount ??
-                                  Number.MAX_SAFE_INTEGER,
-                              )
-                              .map((ind) => {
-                                const { id, type } = ind;
-                                const value = liveIndicatorData[id];
-                                return (
-                                  <IndicatorBar
-                                    key={id}
-                                    indicator={id}
-                                    type={type}
-                                    timeframeValue={timeframeValue}
-                                    value={value}
-                                    renderValue={(indId, val) =>
-                                      renderValue(indId, type, val)
-                                    }
-                                    indicatorVisibility={indicatorVisibility}
-                                    toggleIndicatorVisibility={
-                                      toggleIndicatorVisibility
-                                    }
-                                    removeIndicator={removeIndicator}
-                                    setActiveBarIndicator={
-                                      setActiveBarIndicator
-                                    }
-                                    setIndicatorProperty={setIndicatorProperty}
-                                    setActiveSourceIndicator={() =>
-                                      setActiveSourceIndicator(type)
-                                    }
-                                    setShowSourcePanel={setShowSourcePanel}
-                                    indicatorConfigDefault={
-                                      indicatorConfigDefault
-                                    }
-                                    indicatorConfigs={indicatorConfigs}
-                                  />
-                                );
-                              })}
-                          {!areIndicatorLegendsCollapsed &&
-                            hiddenMainIndicatorLegendCount > 0 && (
-                              <span
-                                className={`inline-flex h-[18px] w-fit items-center rounded-[4px] px-1 text-[10px] text-[var(--text-secondary)]`}
-                              >
-                                +{hiddenMainIndicatorLegendCount}
-                              </span>
-                            )}
-                          <button
-                            onClick={() =>
-                              setAreIndicatorLegendsCollapsed((collapsed) => !collapsed)
-                            }
-                            className={`inline-flex h-[18px] border-1 border-[var(--border-color)] rounded-sm w-fit items-center gap-1 px-1 text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]`}
-                          >
-                            {areIndicatorLegendsCollapsed ? (
-                              <>
-                                <IoChevronUp />
-                                <span>
-                                  {totalIndicatorCount}
+                                .filter((ind) => {
+                                  if (ind.type === "VP") return true;
+                                  if (!PANE_INDICATORS.has(ind.type))
+                                    return true;
+                                  const paneDiv =
+                                    panesRef.current[
+                                      ind.id
+                                    ]?.pane?.getHTMLElement();
+                                  return !paneDiv;
+                                })
+                                .slice(
+                                  0,
+                                  visibleMainIndicatorLegendCount ??
+                                    Number.MAX_SAFE_INTEGER,
+                                )
+                                .map((ind) => {
+                                  const { id, type } = ind;
+                                  const value = liveIndicatorData[id];
+                                  return (
+                                    <IndicatorBar
+                                      key={id}
+                                      indicator={id}
+                                      type={type}
+                                      timeframeValue={timeframeValue}
+                                      value={value}
+                                      renderValue={(indId, val) =>
+                                        renderValue(indId, type, val)
+                                      }
+                                      indicatorVisibility={indicatorVisibility}
+                                      toggleIndicatorVisibility={
+                                        toggleIndicatorVisibility
+                                      }
+                                      removeIndicator={removeIndicator}
+                                      setActiveBarIndicator={
+                                        setActiveBarIndicator
+                                      }
+                                      setIndicatorProperty={
+                                        setIndicatorProperty
+                                      }
+                                      setActiveSourceIndicator={() =>
+                                        setActiveSourceIndicator(type)
+                                      }
+                                      setShowSourcePanel={setShowSourcePanel}
+                                      indicatorConfigDefault={
+                                        indicatorConfigDefault
+                                      }
+                                      indicatorConfigs={indicatorConfigs}
+                                    />
+                                  );
+                                })}
+                            {!areIndicatorLegendsCollapsed &&
+                              hiddenMainIndicatorLegendCount > 0 && (
+                                <span
+                                  className={`inline-flex h-[18px] w-fit items-center rounded-[4px] px-1 text-[10px] text-[var(--text-secondary)]`}
+                                >
+                                  +{hiddenMainIndicatorLegendCount}
                                 </span>
-                              </>
-                            ) : (
-                              <IoChevronDown />
-                            )}
-                          </button>
+                              )}
+                            <button
+                              onClick={() =>
+                                setAreIndicatorLegendsCollapsed(
+                                  (collapsed) => !collapsed,
+                                )
+                              }
+                              className={`inline-flex h-[18px] border-1 border-[var(--border-color)] rounded-sm w-fit items-center gap-1 px-1 text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]`}
+                            >
+                              {areIndicatorLegendsCollapsed ? (
+                                <>
+                                  <IoChevronUp />
+                                  <span>{totalIndicatorCount}</span>
+                                </>
+                              ) : (
+                                <IoChevronDown />
+                              )}
+                            </button>
                           </div>
 
                           {/* Pane Indicators (Portals) */}
                           {!areIndicatorLegendsCollapsed &&
                             selectedIndicator
-                            .filter((ind) => {
-                              if (ind.type === "VP") return false;
-                              if (!PANE_INDICATORS.has(ind.type)) return false;
-                              const paneDiv =
-                                panesRef.current[
-                                  ind.id
-                                ]?.pane?.getHTMLElement();
-                              return Boolean(paneDiv);
-                            })
-                            .map((ind) => {
-                              const { id, type } = ind;
-                              const value = liveIndicatorData[id];
-                              const paneDiv =
-                                panesRef.current[id]?.pane?.getHTMLElement();
+                              .filter((ind) => {
+                                if (ind.type === "VP") return false;
+                                if (!PANE_INDICATORS.has(ind.type))
+                                  return false;
+                                const paneDiv =
+                                  panesRef.current[
+                                    ind.id
+                                  ]?.pane?.getHTMLElement();
+                                return Boolean(paneDiv);
+                              })
+                              .map((ind) => {
+                                const { id, type } = ind;
+                                const value = liveIndicatorData[id];
+                                const paneDiv =
+                                  panesRef.current[id]?.pane?.getHTMLElement();
 
-                              if (!paneDiv) return null;
-                              const portalTarget =
-                                paneDiv.tagName?.toLowerCase() === "tr"
-                                  ? paneDiv.querySelector("td") || paneDiv
-                                  : paneDiv;
+                                if (!paneDiv) return null;
+                                const portalTarget =
+                                  paneDiv.tagName?.toLowerCase() === "tr"
+                                    ? paneDiv.querySelector("td") || paneDiv
+                                    : paneDiv;
 
-                              portalTarget.style.position = "relative"; // Ensure the pane is a positioning context
+                                portalTarget.style.position = "relative"; // Ensure the pane is a positioning context
 
-                              return createPortal(
-                                <div
-                                  style={{
-                                    position: "absolute",
-                                    top: 5,
-                                    left: 4,
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    gap: 2,
-                                    zIndex: 50,
-                                  }}
-                                >
-                                  <IndicatorBar
-                                    indicator={id}
-                                    type={type}
-                                    timeframeValue={timeframeValue}
-                                    value={value}
-                                    renderValue={(indId, val) =>
-                                      renderValue(indId, type, val)
-                                    }
-                                    indicatorVisibility={indicatorVisibility}
-                                    toggleIndicatorVisibility={
-                                      toggleIndicatorVisibility
-                                    }
-                                    removeIndicator={removeIndicator}
-                                    setActiveBarIndicator={
-                                      setActiveBarIndicator
-                                    }
-                                    setIndicatorProperty={setIndicatorProperty}
-                                    setActiveSourceIndicator={() =>
-                                      setActiveSourceIndicator(type)
-                                    }
-                                    setShowSourcePanel={setShowSourcePanel}
-                                    indicatorConfigDefault={
-                                      indicatorConfigDefault
-                                    }
-                                    indicatorConfigs={indicatorConfigs}
-                                  />
-                                </div>,
-                                portalTarget,
-                              );
-                            })}
+                                return createPortal(
+                                  <div
+                                    style={{
+                                      position: "absolute",
+                                      top: 5,
+                                      left: 4,
+                                      display: "flex",
+                                      flexDirection: "column",
+                                      gap: 2,
+                                      zIndex: 50,
+                                    }}
+                                  >
+                                    <IndicatorBar
+                                      indicator={id}
+                                      type={type}
+                                      timeframeValue={timeframeValue}
+                                      value={value}
+                                      renderValue={(indId, val) =>
+                                        renderValue(indId, type, val)
+                                      }
+                                      indicatorVisibility={indicatorVisibility}
+                                      toggleIndicatorVisibility={
+                                        toggleIndicatorVisibility
+                                      }
+                                      removeIndicator={removeIndicator}
+                                      setActiveBarIndicator={
+                                        setActiveBarIndicator
+                                      }
+                                      setIndicatorProperty={
+                                        setIndicatorProperty
+                                      }
+                                      setActiveSourceIndicator={() =>
+                                        setActiveSourceIndicator(type)
+                                      }
+                                      setShowSourcePanel={setShowSourcePanel}
+                                      indicatorConfigDefault={
+                                        indicatorConfigDefault
+                                      }
+                                      indicatorConfigs={indicatorConfigs}
+                                    />
+                                  </div>,
+                                  portalTarget,
+                                );
+                              })}
                         </>
                       )}
 

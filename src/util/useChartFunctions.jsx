@@ -1257,17 +1257,47 @@ async function fetchDataForIndicators(
         activeSocket.on("indicatorDetailsResponse", onResponse);
         activeSocket.on("indicatorDetailsError", onError);
 
+        // const payload = {
+        //   requestId,
+        //   instance_id: requestId,
+        //   symbol: selectedCurrency?.name,
+        //   interval: timeframeValue,
+        //   exchange: getIndicatorExchange(selectedCurrency),
+        //   fromDate,
+        //   toDate,
+        //   type,
+        //   ...indicatorConfig,
+        // };
+
+        let indicatorFromDate = fromDate;
+
+        if (type === "BODY915DNA") {
+          const endDate = toDate ? new Date(`${toDate}T00:00:00`) : new Date();
+
+          endDate.setMonth(endDate.getMonth() - 3);
+
+          indicatorFromDate = endDate.toISOString().split("T")[0];
+        }
+
         const payload = {
           requestId,
           instance_id: requestId,
           symbol: selectedCurrency?.name,
           interval: timeframeValue,
           exchange: getIndicatorExchange(selectedCurrency),
-          fromDate,
+          fromDate: indicatorFromDate,
           toDate,
           type,
           ...indicatorConfig,
         };
+
+        console.log(`[${type}] Indicator request:`, {
+          fromDate: indicatorFromDate,
+          toDate,
+          payload,
+        });
+
+        activeSocket.emit("getIndicatorDetails", payload);
         console.log("Emitting getIndicatorDetails with payload:", payload);
         activeSocket.emit("getIndicatorDetails", payload);
       }));
@@ -1287,7 +1317,6 @@ async function fetchDataForIndicators(
 
     console.log(
       type,
-
       "mapped conversion",
       response,
       response?.data,
