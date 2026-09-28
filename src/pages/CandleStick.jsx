@@ -89,6 +89,7 @@ const SANDBOX_DEPLOYMENT_CODE = "SANDBOX_EXECUTION";
 const CHART_TIME_OFFSET_SECONDS = 19800;
 const MIN_HISTORICAL_DATE = "2024-10-01";
 const SANDBOX_OVERLAY_KEY = "__sandbox_overlay__";
+const DETAILS_WATCHLIST_STORAGE_KEY = "chart_detailsWatchlist";
 
 const isWithinReconciliationWindow = (date = new Date()) => {
   const istTime = new Date(
@@ -548,9 +549,29 @@ export default function Candlestick() {
   };
 
   const [predictResultData, setPredictResultData] = useState([]);
-  const [detailsList, setDetailsList] = useState([]);
+  const [detailsList, setDetailsList] = useState(() => {
+    try {
+      const saved = localStorage.getItem(DETAILS_WATCHLIST_STORAGE_KEY);
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.warn("Failed to read Details watchlist from localStorage", error);
+      return [];
+    }
+  });
   const [activeTab, setActiveTab] = useState("Chart");
   const [timeframeValue, setTimeframeValue] = useState("5m");
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        DETAILS_WATCHLIST_STORAGE_KEY,
+        JSON.stringify(detailsList),
+      );
+    } catch (error) {
+      console.warn("Failed to save Details watchlist to localStorage", error);
+    }
+  }, [detailsList]);
   const [selectedCurrency, setSelectedCurrency] = useState(() => {
     try {
       const raw = localStorage.getItem("selectedCurrency");
@@ -3431,11 +3452,11 @@ json.dumps(result)
 
     setDetailsList((prev) => [...prev, stock]);
 
-    // Request 1d data to get High/Low/LTP
+    // Keep Details requests aligned with the chart's active timeframe.
     if (socketRef.current) {
       socketRef.current.emit("getManualHistoricalData", {
         symbol: stock.name || stock.symbol,
-        interval: "1d",
+        interval: timeframeValue || "5m",
         fromDate: fromDate,
         toDate: toDate,
       });

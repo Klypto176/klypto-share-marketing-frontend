@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, startTransition } from "react";
-import { FiSearch, FiSun, FiMoon } from "react-icons/fi";
+import { FiSearch, FiSun, FiMoon, FiLogOut } from "react-icons/fi";
 import { BsGrid, BsBell } from "react-icons/bs";
 import apiService from "../../services/apiServices";
 import { useNavigate } from "react-router-dom";
@@ -62,13 +62,16 @@ const Navbar = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [showRecent, setShowRecent] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [stocks, setStocks] = useState([]);
   const [topIndex, setTopIndex] = useState(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const user = getUser();
+  const authenticated = isAuthenticated();
   const pendingRealtimeUpdatesRef = useRef(new Map());
   const realtimeFlushTimerRef = useRef(null);
+  const profileMenuRef = useRef(null);
 
   const [theme, setTheme] = useState(
     localStorage.getItem("theme") || "dark"
@@ -79,8 +82,46 @@ const Navbar = ({
     localStorage.setItem("theme", theme);
   }, [theme]);
 
+  useEffect(() => {
+    const closeProfileMenu = (event) => {
+      if (!profileMenuRef.current?.contains(event.target)) {
+        setIsProfileMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setIsProfileMenuOpen(false);
+    };
+
+    document.addEventListener("mousedown", closeProfileMenu);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeProfileMenu);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+
   const toggleTheme = () => {
     setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+  };
+
+  const handleLogout = async () => {
+    setIsProfileMenuOpen(false);
+    const result = await Swal.fire({
+      title: "Log out?",
+      text: "Are you sure you want to log out?",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Logout",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#ef5350",
+      background: "var(--bg-secondary)",
+      color: "var(--text-primary)",
+    });
+
+    if (result.isConfirmed) {
+      logout();
+      navigate("/login");
+    }
   };
 
   const searchContainerRef = useRef(null);
@@ -482,6 +523,87 @@ const Navbar = ({
       fontSize: "0.9rem",
       cursor: "pointer",
     },
+    avatarButton: {
+      background: "transparent",
+      border: "none",
+      padding: 0,
+      borderRadius: "50%",
+      display: "flex",
+      cursor: "pointer",
+    },
+    profileMenuContainer: {
+      position: "relative",
+      display: "flex",
+    },
+    profileDropdown: {
+      position: "absolute",
+      top: "calc(100% + 8px)",
+      right: 0,
+      width: "200px",
+      background: "var(--bg-secondary)",
+      border: "1px solid var(--border-color)",
+      borderRadius: "8px",
+      boxShadow: "0 12px 32px rgba(0, 0, 0, 0.24)",
+      zIndex: 1100,
+      overflow: "hidden",
+    },
+    profileInfo: {
+      padding: "12px 14px",
+    },
+    profileName: {
+      color: "var(--text-primary)",
+      fontSize: "0.85rem",
+      fontWeight: 600,
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    },
+    profileEmail: {
+      color: "var(--text-secondary)",
+      fontSize: "0.75rem",
+      marginTop: "3px",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    },
+    profileDivider: {
+      height: "1px",
+      background: "var(--border-color)",
+    },
+    profileInfoDivider: {
+      height: "1px",
+      backgroundColor: "#4b5563",
+      margin: "0 12px",
+      opacity: 0.8,
+    },
+    logoutMenuButton: {
+      width: "100%",
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      border: "none",
+      background: "transparent",
+      color: "#ef5350",
+      padding: "10px 14px",
+      cursor: "pointer",
+      fontSize: "0.8rem",
+      fontWeight: 600,
+      textAlign: "left",
+    },
+    profileThemeButton: {
+      width: "100%",
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      border: "none",
+      background: "transparent",
+      color: "var(--text-primary)",
+      padding: "10px 14px",
+      cursor: "pointer",
+      fontSize: "0.8rem",
+      fontWeight: 500,
+      textAlign: "left",
+    },
   };
 
   // ✅ Resolve tag style by segment string
@@ -735,40 +857,56 @@ const Navbar = ({
           </button>
           
           {/* Theme Toggle */}
-          <button style={styles.iconButton} onClick={toggleTheme} title="Toggle Theme">
-            {theme === "dark" ? <FiSun /> : <FiMoon />}
-          </button>
-          <div style={styles.avatar}>
-            {user?.name 
-              ? user.name.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase() 
-              : "U"}
-          </div>
-
-          {/* Auth button */}
-          {isAuthenticated ? (
-            <button
-              style={{ ...styles.iconButton, color: "#ef5350" }}
-              title="Logout"
-              onClick={() => {
-                logout();
-                navigate("/login");
-              }}
-            >
-              <svg
-                stroke="currentColor"
-                fill="none"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                height="18"
-                width="18"
+          {/* <button style={styles.iconButton} onClick={toggleTheme} title="Toggle Theme"> */}
+            {/* {theme === "dark" ? <FiSun /> : <FiMoon />}
+          </button> */}
+          {authenticated ? (
+            <div ref={profileMenuRef} style={styles.profileMenuContainer}>
+              <button
+                type="button"
+                style={styles.avatarButton}
+                title="Open profile menu"
+                aria-label="Open profile menu"
+                aria-haspopup="menu"
+                aria-expanded={isProfileMenuOpen}
+                onClick={() => setIsProfileMenuOpen((open) => !open)}
               >
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
-            </button>
+                <div style={styles.avatar}>
+                  {user?.name
+                    ? user.name.split(" ").map((name) => name[0]).join("").substring(0, 2).toUpperCase()
+                    : "U"}
+                </div>
+              </button>
+              {isProfileMenuOpen && (
+                <div style={styles.profileDropdown} role="menu">
+                  <div style={styles.profileInfo}>
+                    <div style={styles.profileName}>{user?.name || "User"}</div>
+                    <div style={styles.profileEmail}>{user?.email || ""}</div>
+                  </div>
+                  <div style={styles.profileInfoDivider} />
+                  <button
+                    type="button"
+                    style={styles.profileThemeButton}
+                    role="menuitem"
+                    onClick={toggleTheme}
+                    title="Toggle theme"
+                  >
+                    {theme === "dark" ? <FiSun size={15} /> : <FiMoon size={15} />}
+                    <span>Theme</span>
+                  </button>
+                  <div style={styles.profileDivider} />
+                  <button
+                    type="button"
+                    style={styles.logoutMenuButton}
+                    role="menuitem"
+                    onClick={handleLogout}
+                  >
+                    <FiLogOut size={15} />
+                    Logout
+                  </button>
+                </div>
+              )}
+            </div>
           ) : (
             <button
               title="Signup"

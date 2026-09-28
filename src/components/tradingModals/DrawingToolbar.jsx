@@ -28,11 +28,13 @@ const DrawingToolbar = ({ activeTool, setActiveTool, clearAllDrawings }) => {
         display: 'flex',
         flexDirection: 'column',
         width: '40px',
-        backgroundColor: 'transparent', // Inherit background from chart container
-        borderRight: '1px solid #1e293b',
-        padding: '10px 0',
+        height: '100%',
+        flexShrink: 0,
+        backgroundColor: 'var(--bg-primary)',
+        borderRight: '1px solid var(--border-color)',
+        padding: '16px 0',
         alignItems: 'center',
-        gap: '15px'
+        gap: '20px'
       }}
     >
       {tools.map((tool) => (
@@ -45,13 +47,15 @@ const DrawingToolbar = ({ activeTool, setActiveTool, clearAllDrawings }) => {
             border: 'none',
             color: activeTool === tool.id ? '#2962FF' : '#94a3b8',
             cursor: 'pointer',
-            padding: '6px',
-            borderRadius: '4px',
+            padding: 0,
+            width: '16px',
+            height: '16px',
+            borderRadius: 0,
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
             transition: 'all 0.2s',
-            backgroundColor: activeTool === tool.id ? 'rgba(41, 98, 255, 0.1)' : 'transparent'
+            backgroundColor: 'transparent'
           }}
           onMouseEnter={(e) => {
             if (activeTool !== tool.id) e.currentTarget.style.color = '#fff';
@@ -64,7 +68,7 @@ const DrawingToolbar = ({ activeTool, setActiveTool, clearAllDrawings }) => {
         </button>
       ))}
 
-      <div style={{ height: '1px', width: '30px', backgroundColor: '#1e293b', margin: '5px 0' }} />
+      <div style={{ height: '1px', width: '16px', backgroundColor: 'var(--border-color)' }} />
 
       <button
         title="Clear All Drawings"
@@ -74,8 +78,10 @@ const DrawingToolbar = ({ activeTool, setActiveTool, clearAllDrawings }) => {
           border: 'none',
           color: '#94a3b8',
           cursor: 'pointer',
-          padding: '8px',
-          borderRadius: '4px',
+          padding: 0,
+          width: '16px',
+          height: '16px',
+          borderRadius: 0,
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
@@ -84,7 +90,7 @@ const DrawingToolbar = ({ activeTool, setActiveTool, clearAllDrawings }) => {
         onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
         onMouseLeave={(e) => e.currentTarget.style.color = '#94a3b8'}
       >
-        <LuTrash2 size={20} />
+        <LuTrash2 size={16} />
       </button>
     </div>
   );

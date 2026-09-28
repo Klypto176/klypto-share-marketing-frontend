@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { FiX, FiPlus, FiMoreHorizontal, FiMaximize2, FiZap } from "react-icons/fi";
+import { FiX, FiPlus, FiMinus, FiMoreHorizontal, FiMaximize2, FiZap } from "react-icons/fi";
 import { BsGrid } from "react-icons/bs";
 import { AiOutlineEdit } from "react-icons/ai";
 import { ListingModal } from "../tradingModals/ListingModal";
@@ -229,7 +229,7 @@ const LeftDetail = ({
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.headerTitle}>
-          Details 
+          Watchlist 
           {/* <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginLeft: "4px" }}>▼</span> */}
         </div>
         <div style={styles.headerIcons}>
@@ -282,7 +282,20 @@ const LeftDetail = ({
           </div>
 
           <div className="custom-scrollbar" style={styles.listContainer}>
-            {detailsList.map((stock, idx) => {
+            {detailsList.length === 0 ? (
+              <div
+                style={{
+                  padding: "24px 16px",
+                  color: "var(--text-secondary)",
+                  fontSize: "0.8rem",
+                  lineHeight: 1.5,
+                  textAlign: "center",
+                }}
+              >
+                Add symbols to your watchlist using the "+" symbol.
+              </div>
+            ) : (
+              detailsList.map((stock, idx) => {
               const high = parseFloat(stock.high || 0);
               const low = parseFloat(stock.low || 0);
               const calculatedChange = high - low;
@@ -319,7 +332,8 @@ const LeftDetail = ({
                   </div>
                 </div>
               );
-            })}
+              })
+            )}
           </div>
         </>
       )}
@@ -428,15 +442,19 @@ const LeftDetail = ({
                   <button
                     style={styles.addBtn}
                     onClick={(e) => { e.stopPropagation(); handleAddStock(stock); }}
+                    title="Add to watchlist"
+                    aria-label="Add to watchlist"
                   >
-                    Add
+                    <FiPlus size={14} />
                   </button>
                 ) : (
                   <button
                     style={styles.deleteBtn}
                     onClick={(e) => { e.stopPropagation(); handleDeleteStock(stock.symbol); }}
+                    title="Remove from watchlist"
+                    aria-label="Remove from watchlist"
                   >
-                    Delete
+                    <FiMinus size={14} />
                   </button>
                 )}
               </div>
