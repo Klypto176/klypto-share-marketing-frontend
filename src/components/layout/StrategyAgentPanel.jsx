@@ -8,7 +8,7 @@ const panelStyles = {
     height: "100%",
     display: "flex",
     flexDirection: "column",
-    background: "linear-gradient(180deg, #121726 0%, #0d1321 100%)",
+    background: "var(--panel-background)",
     borderLeft: "1px solid rgba(148, 163, 184, 0.2)",
     flexShrink: 0,
   },

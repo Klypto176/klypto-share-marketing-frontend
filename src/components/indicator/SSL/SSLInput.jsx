@@ -56,15 +56,15 @@ export default function SSLInput(
   const atrUpperArr = getRawArray("atrUpper");
   const atrLowerArr = getRawArray("atrLower");
 
-  const upperByTime = new Map(upperArr.map((p) => [p.time, p.value ?? p.upperChannel]));
-  const lowerByTime = new Map(lowerArr.map((p) => [p.time, p.value ?? p.lowerChannel]));
-  const baselineByTime = new Map(baselineArr.map((p) => [p.time, p.value ?? p.baseline]));
+  const upperByTime = new Map(upperArr.map((p) => [Number(p.time), p.value ?? p.upperChannel]));
+  const lowerByTime = new Map(lowerArr.map((p) => [Number(p.time), p.value ?? p.lowerChannel]));
+  const baselineByTime = new Map(baselineArr.map((p) => [Number(p.time), p.value ?? p.baseline]));
 
   // Build time -> close map
   const closeMap = new Map();
   [...baselineArr, ...upperArr, ...lowerArr, ...ssl1Arr, ...ssl2Arr].forEach((point) => {
     if (point?.time != null && point?.close != null) {
-      closeMap.set(point.time, point.close);
+      closeMap.set(Number(point.time), point.close);
     }
   });
 
@@ -75,7 +75,7 @@ export default function SSLInput(
         const rawTime = Number(d.time);
         const time = rawTime > 2000000000 ? rawTime : rawTime + IST_OFFSET;
         const val = Number(d[key] ?? d.value);
-        const close = closeMap.get(d.time) ?? d.close ?? null;
+        const close = closeMap.get(rawTime) ?? d.close ?? null;
         const color = colorFn ? colorFn(d, val, close) : undefined;
         return {
           time,
@@ -86,15 +86,15 @@ export default function SSLInput(
       .sort((a, b) => a.time - b.time);
 
   const baseline = mapSeries(baselineArr, "baseline", (d, val, close) =>
-    getBaselineColor(close, upperByTime.get(d.time), lowerByTime.get(d.time))
+    getBaselineColor(close, upperByTime.get(Number(d.time)), lowerByTime.get(Number(d.time)))
   );
 
   const upperChannel = mapSeries(upperArr, "upperChannel", (d, val, close) =>
-    getBaselineColor(close, upperByTime.get(d.time), lowerByTime.get(d.time))
+    getBaselineColor(close, upperByTime.get(Number(d.time)), lowerByTime.get(Number(d.time)))
   );
 
   const lowerChannel = mapSeries(lowerArr, "lowerChannel", (d, val, close) =>
-    getBaselineColor(close, upperByTime.get(d.time), lowerByTime.get(d.time))
+    getBaselineColor(close, upperByTime.get(Number(d.time)), lowerByTime.get(Number(d.time)))
   );
 
   const ssl1 = mapSeries(ssl1Arr, "ssl1", (d, val, close) =>
@@ -102,7 +102,7 @@ export default function SSLInput(
   );
 
   const ssl2 = mapSeries(ssl2Arr, "ssl2", (d, val, close) =>
-    getSsl2Color(close, val, baselineByTime.get(d.time), d.atr)
+    getSsl2Color(close, val, baselineByTime.get(Number(d.time)), d.atr)
   );
 
   const atrUpper = mapSeries(atrUpperArr, "atrUpper");

@@ -272,6 +272,31 @@ export default function IndicatorPropertyDialog({
     }));
   };
 
+  const handleSslDisplayModeChange = (displayMode) => {
+    const visibleByMode = {
+      FULL_DISPLAY: ["baseline", "upperChannel", "lowerChannel", "ssl1", "ssl2", "baselineFill", "exitArrows", "signalDiamonds"],
+      BASELINE_ONLY: ["baseline", "upperChannel", "lowerChannel", "baselineFill"],
+      BASELINE_SSL: ["baseline", "upperChannel", "lowerChannel", "ssl1", "baselineFill"],
+      SSL_ONLY: ["ssl1", "ssl2"],
+      ENTRY_EXIT_ONLY: ["exitArrows"],
+    };
+    const styleKeys = ["baseline", "upperChannel", "lowerChannel", "ssl1", "ssl2", "atrUpper", "atrLower", "baselineFill", "exitArrows", "signalDiamonds"];
+    const visibleKeys = new Set(visibleByMode[displayMode] || visibleByMode.FULL_DISPLAY);
+
+    updateProperty("displayMode", displayMode);
+    setIndicatorStyle((prev) => {
+      const style = prev[instanceId] ?? prev[activeType] ?? {};
+      return {
+        ...prev,
+        [instanceId]: {
+          ...style,
+          ...Object.fromEntries(
+            styleKeys.map((key) => [key, { ...style[key], visible: visibleKeys.has(key) }]),
+          ),
+        },
+      };
+    });
+  };
   const handleBlur = (key, value) => {
     const defaults =
       indicatorConfigDefault[activeType] || indicatorConfigs[activeType] || {};
@@ -553,7 +578,7 @@ export default function IndicatorPropertyDialog({
               <select
                 className="form-select"
                 value={currentConfig?.displayMode}
-                onChange={(e) => updateProperty("displayMode", e.target.value)}
+                onChange={(e) => handleSslDisplayModeChange(e.target.value)}
               >
                 <option value="FULL_DISPLAY">Full Display</option>
 

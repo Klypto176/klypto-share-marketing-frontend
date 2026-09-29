@@ -24,7 +24,7 @@ const d = {
   bar: {
     display: "flex", alignItems: "center", gap: 12,
     padding: "4px 16px",
-    background: "var(--bg-primary)",
+    background: "var(--panel-background)",
     borderBottom: "1px solid var(--bg-secondary)",
     flexWrap: "nowrap",
     overflowX: "auto",
@@ -33,7 +33,7 @@ const d = {
   btn: {
     display: "flex", alignItems: "center", gap: 6,
     background: "var(--bg-secondary)",
-    border: "1px solid var(--border-color)",
+    border: "none",
     borderRadius: 6,
     color: "var(--text-primary)",
     padding: "6px 14px",
@@ -57,7 +57,7 @@ const d = {
   },
   select: {
     background: "var(--bg-secondary)",
-    border: "1px solid var(--border-color)",
+    border: "none",
     borderRadius: 6,
     color: "var(--text-primary)",
     padding: "6px 10px",
@@ -68,7 +68,7 @@ const d = {
   },
   dateInput: {
     background: "var(--bg-secondary)",
-    border: "1px solid var(--border-color)",
+    border: "none",
     borderRadius: 6,
     color: "var(--text-primary)",
     height: 36,
@@ -197,11 +197,38 @@ export default function ChartHeader({
         .chart-header-bar {
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 8px;
           padding: 4px 16px;
-          background: var(--bg-primary);
+          background: var(--panel-background);
           border-bottom: 1px solid var(--bg-secondary);
           flex-wrap: wrap;
+        }
+
+        .chart-header-action {
+          background: transparent !important;
+          border: none !important;
+        }
+        .chart-header-action:hover,
+        .chart-header-hover-action:hover {
+          background: var(--bg-secondary) !important;
+        }
+        .chart-header-hover-action {
+          background: transparent !important;
+        }
+
+        .chart-header-bar > button,
+        .chart-header-bar > div > button {
+          position: relative;
+        }
+        .chart-header-bar > button:not(:first-child)::before,
+        .chart-header-bar > div > button:not(:first-child)::before {
+          content: "";
+          position: absolute;
+          left: -4px;
+          top: 7px;
+          width: 1px;
+          height: 22px;
+          background: var(--border-color);
         }
 
         @media (max-width: 992px) {
@@ -250,7 +277,7 @@ export default function ChartHeader({
         {/* Timeframe dropdown */}
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
-            <button style={{ ...d.btn, justifyContent: "space-between" }} title={timeframeValue || "5m"}>
+            <button className="chart-header-action" style={{ ...d.btn, justifyContent: "space-between" }} title={timeframeValue || "5m"}>
               <span>{timeframeValue || "5m"}</span>
               {/* <FiChevronDown size={13} /> */}
             </button>
@@ -305,7 +332,7 @@ export default function ChartHeader({
         {/* Chart type dropdown */}
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
-            <button style={d.btn} title={active?.label}>
+            <button className="chart-header-action" style={d.btn} title={active?.label}>
               {active?.icon && <active.icon size={15} />}
               {/* <span>{active?.label}</span> */}
               {/* <FiChevronDown size={13} /> */}
@@ -334,16 +361,13 @@ export default function ChartHeader({
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
         </DropdownMenu.Root>
-
-        <div className="hide-below-lg" style={d.divider} />
-
         {/* Indicators */}
-        <button title="Indicators" onClick={() => openModal("Indicators")} style={d.btn}>
+        <button className="chart-header-action" title="Indicators" onClick={() => openModal("Indicators")} style={d.btn}>
           <VscGraphLine size={15} />
           <span className="hide-text-md">Indicators</span>
         </button>
 
-        <button title="Strategies" onClick={() => openModal("Strategies")} style={d.btn}>
+        <button className="chart-header-action" title="Strategies" onClick={() => openModal("Strategies")} style={d.btn}>
           <LuLibrary size={15} />
           <span className="hide-text-md">Strategies</span>
         </button>
@@ -389,7 +413,7 @@ export default function ChartHeader({
 
         {/* Spacer */}
         {/* <div style={{ flex: 1 }} /> */}
-        <button title="Create Alert" onClick={onOpenScanner} style={d.btn}>
+        <button className="chart-header-action" title="Create Alert" onClick={onOpenScanner} style={d.btn}>
           <BsFillAlarmFill style={{ marginRight: 4 }} size={14} />
           <span className="hide-text-md">Create Alert</span>
         </button>
@@ -408,18 +432,19 @@ export default function ChartHeader({
         {/* <ProfileDropDown /> */}
         
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
-          <button style={d.btn} title="Open Agent" onClick={onAgentClick}>
+          <button className="chart-header-hover-action" style={d.btn} title="Open Agent" onClick={onAgentClick}>
             <FiCpu size={14} />
             <span className="hide-text-md">Agent</span>
           </button>
 
-          <button style={d.btn} title="Open Code Editor" onClick={onCodeClick}>
+          <button className="chart-header-hover-action" style={d.btn} title="Open Code Editor" onClick={onCodeClick}>
             <FaCode size={14} />
             <span className="hide-text-md">Code Editor</span>
           </button>
 
           {!isFullscreen && (
             <button
+              className="chart-header-hover-action"
               style={d.btn}
               title="Maximize Chart"
               onClick={onToggleFullscreen}
@@ -439,7 +464,7 @@ export default function ChartHeader({
             </button>
           )}
 
-          <button style={d.btn} title="Go to" onClick={() => setShowGoToDate(true)}>
+          <button className="chart-header-hover-action" style={d.btn} title="Go to" onClick={() => setShowGoToDate(true)}>
             <TbCalendarShare size={14} />
           </button>
         </div>

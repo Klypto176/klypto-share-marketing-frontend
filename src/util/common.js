@@ -29,7 +29,7 @@ export const ChartProprties = {
     rightBarStaysOnScale: true,
     rightBarSpacing: 80,
     barSpacing: 10,
-    minBarSpacing: 5,
+    minBarSpacing: 0.5,
     fixLeftEdge: false,
     fixRightEdge: false,
     lockVisibleTimeRangeOnResize: true,
@@ -299,12 +299,12 @@ export const defaultPriceFormat = {
 
 export const chartSeriesStyles = {
   candlestick: {
-    upColor: "#22c55e",
-    downColor: "#ef4444",
-    borderUpColor: "#22c55e",
-    borderDownColor: "#ef4444",
-    wickUpColor: "#22c55e",
-    wickDownColor: "#ef4444",
+    upColor: "#089981",
+    downColor: "#F23645",
+    borderUpColor: "#089981",
+    borderDownColor: "#F23645",
+    wickUpColor: "#089981",
+    wickDownColor: "#F23645",
     priceFormat: defaultPriceFormat,
   },
 
@@ -1932,21 +1932,21 @@ export const getRowsByIndicator = (
           label: "-ATR",
           type: "line",
         },
-        // {
-        //   key: "exitArrows",
-        //   label: "Exit Arrows",
-        //   type: "marker",
-        // },
+        {
+          key: "exitArrows",
+          label: "Exit Arrows",
+          type: "marker",
+        },
         // {
         //   key: "signalDiamonds",
         //   label: "Signal Diamonds",
         //   type: "marker",
         // },
-        // {
-        //   key: "baselineFill",
-        //   label: "Baseline Background",
-        //   type: "fill",
-        // },
+        {
+          key: "baselineFill",
+          label: "Baseline Background",
+          type: "fill",
+        },
       ];
     }
     case "MA_RIBBON":

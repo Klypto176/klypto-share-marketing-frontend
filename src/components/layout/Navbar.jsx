@@ -1,4 +1,10 @@
-import React, { useState, useMemo, useRef, useEffect, startTransition } from "react";
+import React, {
+  useState,
+  useMemo,
+  useRef,
+  useEffect,
+  startTransition,
+} from "react";
 import { FiSearch, FiSun, FiMoon, FiLogOut } from "react-icons/fi";
 import { BsGrid, BsBell } from "react-icons/bs";
 import apiService from "../../services/apiServices";
@@ -26,9 +32,12 @@ const mergeRealtimeIntoStock = (stock, payload) => {
 
   const lastPrice = parseFloat(livePrice);
   const closeRef = parseFloat(closeRefRaw);
-  const canRecalc = Number.isFinite(lastPrice) && Number.isFinite(closeRef) && closeRef > 0;
+  const canRecalc =
+    Number.isFinite(lastPrice) && Number.isFinite(closeRef) && closeRef > 0;
   const computedChange = canRecalc ? lastPrice - closeRef : null;
-  const computedPercent = canRecalc ? ((computedChange / closeRef) * 100).toFixed(2) : null;
+  const computedPercent = canRecalc
+    ? ((computedChange / closeRef) * 100).toFixed(2)
+    : null;
 
   return {
     ...stock,
@@ -73,9 +82,7 @@ const Navbar = ({
   const realtimeFlushTimerRef = useRef(null);
   const profileMenuRef = useRef(null);
 
-  const [theme, setTheme] = useState(
-    localStorage.getItem("theme") || "dark"
-  );
+  const [theme, setTheme] = useState(localStorage.getItem("theme") || "dark");
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -153,8 +160,9 @@ const Navbar = ({
           ? pendingUpdates.get(String(prev.token))
           : null;
 
-        const matchingByName = matchingByToken
-          || Array.from(pendingUpdates.values()).find((payload) => {
+        const matchingByName =
+          matchingByToken ||
+          Array.from(pendingUpdates.values()).find((payload) => {
             const payloadName = String(
               payload?.name || payload?.symbol || payload?.symbolWithEq || "",
             )
@@ -307,7 +315,7 @@ const Navbar = ({
       justifyContent: "flex-start",
       gap: "16px",
       padding: "6px 24px",
-      backgroundColor: "var(--bg-primary)",
+      backgroundColor: "var(--panel-background)",
       borderBottom: "1px solid var(--border-color)",
       color: "var(--text-primary)",
       height: "50px",
@@ -514,8 +522,8 @@ const Navbar = ({
       width: "32px",
       height: "32px",
       borderRadius: "50%",
-      backgroundColor: "#e0e3eb",
-      color: "var(--bg-primary)",
+      backgroundColor: theme === "dark" ? "#e0e3eb" : "#1f2937",
+      color: theme === "dark" ? "#131722" : "#ffffff",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -568,7 +576,11 @@ const Navbar = ({
     },
     profileDivider: {
       height: "1px",
-      background: "var(--border-color)",
+      width: "85%",
+      display: "flex",
+      justifyContent: "center",
+      margin: "0 auto",
+      background: theme === "dark" ? "#4b5563" : "#d1d5db",
     },
     profileInfoDivider: {
       height: "1px",
@@ -626,17 +638,24 @@ const Navbar = ({
       {/* Left */}
       <div style={styles.leftSection}>
         <div style={styles.logoContainer}>
-          <button 
-            className="d-md-none" 
-            onClick={() => setIsMobileMenuOpen(true)} 
-            style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', fontSize: '1.5rem', marginRight: '8px', padding: 0 }}
+          <button
+            className="d-md-none"
+            onClick={() => setIsMobileMenuOpen(true)}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "var(--text-primary)",
+              fontSize: "1.5rem",
+              marginRight: "8px",
+              padding: 0,
+            }}
           >
             ☰
           </button>
-          <img 
-            src={logo} 
-            alt="Klypto Logo" 
-            style={{ width:"30px", height:"30px" }}
+          <img
+            src={logo}
+            alt="Klypto Logo"
+            style={{ width: "30px", height: "30px" }}
           />
         </div>
       </div>
@@ -656,7 +675,11 @@ const Navbar = ({
       )}
 
       {/* Search */}
-      <div className="d-none d-sm-block" style={styles.searchContainer} ref={searchContainerRef}>
+      <div
+        className="d-none d-sm-block"
+        style={styles.searchContainer}
+        ref={searchContainerRef}
+      >
         <form
           style={styles.searchForm}
           onSubmit={(e) => {
@@ -732,7 +755,8 @@ const Navbar = ({
                     key={stock.token || idx}
                     style={styles.resultItem}
                     onMouseEnter={(e) =>
-                      (e.currentTarget.style.backgroundColor = "var(--border-color)")
+                      (e.currentTarget.style.backgroundColor =
+                        "var(--border-color)")
                     }
                     onMouseLeave={(e) =>
                       (e.currentTarget.style.backgroundColor = "transparent")
@@ -746,7 +770,7 @@ const Navbar = ({
 
                       setSelectedCurrency((prev) => {
                         if (prev?.token === stock.token) return prev;
-                        
+
                         return {
                           symbol: stock.actualSymbol || stock.name,
                           name: stock.name,
@@ -833,33 +857,31 @@ const Navbar = ({
             paddingLeft: "20px",
           }}
         >
-          <button 
+          <button
             style={{ ...styles.iconButton, position: "relative" }}
             onClick={onBellClick}
           >
             <BsBell />
             {predictCount > 0 && (
-              <span style={{
-                position: "absolute",
-                top: "0px",
-                right: "0px",
-                background: "#ef5350",
-                color: "white",
-                borderRadius: "50%",
-                padding: "2px 5px",
-                fontSize: "10px",
-                fontWeight: "bold",
-                lineHeight: "1"
-              }}>
+              <span
+                style={{
+                  position: "absolute",
+                  top: "0px",
+                  right: "0px",
+                  background: "#ef5350",
+                  color: "white",
+                  borderRadius: "50%",
+                  padding: "2px 5px",
+                  fontSize: "10px",
+                  fontWeight: "bold",
+                  lineHeight: "1",
+                }}
+              >
                 {predictCount}
               </span>
             )}
           </button>
-          
-          {/* Theme Toggle */}
-          {/* <button style={styles.iconButton} onClick={toggleTheme} title="Toggle Theme"> */}
-            {/* {theme === "dark" ? <FiSun /> : <FiMoon />}
-          </button> */}
+
           {authenticated ? (
             <div ref={profileMenuRef} style={styles.profileMenuContainer}>
               <button
@@ -873,17 +895,24 @@ const Navbar = ({
               >
                 <div style={styles.avatar}>
                   {user?.firstName
-                    ? user.firstName.split(" ").map((name) => name[0]).join("").substring(0, 2).toUpperCase()
+                    ? user.firstName
+                        .split(" ")
+                        .map((name) => name[0])
+                        .join("")
+                        .substring(0, 2)
+                        .toUpperCase()
                     : "U"}
                 </div>
               </button>
               {isProfileMenuOpen && (
                 <div style={styles.profileDropdown} role="menu">
                   <div style={styles.profileInfo}>
-                    <div style={styles.profileName}>{user?.firstName + " " + user?.lastName}</div>
+                    <div style={styles.profileName}>
+                      {user?.firstName + " " + user?.lastName}
+                    </div>
                     <div style={styles.profileEmail}>{user?.email || ""}</div>
                   </div>
-                  <div style={styles.profileInfoDivider} />
+                  <div style={styles.profileDivider} />{" "}
                   <button
                     type="button"
                     style={styles.profileThemeButton}
@@ -891,10 +920,13 @@ const Navbar = ({
                     onClick={toggleTheme}
                     title="Toggle theme"
                   >
-                    {theme === "dark" ? <FiSun size={15} /> : <FiMoon size={15} />}
+                    {theme === "dark" ? (
+                      <FiSun size={15} />
+                    ) : (
+                      <FiMoon size={15} />
+                    )}
                     <span>Theme</span>
                   </button>
-                  <div style={styles.profileDivider} />
                   <button
                     type="button"
                     style={styles.logoutMenuButton}
@@ -921,26 +953,54 @@ const Navbar = ({
 
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
-        <div style={{
-          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: "var(--bg-primary)", zIndex: 9999,
-          padding: "20px", display: "flex", flexDirection: "column", gap: "20px",
-          overflowY: "auto"
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "var(--bg-primary)",
+            zIndex: 9999,
+            padding: "20px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "20px",
+            overflowY: "auto",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
             <div style={styles.logoContainer}>
               <BsGrid style={styles.logoIcon} />
               <span>Algo Mobile</span>
             </div>
-            <button 
+            <button
               onClick={() => setIsMobileMenuOpen(false)}
-              style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', fontSize: '1.5rem' }}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--text-primary)",
+                fontSize: "1.5rem",
+              }}
             >
               ✕
             </button>
           </div>
-          
-          <div style={{...styles.indexData, fontSize: '1rem', padding: '10px 0', borderBottom: '1px solid var(--border-color)'}}>
+
+          <div
+            style={{
+              ...styles.indexData,
+              fontSize: "1rem",
+              padding: "10px 0",
+              borderBottom: "1px solid var(--border-color)",
+            }}
+          >
             <div style={styles.indexName}>
               <span>{topIndexDisplay.name || "NIFTY"}</span>
               <span style={styles.expiryTag}>EXPIRY</span>
@@ -950,11 +1010,11 @@ const Navbar = ({
                 {topIndexDisplay.formattedLtp}
               </span>
               <span style={{ color: topIndexDisplay.color }}>
-                {topIndexDisplay.arrow} {topIndexDisplay.formattedChange} ({topIndexDisplay.formattedPercent})
+                {topIndexDisplay.arrow} {topIndexDisplay.formattedChange} (
+                {topIndexDisplay.formattedPercent})
               </span>
             </div>
           </div>
-
         </div>
       )}
     </div>

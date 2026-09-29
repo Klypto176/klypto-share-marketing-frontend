@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { FiX } from "react-icons/fi";
 import { Spinner } from "../tradingModals/Spinner";
 
@@ -38,11 +38,11 @@ const LeftDepth = ({
 
   return (
     <div
-      className="flex flex-col bg-[var(--bg-primary)] text-[var(--text-primary)] border-r border-[var(--border-color)] font-sans"
+      className="flex flex-col bg-[var(--panel-background)] text-[var(--text-primary)] border-r border-[var(--border-color)] font-sans"
       style={{ height: "calc(100vh - 60px)" }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-color)] font-semibold text-[0.95rem]">
+      <div className="flex items-center justify-between px-3 py-[11px] border-b border-[var(--border-color)] font-semibold text-[0.95rem]">
         <div className="flex items-center gap-2">
           <span>Strategy Results</span>
           {predictResults && predictResults.length > 0 && (

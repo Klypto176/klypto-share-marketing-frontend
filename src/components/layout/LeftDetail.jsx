@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import {
   FiX,
   FiPlus,
@@ -47,7 +47,7 @@ const LeftDetail = ({
       display: "flex",
       flexDirection: "column",
       height: "calc(100vh - 60px)",
-      background: "var(--bg-primary)",
+      background: "var(--panel-background)",
       color: "var(--text-primary)",
       borderRight: "1px solid var(--border-color)",
       fontFamily:

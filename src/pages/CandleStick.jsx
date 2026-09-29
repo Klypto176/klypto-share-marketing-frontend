@@ -4853,10 +4853,31 @@ json.dumps(result)
       return ps;
     };
 
+    const applyChartCanvasTheme = () => {
+      const theme =
+        document.documentElement.getAttribute("data-theme") || "dark";
+      chart.applyOptions({
+        layout: {
+          background: {
+            type: "solid",
+            color: theme === "light" ? "#ffffff" : "#000000",
+          },
+        },
+      });
+    };
+
+    applyChartCanvasTheme();
+    const themeObserver = new MutationObserver(applyChartCanvasTheme);
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+
     chartRef.current = chart;
     attachSync(chart);
 
     return () => {
+      themeObserver.disconnect();
       chartDisposedRef.current = true;
       if (chartRef.current) {
         chartRef.current.remove();
@@ -5644,7 +5665,6 @@ json.dumps(result)
                 text: `${indicator?.type || indicator?.name || "This indicator"} could not be loaded. `,
                 background: "var(--bg-secondary)",
                 color: "var(--text-primary)",
-                confirmButtonText: "OK",
               });
             }
           }
@@ -8574,9 +8594,9 @@ json.dumps(result)
                           }}
                           style={{
                             padding: "2px 6px",
-                            border: "1px solid green",
+                            border: "1px solid #089981",
                             background: "rgba(16, 185, 129, 0.15)",
-                            color: "green",
+                            color: "#089981",
                             borderRadius: "6px",
                             cursor: "pointer",
                             fontWeight: "600",
@@ -8600,9 +8620,9 @@ json.dumps(result)
                           }}
                           style={{
                             padding: "2px 6px",
-                            border: "1px solid red",
+                            border: "1px solid #F23645",
                             background: "rgba(239, 68, 68, 0.15)",
-                            color: "red",
+                            color: "#F23645",
                             borderRadius: "6px",
                             cursor: "pointer",
                             fontWeight: "600",

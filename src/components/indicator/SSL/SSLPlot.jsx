@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { LineSeries } from "lightweight-charts";
+import { LineSeries, createSeriesMarkers } from "lightweight-charts";
 
 export default function SSLPlot({
   result,
@@ -11,6 +11,7 @@ export default function SSLPlot({
   containerRef,
   mainSeriesRef,
   candlesRef,
+  indicatorConfigs,
 }) {
   const canvasRef = useRef(null);
   const closeMapRef = useRef(new Map());
@@ -19,26 +20,28 @@ export default function SSLPlot({
 
   const getDisplayVisibility = (lineName) => {
     const displayMode =
-      indicatorStyle?.SSL_HYBRID?.displayMode || "FULL_DISPLAY";
+      indicatorConfigs?.[result?.id]?.displayMode ||
+      indicatorConfigs?.SSL_HYBRID?.displayMode ||
+      "FULL_DISPLAY";
 
     switch (displayMode) {
       case "BASELINE_ONLY":
-        return ["baseline", "upperChannel", "lowerChannel"].includes(lineName);
+        return ["baseline", "upperChannel", "lowerChannel", "baselineFill"].includes(lineName);
       case "BASELINE_SSL":
         return [
           "baseline",
           "upperChannel",
           "lowerChannel",
           "ssl1",
-          "ssl2",
+          "baselineFill",
         ].includes(lineName);
       case "SSL_ONLY":
         return ["ssl1", "ssl2"].includes(lineName);
       case "ENTRY_EXIT_ONLY":
-        return ["ssl2"].includes(lineName);
+        return lineName === "exitArrows";
       case "FULL_DISPLAY":
       default:
-        return true;
+        return !["atrUpper", "atrLower"].includes(lineName);
     }
   };
 
@@ -97,8 +100,8 @@ export default function SSLPlot({
     const candles = candlesRef?.current;
     if (!mainSeries || !candles?.length) return;
 
-    const upperByTime = new Map(upperArr.map((p) => [p.time, p.value]));
-    const lowerByTime = new Map(lowerArr.map((p) => [p.time, p.value]));
+    const upperByTime = new Map(upperArr.map((p) => [Number(p.time), p.value]));
+    const lowerByTime = new Map(lowerArr.map((p) => [Number(p.time), p.value]));
 
     const coloredCandles = candles.map((candle) => {
       const t = candle.time;
@@ -147,9 +150,9 @@ export default function SSLPlot({
     // const atrUpperArr = nestedData.atrUpper || [];
     // const atrLowerArr = nestedData.atrLower || [];
 
-    const upperByTime = new Map(upperArr.map((p) => [p.time, p.value]));
-    const lowerByTime = new Map(lowerArr.map((p) => [p.time, p.value]));
-    const baselineByTime = new Map(baselineArr.map((p) => [p.time, p.value]));
+    const upperByTime = new Map(upperArr.map((p) => [Number(p.time), p.value]));
+    const lowerByTime = new Map(lowerArr.map((p) => [Number(p.time), p.value]));
+    const baselineByTime = new Map(baselineArr.map((p) => [Number(p.time), p.value]));
 
     // Build time → close lookup from all available data
     const closeMap = new Map();
@@ -163,7 +166,7 @@ export default function SSLPlot({
 
     allSeries.forEach((point) => {
       if (point?.time != null && point?.close != null) {
-        closeMap.set(point.time, point.close);
+        closeMap.set(Number(point.time), point.close);
       }
     });
 
@@ -171,7 +174,7 @@ export default function SSLPlot({
     if (candlesRef?.current) {
       candlesRef.current.forEach((c) => {
         if (c?.time != null && c?.close != null) {
-          closeMap.set(c.time, c.close);
+          closeMap.set(Number(c.time), c.close);
         }
       });
     }
@@ -230,15 +233,15 @@ export default function SSLPlot({
         const colored = [];
         lineData.forEach((point) => {
           if (point.time == null || point.value == null || Number.isNaN(Number(point.value))) return;
-          const actualClose = closeMap.get(point.time) ?? point.close ?? null;
+          const actualClose = closeMap.get(Number(point.time)) ?? point.close ?? null;
 
           colored.push({
             time: point.time,
             value: Number(point.value),
             color: getBaselineColor(
               actualClose,
-              point.upperChannel ?? upperByTime.get(point.time) ?? null,
-              point.lowerChannel ?? lowerByTime.get(point.time) ?? null,
+              point.upperChannel ?? upperByTime.get(Number(point.time)) ?? null,
+              point.lowerChannel ?? lowerByTime.get(Number(point.time)) ?? null,
             ),
           });
         });
@@ -252,15 +255,15 @@ export default function SSLPlot({
         const colored = [];
         lineData.forEach((point) => {
           if (point.time == null || point.value == null || Number.isNaN(Number(point.value))) return;
-          const actualClose = closeMap.get(point.time) ?? point.close ?? null;
+          const actualClose = closeMap.get(Number(point.time)) ?? point.close ?? null;
 
           colored.push({
             time: point.time,
             value: Number(point.value),
             color: getBaselineColor(
               actualClose,
-              upperByTime.get(point.time) ?? null,
-              lowerByTime.get(point.time) ?? null,
+              upperByTime.get(Number(point.time)) ?? null,
+              lowerByTime.get(Number(point.time)) ?? null,
             ),
           });
         });
@@ -273,7 +276,7 @@ export default function SSLPlot({
         const colored = [];
         lineData.forEach((point) => {
           if (point.time == null || point.value == null || Number.isNaN(Number(point.value))) return;
-          const actualClose = closeMap.get(point.time) ?? point.close ?? null;
+          const actualClose = closeMap.get(Number(point.time)) ?? point.close ?? null;
 
           colored.push({
             time: point.time,
@@ -290,7 +293,7 @@ export default function SSLPlot({
         const colored = [];
         lineData.forEach((point) => {
           if (point.time == null || point.value == null || Number.isNaN(Number(point.value))) return;
-          const actualClose = closeMap.get(point.time) ?? point.close ?? null;
+          const actualClose = closeMap.get(Number(point.time)) ?? point.close ?? null;
 
           colored.push({
             time: point.time,
@@ -298,7 +301,7 @@ export default function SSLPlot({
             color: getSsl2Color(
               actualClose,
               point.value,
-              baselineByTime.get(point.time) ?? null,
+              baselineByTime.get(Number(point.time)) ?? null,
               point.atr ?? null,
             ),
           });
@@ -324,6 +327,125 @@ export default function SSLPlot({
       if (lineName === "lowerChannel") lowerChannelData = lineData;
     });
 
+
+    /* ================= BASE CROSS MARKERS ================= */
+
+    console.log("[SSL] reached base-cross marker section");
+
+    const entryExitStyle =
+      indicatorStyle?.SSL_HYBRID?.exitArrows;
+
+    const displayMode =
+      indicatorConfigs?.[result?.id]?.displayMode ||
+      indicatorConfigs?.SSL_HYBRID?.displayMode ||
+      "FULL_DISPLAY";
+
+    const markerSeriesVisible =
+      (entryExitStyle?.visible ?? true) &&
+      getDisplayVisibility("exitArrows");
+
+    console.log("[SSL] marker visibility:", {
+      displayMode,
+      styleVisible: entryExitStyle?.visible ?? true,
+      displayVisibility:
+        getDisplayVisibility("exitArrows"),
+      finalVisible: markerSeriesVisible,
+    });
+
+    console.log("[SSL] RAW base-cross data:", {
+      long: nestedData.baseCrossLong,
+      short: nestedData.baseCrossShort,
+    });
+
+    const baseCrossMarkers = [
+      ...(nestedData.baseCrossShort || []).map((point) => ({
+        time: point.time,
+        position: "aboveBar",
+        shape: "arrowDown",
+        color: "#00c3ff",
+      })),
+
+      ...(nestedData.baseCrossLong || []).map((point) => ({
+        time: point.time,
+        position: "belowBar",
+        shape: "arrowUp",
+        color: "#ff0062",
+      })),
+    ].sort((a, b) => Number(a.time) - Number(b.time));
+
+    console.log("[SSL] constructed markers:", {
+      shortCount:
+        nestedData.baseCrossShort?.length ?? 0,
+
+      longCount:
+        nestedData.baseCrossLong?.length ?? 0,
+
+      totalMarkers: baseCrossMarkers.length,
+
+      firstMarker: baseCrossMarkers[0],
+      lastMarker:
+        baseCrossMarkers[
+          baseCrossMarkers.length - 1
+        ],
+    });
+
+    groupedSeries.baseCrossMarkers =
+      baseCrossMarkers;
+
+    const markerHostSeries =
+      mainSeriesRef?.current;
+
+    console.log("[SSL] marker host:", {
+      hasMainSeries: !!markerHostSeries,
+      visible: markerSeriesVisible,
+    });
+
+    if (markerHostSeries) {
+      try {
+        if (groupedSeries.baseCrossMarkersPlugin) {
+          console.log(
+            "[SSL] updating existing marker plugin",
+          );
+
+          groupedSeries.baseCrossMarkersPlugin.setMarkers(
+            markerSeriesVisible
+              ? baseCrossMarkers
+              : [],
+          );
+        } else {
+          console.log(
+            "[SSL] creating marker plugin",
+          );
+
+          groupedSeries.baseCrossMarkersPlugin =
+            createSeriesMarkers(
+              markerHostSeries,
+              markerSeriesVisible
+                ? baseCrossMarkers
+                : [],
+            );
+        }
+
+        console.log(
+          "[SSL] marker plotting completed",
+          {
+            plotted:
+              markerSeriesVisible
+                ? baseCrossMarkers.length
+                : 0,
+          },
+        );
+      } catch (error) {
+        console.error(
+          "[SSL] marker plotting FAILED:",
+          error,
+        );
+      }
+    } else {
+      console.warn(
+        "[SSL] cannot plot markers: mainSeriesRef.current is missing",
+      );
+    }
     groupedSeries.upperChannelData = upperChannelData;
     groupedSeries.lowerChannelData = lowerChannelData;
     indicatorSeriesRef.current[instanceId] = groupedSeries;
@@ -369,7 +491,7 @@ export default function SSLPlot({
     const candlesVisible = indicatorStyle?.SSL_HYBRID?.candles?.visible ?? true;
 
     // Hide fill if: fill explicitly hidden, channels hidden, OR candles hidden
-    if (!(fill?.visible ?? true)) return;
+    if (!(fill?.visible ?? true) || !getDisplayVisibility("baselineFill")) return;
     if (!upperVisible || !lowerVisible) return;
     if (!candlesVisible) return;
     if (!upper.length || !lower.length) return;
@@ -439,6 +561,13 @@ export default function SSLPlot({
       
       series.applyOptions(options);
     });
+
+    const entryExitStyle = indicatorStyle?.SSL_HYBRID?.exitArrows;
+    const showEntryExitMarkers =
+      (entryExitStyle?.visible ?? true) && getDisplayVisibility("exitArrows");
+    sslGroup.baseCrossMarkersPlugin?.setMarkers(
+      showEntryExitMarkers ? sslGroup.baseCrossMarkers || [] : [],
+    );
 
     drawBaselineCloud();
 

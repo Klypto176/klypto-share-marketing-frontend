@@ -1563,6 +1563,23 @@ async function fetchDataForIndicators(
                   value: d.atrLower,
                 })) ?? [],
 
+            baseCrossLong:
+              response?.data
+                ?.filter(
+                  (d) =>
+                    [true, 1, "true", "1"].includes(d.baseCrossLong) &&
+                    d.time != null,
+                )
+                .map((d) => ({ time: Number(d.time) + IST_OFFSET })) ?? [],
+
+            baseCrossShort:
+              response?.data
+                ?.filter(
+                  (d) =>
+                    [true, 1, "true", "1"].includes(d.baseCrossShort) &&
+                    d.time != null,
+                )
+                .map((d) => ({ time: Number(d.time) + IST_OFFSET })) ?? [],
             // sslExit:
             //   response?.data
             //     ?.filter((d) => d.sslExit != null && d.time != null)

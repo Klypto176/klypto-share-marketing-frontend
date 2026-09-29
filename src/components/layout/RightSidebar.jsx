@@ -19,7 +19,7 @@ const RightSidebar = ({
       alignItems: "center",
       width: "100%",
       height: "calc(100vh - 60px)",
-      backgroundColor: "var(--bg-primary)",
+      backgroundColor: "var(--panel-background)",
       borderLeft: "1px solid var(--border-color)",
       color: "var(--text-secondary)",
       paddingTop: "16px",

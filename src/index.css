@@ -5,6 +5,7 @@
 :root {
   color-scheme: dark;
   --bg-primary: #131722;
+  --panel-background: #0f0f0f;
   --bg-secondary: #1e222d;
   --bg-tertiary: #2a2e39;
   --text-primary: #d1d4dc;
@@ -18,6 +19,7 @@
 [data-theme="light"] {
   color-scheme: light;
   --bg-primary: #ffffff;
+  --panel-background: var(--bg-primary);
   --bg-secondary: #f3f4f6;
   --bg-tertiary: #e5e7eb;
   --text-primary: #111827;

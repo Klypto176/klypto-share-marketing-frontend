@@ -30,7 +30,7 @@ const DrawingToolbar = ({ activeTool, setActiveTool, clearAllDrawings }) => {
         width: '40px',
         height: '100%',
         flexShrink: 0,
-        backgroundColor: 'var(--bg-primary)',
+        backgroundColor: 'var(--panel-background)',
         borderRight: '1px solid var(--border-color)',
         padding: '16px 0',
         alignItems: 'center',
