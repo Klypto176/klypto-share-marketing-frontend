@@ -6,6 +6,8 @@
   color-scheme: dark;
   --bg-primary: #131722;
   --panel-background: #0f0f0f;
+  --indicator-bar-hover-background: rgba(255, 255, 255, 0.035);
+  --indicator-bar-hover-border: rgba(255, 255, 255, 0.06);
   --bg-secondary: #1e222d;
   --bg-tertiary: #2a2e39;
   --text-primary: #d1d4dc;
@@ -20,6 +22,8 @@
   color-scheme: light;
   --bg-primary: #ffffff;
   --panel-background: var(--bg-primary);
+  --indicator-bar-hover-background: var(--bg-secondary);
+  --indicator-bar-hover-border: var(--border-color);
   --bg-secondary: #f3f4f6;
   --bg-tertiary: #e5e7eb;
   --text-primary: #111827;

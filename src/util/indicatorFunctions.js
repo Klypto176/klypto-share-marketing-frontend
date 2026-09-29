@@ -745,7 +745,7 @@ export let indicatorStyleDefault = {
   },
   EMA: {
     ema: {
-      color: "rgba(255, 255, 255, 1)",
+      color: "rgba(0, 0, 255, 1)",
       width: 1,
       lineStyle: 0,
       opacity: 100,
@@ -799,7 +799,7 @@ export let indicatorStyleDefault = {
   },
   DEMA: {
     dema: {
-      color: "rgba(0, 0, 255, 1)",
+      color: "rgba(34, 139, 34, 1)",
       width: 1,
       lineStyle: 0,
       opacity: 100,

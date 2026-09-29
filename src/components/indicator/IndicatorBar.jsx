@@ -69,7 +69,7 @@ export default function IndicatorBar({
   leading-none
   transition-colors
   duration-75
-  hover:bg-[var(--bg-tertiary)]
+  hover:bg-[var(--indicator-bar-hover-background)]
   hover:text-[var(--text-primary)]
   active:bg-[var(--border-color)]
   active:text-[var(--text-primary)]
@@ -106,8 +106,8 @@ export default function IndicatorBar({
       isLabelHovered
         ? `
           border
-          border-[var(--border-color)]
-          bg-[var(--bg-secondary)]
+          border-[var(--indicator-bar-hover-border)]
+          bg-[var(--indicator-bar-hover-background)]
         `
         : `
           border-1 border-transparent 
