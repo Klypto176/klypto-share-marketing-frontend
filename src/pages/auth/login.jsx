@@ -89,8 +89,11 @@ export default function Login() {
         icon: "error",
         title: "Login Failed",
         text: message,
-        showConfirmButton: true,
-        confirmButtonText: "Okay",
+        toast: true,
+        position: "top-end",
+        showConfirmButton: false,
+        timer: 1800,
+        timerProgressBar: true,
       });
     } finally {
       setLoading(false);

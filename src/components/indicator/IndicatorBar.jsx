@@ -37,7 +37,7 @@ export default function IndicatorBar({
   const src = cfg?.source ?? "";
   const maType = cfg?.maType ?? cfg?.matype ?? cfg?.ma_type ?? "";
   const configParts = [];
-  if (maType) {
+  if (maType && String(maType).trim().toLowerCase() !== "none") {
     configParts.push(maType);
   }
   if (len !== "" && len !== null && len !== undefined) {

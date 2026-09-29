@@ -1,19 +1,12 @@
-import { FiPlus } from "react-icons/fi";
 import { VscGraphLine } from "react-icons/vsc";
 import { LuLibrary } from "react-icons/lu";
 import { FiEye, FiEyeOff, FiSettings, FiCpu } from "react-icons/fi";
 import { useState, useEffect } from "react";
 import { ListingModal } from "./ListingModal";
 import apiService from "../../services/apiServices";
-import { Form } from "react-bootstrap";
-import { MdAlarmAdd } from "react-icons/md";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { FiChevronDown } from "react-icons/fi";
 import { chartOptions } from "../../util/common";
-import { EditableNumber } from "../indicator/EditTableLabel";
-import { isAuthenticated, logout } from "../../pages/auth/protected";
 import { Navigate, useNavigate } from "react-router-dom";
-import ProfileDropDown from "../auth/profile/ProfileDropDown";
 import { CgMaximizeAlt } from "react-icons/cg";
 import { MdOutlineFullscreenExit } from "react-icons/md";
 import { TbCalendarShare } from "react-icons/tb";
@@ -36,7 +29,7 @@ const d = {
     border: "none",
     borderRadius: 6,
     color: "var(--text-primary)",
-    padding: "6px 14px",
+    padding: "6px 12px",
     fontSize: "0.8rem",
     fontWeight: 600,
     cursor: "pointer",
@@ -197,7 +190,7 @@ export default function ChartHeader({
         .chart-header-bar {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 0;
           padding: 4px 16px;
           background: var(--panel-background);
           border-bottom: 1px solid var(--bg-secondary);
@@ -217,11 +210,19 @@ export default function ChartHeader({
         }
 
         .chart-header-bar > button,
-        .chart-header-bar > div > button {
+        .chart-header-utility-actions > button {
           position: relative;
+          margin-inline: 4px;
         }
-        .chart-header-bar > button:not(:first-child)::before,
-        .chart-header-bar > div > button:not(:first-child)::before {
+        .chart-header-bar > button:first-child,
+        .chart-header-utility-actions > button:first-child {
+          margin-left: 0;
+        }
+        .chart-header-utility-actions > button:last-child {
+          margin-right: 0;
+        }
+        .chart-header-bar > button + button::before,
+        .chart-header-utility-actions > button + button::before {
           content: "";
           position: absolute;
           left: -4px;
@@ -230,8 +231,7 @@ export default function ChartHeader({
           height: 22px;
           background: var(--border-color);
         }
-
-        @media (max-width: 992px) {
+@media (max-width: 992px) {
           .hide-text-md, .hide-below-lg {
             display: none !important;
           }
@@ -256,7 +256,7 @@ export default function ChartHeader({
             flex-wrap: wrap;
             overflow-x: visible;
             padding: 8px 16px;
-            gap: 8px;
+            gap: 0;
           }
           .chart-header-bar > * {
             flex-grow: 1;
@@ -431,7 +431,7 @@ export default function ChartHeader({
 
         {/* <ProfileDropDown /> */}
         
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+        <div className="chart-header-utility-actions" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 0 }}>
           <button className="chart-header-hover-action" style={d.btn} title="Open Agent" onClick={onAgentClick}>
             <FiCpu size={14} />
             <span className="hide-text-md">Agent</span>

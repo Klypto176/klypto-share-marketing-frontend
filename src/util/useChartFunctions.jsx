@@ -1296,8 +1296,6 @@ async function fetchDataForIndicators(
           toDate,
           payload,
         });
-
-        activeSocket.emit("getIndicatorDetails", payload);
         console.log("Emitting getIndicatorDetails with payload:", payload);
         activeSocket.emit("getIndicatorDetails", payload);
       }));
@@ -1565,20 +1563,12 @@ async function fetchDataForIndicators(
 
             baseCrossLong:
               response?.data
-                ?.filter(
-                  (d) =>
-                    [true, 1, "true", "1"].includes(d.baseCrossLong) &&
-                    d.time != null,
-                )
+                ?.filter((d) => d.baseCrossLong === true && d.time != null)
                 .map((d) => ({ time: Number(d.time) + IST_OFFSET })) ?? [],
 
             baseCrossShort:
               response?.data
-                ?.filter(
-                  (d) =>
-                    [true, 1, "true", "1"].includes(d.baseCrossShort) &&
-                    d.time != null,
-                )
+                ?.filter((d) => d.baseCrossShort === true && d.time != null)
                 .map((d) => ({ time: Number(d.time) + IST_OFFSET })) ?? [],
             // sslExit:
             //   response?.data

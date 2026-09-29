@@ -1,4 +1,4 @@
-import { throttleChartEvents } from "../util/throttleChartEvents";
+﻿import { throttleChartEvents } from "../util/throttleChartEvents";
 import {
   createChart,
   CandlestickSeries,
@@ -2561,16 +2561,16 @@ export default function Candlestick() {
       } else if (newData.status === "done" || newData.status === "complete") {
         setIsPredicting(false);
 
-        // �o. FALLBACK: If no trade signals arrived via socket, fetch from REST API
+        // o. FALLBACK: If no trade signals arrived via socket, fetch from REST API
         // Wait briefly to allow any in-flight socket events to arrive first
         setTimeout(async () => {
           setPredictResultData((currentResults) => {
             if (currentResults && currentResults.length > 0) {
-              // Socket results already arrived �?" no fallback needed
+              // Socket results already arrived ?" no fallback needed
               return currentResults;
             }
 
-            // No socket results �?" fetch from REST API as fallback
+            // No socket results ?" fetch from REST API as fallback
             apiService
               .get("/api/predictResult")
               .then((res) => {
@@ -3512,7 +3512,7 @@ json.dumps(result)
   const actionButtonsRef = useRef(null);
   const strategyMarkersRef = useRef(null); //ref for markers
   const markersLoadedRef = useRef(false);
-  // �o. Always-current refs so persistent handlers never capture stale closures
+  // o. Always-current refs so persistent handlers never capture stale closures
   const selectedCurrencyRef = useRef(selectedCurrency);
   const intervalSecRef = useRef(TIMEFRAME_TO_SECONDS[timeframeValue] ?? 60);
   const IST_OFFSET = 19800;
@@ -3952,7 +3952,7 @@ json.dumps(result)
   const isUp = liveOhlcv?.close >= liveOhlcv?.open;
   const valueColor = isUp ? "text-green-500" : "text-red-500";
   // eslint-disable-next-line no-unused-expressions
-  void indicatorUpdateTrigger; // keep this �?" forces re-eval when data arrives (ref reads don't re-render)
+  void indicatorUpdateTrigger; // keep this ?" forces re-eval when data arrives (ref reads don't re-render)
   const hasPaneIndicators = selectedIndicator.some(
     (ind) =>
       PANE_INDICATORS.has(typeof ind === "object" ? ind.type : ind) &&
@@ -4048,7 +4048,7 @@ json.dumps(result)
             .toUpperCase();
         if (normalizeStr(response.symbol) !== normalizeStr(symbol)) {
           console.log(
-            `Received markers for ${response.symbol} but active is ${symbol} �?" skipping`,
+            `Received markers for ${response.symbol} but active is ${symbol} ?" skipping`,
           );
           return;
         }
@@ -4063,7 +4063,7 @@ json.dumps(result)
 
       const markers = response?.markers
         .map((marker) => ({
-          // marker.datetimeUTC is in seconds (UTC) �?" align with candle times (which use IST_OFFSET)
+          // marker.datetimeUTC is in seconds (UTC) ?" align with candle times (which use IST_OFFSET)
           time: Number(marker.datetimeUTC) + IST_OFFSET,
           position: marker.type === "BUY" ? "belowBar" : "aboveBar",
           color: marker.type === "BUY" ? "#22ab94" : "#ef4444",
@@ -4127,7 +4127,7 @@ json.dumps(result)
     let indicatorsToFetch = selectedIndicator;
 
     if (!isContextChange) {
-      // �o. Only fetch newly added instances
+      // o. Only fetch newly added instances
       indicatorsToFetch = selectedIndicator.filter(
         (ind) => !fetchedIndicatorsRef.current.has(ind.id),
       );
@@ -4148,7 +4148,7 @@ json.dumps(result)
       fetchedIndicatorsRef.current.add(ind.id),
     );
 
-    // �o. Explicitly clean up REMOVED indicators
+    // o. Explicitly clean up REMOVED indicators
     const currentIds = new Set(selectedIndicator?.map((ind) => ind.id) || []);
     const removedIds = [...fetchedIndicatorsRef.current].filter(
       (id) => !currentIds.has(id),
@@ -4225,7 +4225,7 @@ json.dumps(result)
       }
     }
 
-    // �o. Fallback and globally apply visibility to ALL series that belong to this indicator
+    // o. Fallback and globally apply visibility to ALL series that belong to this indicator
     if (allCreatedSeriesRef.current) {
       allCreatedSeriesRef.current.forEach((item) => {
         if (
@@ -4248,7 +4248,7 @@ json.dumps(result)
   };
 
   //  GET PANE INDEX
-  // Instance ids look like "RSI_1747xxx_abc12" �?" extract base type for pane check
+  // Instance ids look like "RSI_1747xxx_abc12" ?" extract base type for pane check
   const getBaseTypeFromId = (instanceId) => {
     const match = instanceId.match(/^([A-Z0-9_]+?)_\d/);
     return match ? match[1] : instanceId;
@@ -4272,7 +4272,7 @@ json.dumps(result)
     }
 
     const baseType = getBaseTypeFromId(rootId);
-    // overlay indicators �?' always main pane
+    // overlay indicators ?' always main pane
     if (!PANE_INDICATORS.has(baseType)) return 0;
 
     if (paneIndexRef.current[rootId] !== undefined) {
@@ -4420,7 +4420,7 @@ json.dumps(result)
       }
     }
 
-    // �o. Populate panesRef for sub-pane indicators using instanceId as key
+    // o. Populate panesRef for sub-pane indicators using instanceId as key
     if (paneIndex !== 0) {
       const tryPopulate = () => {
         if (!chartRef.current) return;
@@ -4430,7 +4430,7 @@ json.dumps(result)
           const div = paneObj.getHTMLElement();
           if (div) {
             // console.log(
-            //   "�Y'Z Populating panesRef for",
+            //   "Y'Z Populating panesRef for",
             //   indicator,
             //   "at index",
             //   paneIndex,
@@ -4456,7 +4456,7 @@ json.dumps(result)
       }
     }
 
-    // �o. GLOBAL DATA SANITIZATION (Optimized for performance)
+    // o. GLOBAL DATA SANITIZATION (Optimized for performance)
     // Protect Lightweight Charts from crashing when indicators pass null/NaN values
     const originalSetData = series.setData.bind(series);
     series.setData = (data) => {
@@ -4574,7 +4574,7 @@ json.dumps(result)
     return series;
   };
 
-  //  �o. CHART SYNC ENGINE
+  //  o. CHART SYNC ENGINE
   function syncCharts(sourceChart, logicalRange) {
     if (!logicalRange || syncingRef.current) return;
     syncingRef.current = true;
@@ -4602,7 +4602,7 @@ json.dumps(result)
     });
   }
 
-  //  �o. INDICATOR REMOVAL �?" accepts instance id
+  //  o. INDICATOR REMOVAL ?" accepts instance id
   const removeIndicator = useCallback(
     (instanceId) => {
       const activeIndicators = selectedIndicatorRef.current || [];
@@ -4702,7 +4702,7 @@ json.dumps(result)
             }
           }
         } else {
-          // Pane auto-removed �?" still need to clear the stale dummy ref
+          // Pane auto-removed ?" still need to clear the stale dummy ref
           delete dummySeriesRef.current[paneIndex];
         }
       }
@@ -4891,7 +4891,7 @@ json.dumps(result)
     };
   }, []); // Run only once
 
-  // kept for compatibility �?" ListingModal now directly calls setSelectedIndicator
+  // kept for compatibility ?" ListingModal now directly calls setSelectedIndicator
   const toggleIndicator = useCallback((type) => {
     const id = `${type}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const newInst = { id, type };
@@ -5042,18 +5042,38 @@ json.dumps(result)
         .filter((key) => {
           if (hiddenKeys.includes(key)) return false;
 
-          // Special case for SMA when maType is "none"
-          if (type === "SMA") {
-            const config = indicatorConfigs[id] || indicatorConfigDefault[type];
-            if (config?.maType === "none" && key !== "sma") {
-              return false;
-            }
+          const config = indicatorConfigs[id] || indicatorConfigDefault[type];
+          const normalizedMaType = String(
+            config?.maType ?? config?.matype ?? config?.ma_type ?? "",
+          )
+            .trim()
+            .toLowerCase();
+
+          // Do not render values for MA-dependent lines when that MA is not plotted.
+          if (
+            normalizedMaType === "none" &&
+            ["smoothingMA", "bbUpper", "bbLower"].includes(key)
+          ) {
+            return false;
+          }
+          if (
+            ["bbUpper", "bbLower"].includes(key) &&
+            normalizedMaType !== "sma + bollinger bands"
+          ) {
+            return false;
           }
 
           const style =
             indicatorStyle?.[id]?.[key] || indicatorStyle?.[type]?.[key];
           if (style?.visible === false) return false;
-          // Return true even if value is null, so the span is rendered for crosshair DOM updates
+
+          // A line with an empty plotted data set is not shown in the legend.
+          const plottedData = group?.result?.data?.[key];
+          if (Array.isArray(plottedData) && plottedData.length === 0) {
+            return false;
+          }
+
+          // Return true even if the current crosshair value is null.
           return true;
         })
         .map((key) => {
@@ -6050,7 +6070,7 @@ json.dumps(result)
       reconciliationRunningRef.current = false;
     }, 10000);
     return requested;
-  }, [selectedCurrency, timeframeValue, requestHistoricalData]); // �"?�"? Central Socket Hook �"?�"?
+  }, [selectedCurrency, timeframeValue, requestHistoricalData]); // "?"? Central Socket Hook "?"?
   const normalizeCandle = useCallback((candle) => {
     if (!candle) return null;
     let time = Number(candle.time ?? candle.timestamp ?? candle.datetime);
@@ -6167,7 +6187,7 @@ json.dumps(result)
       setDeployedStrategyCode("API_PREDICTION");
     },
     handleConnect: () => {
-      console.log("�o. SOCKET CONNECTED", true);
+      console.log("o. SOCKET CONNECTED", true);
       requestLiveTick(true);
 
       if (!hasConnectedOnceRef.current) {
@@ -6469,7 +6489,7 @@ json.dumps(result)
       }
 
       // Reset price scale so Y-axis re-adapts to the new symbol's price range.
-      // Without this, switching from e.g. a �,�50 stock to a �,�5000 stock keeps
+      // Without this, switching from e.g. a ,50 stock to a ,5000 stock keeps
       // the old Y range and the new candles appear off-screen.
       try {
         chartRef.current.priceScale("right").applyOptions({ autoScale: true });
@@ -6780,7 +6800,7 @@ json.dumps(result)
       lastAutoBackfillFromRef.current = null;
       lastAutoForwardToRef.current = null;
       toast.error(err?.message || "Failed to fetch historical data");
-      console.error("�O Historical data error:", err);
+      console.error("O Historical data error:", err);
       setMainChartLoading(false);
       symbolTransitioningRef.current = false;
       setSymbolTransitioning(false);
@@ -6919,7 +6939,7 @@ json.dumps(result)
             volume: rawVolume !== undefined ? rawVolume : liveVolume,
           };
         } else if (normalizedTime < latestCandle.time) {
-          // Stale tick (older than current candle) �?" ignore
+          // Stale tick (older than current candle) ?" ignore
           return;
         } else {
           // Same time as latest candle, extend it
@@ -7726,7 +7746,7 @@ json.dumps(result)
       ignoreNextScrollRef.current = false;
     }, 500);
 
-    // �"?�"? Show floating Go To Date marker �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // "?"? Show floating Go To Date marker "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
     // Give the chart a frame to settle then compute pixel X of the candle
     setTimeout(() => {
       setGoToViewport();
@@ -8176,7 +8196,7 @@ json.dumps(result)
                         onClose={closeToolbox}
                       />
 
-                      {/* �"?�"? Go To Date Tooltip Overlay �"?�"? */}
+                      {/* Go To Date Tooltip Overlay  */}
                       {goToMarker && (
                         <div
                           style={{
@@ -8242,7 +8262,7 @@ json.dumps(result)
                           </div>
                         </div>
                       )}
-                      {/* Unified chart transition overlay �?" covers during symbol/timeframe change */}
+                      {/* Unified chart transition overlay ?" covers during symbol/timeframe change */}
                       {(symbolTransitioning ||
                         mainChartLoading ||
                         indicatorLoading) &&

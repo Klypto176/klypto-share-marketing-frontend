@@ -106,8 +106,11 @@ export default function Signup() {
         icon: "success",
         title: "Signup Successful",
         text: "Welcome to Klypto Share Marketing!",
-        showConfirmButton: true,
-        confirmButtonText: "Okay",
+        toast: true,
+        position: "top-end",
+        showConfirmButton: false,
+        timer: 1800,
+        timerProgressBar: true,
       });
       navigate("/");
     } catch (error) {
@@ -118,8 +121,11 @@ export default function Signup() {
         icon: "error",
         title: "Signup Failed",
         text: message,
-        showConfirmButton: true,
-        confirmButtonText: "Okay",
+        toast: true,
+        position: "top-end",
+        showConfirmButton: false,
+        timer: 1800,
+        timerProgressBar: true,
       });
     } finally {
       setLoading(false);
