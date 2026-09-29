@@ -108,7 +108,7 @@ const LeftAlertListing = ({
             <div key={idx} className="relative">
               <div className="no-underline text-inherit">
                 <div
-                  className="alert-item flex flex-col px-4 py-3 border-b border-[var(--bg-secondary)] cursor-pointer transition-colors"
+                  className="alert-item flex flex-col px-3 py-2 border-b border-[var(--bg-secondary)] cursor-pointer transition-colors"
                   onClick={() => handleItemClick(item)}
                 >
                   <div className="flex justify-between mb-1">

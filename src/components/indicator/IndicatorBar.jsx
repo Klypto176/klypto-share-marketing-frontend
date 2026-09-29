@@ -231,7 +231,6 @@ export default function IndicatorBar({
         <span
           className="
             ml-[5px]
-
             inline-flex
             h-[18px]
             items-center

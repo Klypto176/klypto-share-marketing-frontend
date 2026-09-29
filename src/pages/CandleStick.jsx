@@ -1,4 +1,4 @@
-import { throttleChartEvents } from "../util/throttleChartEvents";
+﻿import { throttleChartEvents } from "../util/throttleChartEvents";
 import {
   createChart,
   CandlestickSeries,
@@ -17,7 +17,7 @@ import { RiResetRightLine } from "react-icons/ri";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import ChartHeader from "../components/tradingModals/ChartHeader";
 import Navbar from "../components/layout/Navbar";
-import LeftWatchlist from "../components/layout/LeftWatchlist";
+// import LeftWatchlist from "../components/layout/LeftWatchlist";
 import RightSidebar from "../components/layout/RightSidebar";
 import ChartTabs from "../components/layout/ChartTabs";
 import LeftDepth from "../components/layout/LeftDepth";
@@ -2561,16 +2561,16 @@ export default function Candlestick() {
       } else if (newData.status === "done" || newData.status === "complete") {
         setIsPredicting(false);
 
-        // ✅ FALLBACK: If no trade signals arrived via socket, fetch from REST API
+        // �o. FALLBACK: If no trade signals arrived via socket, fetch from REST API
         // Wait briefly to allow any in-flight socket events to arrive first
         setTimeout(async () => {
           setPredictResultData((currentResults) => {
             if (currentResults && currentResults.length > 0) {
-              // Socket results already arrived — no fallback needed
+              // Socket results already arrived �?" no fallback needed
               return currentResults;
             }
 
-            // No socket results — fetch from REST API as fallback
+            // No socket results �?" fetch from REST API as fallback
             apiService
               .get("/api/predictResult")
               .then((res) => {
@@ -3512,7 +3512,7 @@ json.dumps(result)
   const actionButtonsRef = useRef(null);
   const strategyMarkersRef = useRef(null); //ref for markers
   const markersLoadedRef = useRef(false);
-  // ✅ Always-current refs so persistent handlers never capture stale closures
+  // �o. Always-current refs so persistent handlers never capture stale closures
   const selectedCurrencyRef = useRef(selectedCurrency);
   const intervalSecRef = useRef(TIMEFRAME_TO_SECONDS[timeframeValue] ?? 60);
   const IST_OFFSET = 19800;
@@ -3952,7 +3952,7 @@ json.dumps(result)
   const isUp = liveOhlcv?.close >= liveOhlcv?.open;
   const valueColor = isUp ? "text-green-500" : "text-red-500";
   // eslint-disable-next-line no-unused-expressions
-  void indicatorUpdateTrigger; // keep this — forces re-eval when data arrives (ref reads don't re-render)
+  void indicatorUpdateTrigger; // keep this �?" forces re-eval when data arrives (ref reads don't re-render)
   const hasPaneIndicators = selectedIndicator.some(
     (ind) =>
       PANE_INDICATORS.has(typeof ind === "object" ? ind.type : ind) &&
@@ -4048,7 +4048,7 @@ json.dumps(result)
             .toUpperCase();
         if (normalizeStr(response.symbol) !== normalizeStr(symbol)) {
           console.log(
-            `Received markers for ${response.symbol} but active is ${symbol} — skipping`,
+            `Received markers for ${response.symbol} but active is ${symbol} �?" skipping`,
           );
           return;
         }
@@ -4063,7 +4063,7 @@ json.dumps(result)
 
       const markers = response?.markers
         .map((marker) => ({
-          // marker.datetimeUTC is in seconds (UTC) — align with candle times (which use IST_OFFSET)
+          // marker.datetimeUTC is in seconds (UTC) �?" align with candle times (which use IST_OFFSET)
           time: Number(marker.datetimeUTC) + IST_OFFSET,
           position: marker.type === "BUY" ? "belowBar" : "aboveBar",
           color: marker.type === "BUY" ? "#22ab94" : "#ef4444",
@@ -4127,7 +4127,7 @@ json.dumps(result)
     let indicatorsToFetch = selectedIndicator;
 
     if (!isContextChange) {
-      // ✅ Only fetch newly added instances
+      // �o. Only fetch newly added instances
       indicatorsToFetch = selectedIndicator.filter(
         (ind) => !fetchedIndicatorsRef.current.has(ind.id),
       );
@@ -4148,7 +4148,7 @@ json.dumps(result)
       fetchedIndicatorsRef.current.add(ind.id),
     );
 
-    // ✅ Explicitly clean up REMOVED indicators
+    // �o. Explicitly clean up REMOVED indicators
     const currentIds = new Set(selectedIndicator?.map((ind) => ind.id) || []);
     const removedIds = [...fetchedIndicatorsRef.current].filter(
       (id) => !currentIds.has(id),
@@ -4225,7 +4225,7 @@ json.dumps(result)
       }
     }
 
-    // ✅ Fallback and globally apply visibility to ALL series that belong to this indicator
+    // �o. Fallback and globally apply visibility to ALL series that belong to this indicator
     if (allCreatedSeriesRef.current) {
       allCreatedSeriesRef.current.forEach((item) => {
         if (
@@ -4248,7 +4248,7 @@ json.dumps(result)
   };
 
   //  GET PANE INDEX
-  // Instance ids look like "RSI_1747xxx_abc12" — extract base type for pane check
+  // Instance ids look like "RSI_1747xxx_abc12" �?" extract base type for pane check
   const getBaseTypeFromId = (instanceId) => {
     const match = instanceId.match(/^([A-Z0-9_]+?)_\d/);
     return match ? match[1] : instanceId;
@@ -4272,7 +4272,7 @@ json.dumps(result)
     }
 
     const baseType = getBaseTypeFromId(rootId);
-    // overlay indicators → always main pane
+    // overlay indicators �?' always main pane
     if (!PANE_INDICATORS.has(baseType)) return 0;
 
     if (paneIndexRef.current[rootId] !== undefined) {
@@ -4420,7 +4420,7 @@ json.dumps(result)
       }
     }
 
-    // ✅ Populate panesRef for sub-pane indicators using instanceId as key
+    // �o. Populate panesRef for sub-pane indicators using instanceId as key
     if (paneIndex !== 0) {
       const tryPopulate = () => {
         if (!chartRef.current) return;
@@ -4430,7 +4430,7 @@ json.dumps(result)
           const div = paneObj.getHTMLElement();
           if (div) {
             // console.log(
-            //   "💎 Populating panesRef for",
+            //   "�Y'Z Populating panesRef for",
             //   indicator,
             //   "at index",
             //   paneIndex,
@@ -4456,7 +4456,7 @@ json.dumps(result)
       }
     }
 
-    // ✅ GLOBAL DATA SANITIZATION (Optimized for performance)
+    // �o. GLOBAL DATA SANITIZATION (Optimized for performance)
     // Protect Lightweight Charts from crashing when indicators pass null/NaN values
     const originalSetData = series.setData.bind(series);
     series.setData = (data) => {
@@ -4574,7 +4574,7 @@ json.dumps(result)
     return series;
   };
 
-  //  ✅ CHART SYNC ENGINE
+  //  �o. CHART SYNC ENGINE
   function syncCharts(sourceChart, logicalRange) {
     if (!logicalRange || syncingRef.current) return;
     syncingRef.current = true;
@@ -4602,7 +4602,7 @@ json.dumps(result)
     });
   }
 
-  //  ✅ INDICATOR REMOVAL — accepts instance id
+  //  �o. INDICATOR REMOVAL �?" accepts instance id
   const removeIndicator = useCallback(
     (instanceId) => {
       const activeIndicators = selectedIndicatorRef.current || [];
@@ -4702,7 +4702,7 @@ json.dumps(result)
             }
           }
         } else {
-          // Pane auto-removed — still need to clear the stale dummy ref
+          // Pane auto-removed �?" still need to clear the stale dummy ref
           delete dummySeriesRef.current[paneIndex];
         }
       }
@@ -4870,7 +4870,7 @@ json.dumps(result)
     };
   }, []); // Run only once
 
-  // kept for compatibility — ListingModal now directly calls setSelectedIndicator
+  // kept for compatibility �?" ListingModal now directly calls setSelectedIndicator
   const toggleIndicator = useCallback((type) => {
     const id = `${type}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const newInst = { id, type };
@@ -4887,7 +4887,7 @@ json.dumps(result)
   // RENDER INDICATOR VALUE
 
   const renderValue = (id, type, value) => {
-    const emptySymbol = "Ø";
+    const emptySymbol = "�~";
     const showPercent = type === "AROON";
 
     const toFullOpacity = (c) => {
@@ -5409,7 +5409,7 @@ json.dumps(result)
           const isAroon = el.getAttribute("data-type") === "AROON";
           el.textContent = Number.isFinite(val)
             ? `${Number(val).toFixed(2)}${isAroon ? "%" : ""}`
-            : "Ø";
+            : "�~";
           if (dynamicColor) {
             el.style.color = dynamicColor;
           } else {
@@ -5474,7 +5474,7 @@ json.dumps(result)
               mainEl.textContent =
                 val != null && Number.isFinite(Number(val))
                   ? `${Number(val).toFixed(2)}${isAroon ? "%" : ""}`
-                  : "Ø";
+                  : "�~";
             } else if (group) {
               Object.keys(group).forEach((key) => {
                 const el = document.getElementById(
@@ -5493,7 +5493,7 @@ json.dumps(result)
                     el.textContent =
                       val != null && Number.isFinite(Number(val))
                         ? `${Number(val).toFixed(2)}${isAroon ? "%" : ""}`
-                        : "Ø";
+                        : "�~";
                     if (lastData.color) {
                       el.style.color = lastData.color;
                     } else {
@@ -5502,7 +5502,7 @@ json.dumps(result)
                       if (defaultColor) el.style.color = defaultColor;
                     }
                   } else {
-                    el.textContent = "Ø";
+                    el.textContent = "�~";
                   }
                 }
               });
@@ -5738,7 +5738,7 @@ json.dumps(result)
       // request options so a scroll-back response still gets merged as a
       // prepend and its indicators are fetched for the expanded date range.
       activeHistoricalRequestRef.current = { requestId, ...requestOptions };
-      console.log("📬 getManualHistoricalData Payload:", historicalPayload);
+      console.log("getManualHistoricalData Payload:", historicalPayload);
       historyBackfillInFlightRef.current = true;
       setIsFetchingCandles(true);
       if (emitRef.current) {
@@ -6030,7 +6030,7 @@ json.dumps(result)
       reconciliationRunningRef.current = false;
     }, 10000);
     return requested;
-  }, [selectedCurrency, timeframeValue, requestHistoricalData]); // ── Central Socket Hook ──
+  }, [selectedCurrency, timeframeValue, requestHistoricalData]); // �"?�"? Central Socket Hook �"?�"?
   const normalizeCandle = useCallback((candle) => {
     if (!candle) return null;
     let time = Number(candle.time ?? candle.timestamp ?? candle.datetime);
@@ -6147,7 +6147,7 @@ json.dumps(result)
       setDeployedStrategyCode("API_PREDICTION");
     },
     handleConnect: () => {
-      console.log("✅ SOCKET CONNECTED", true);
+      console.log("�o. SOCKET CONNECTED", true);
       requestLiveTick(true);
 
       if (!hasConnectedOnceRef.current) {
@@ -6449,7 +6449,7 @@ json.dumps(result)
       }
 
       // Reset price scale so Y-axis re-adapts to the new symbol's price range.
-      // Without this, switching from e.g. a ₹50 stock to a ₹5000 stock keeps
+      // Without this, switching from e.g. a �,�50 stock to a �,�5000 stock keeps
       // the old Y range and the new candles appear off-screen.
       try {
         chartRef.current.priceScale("right").applyOptions({ autoScale: true });
@@ -6760,7 +6760,7 @@ json.dumps(result)
       lastAutoBackfillFromRef.current = null;
       lastAutoForwardToRef.current = null;
       toast.error(err?.message || "Failed to fetch historical data");
-      console.error("❌ Historical data error:", err);
+      console.error("�O Historical data error:", err);
       setMainChartLoading(false);
       symbolTransitioningRef.current = false;
       setSymbolTransitioning(false);
@@ -6899,7 +6899,7 @@ json.dumps(result)
             volume: rawVolume !== undefined ? rawVolume : liveVolume,
           };
         } else if (normalizedTime < latestCandle.time) {
-          // Stale tick (older than current candle) — ignore
+          // Stale tick (older than current candle) �?" ignore
           return;
         } else {
           // Same time as latest candle, extend it
@@ -7701,7 +7701,7 @@ json.dumps(result)
       ignoreNextScrollRef.current = false;
     }, 500);
 
-    // ── Show floating Go To Date marker ──────────────────────────────
+    // �"?�"? Show floating Go To Date marker �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
     // Give the chart a frame to settle then compute pixel X of the candle
     setTimeout(() => {
       setGoToViewport();
@@ -7963,7 +7963,7 @@ json.dumps(result)
                     setActiveTab={setActiveTab}
                   />
                 </div>
-                <div
+                {/* <div
                   style={{
                     display:
                       activeTab !== "Alerts" && isWatchlistOpen
@@ -7976,7 +7976,7 @@ json.dumps(result)
                     onClose={() => setIsWatchlistOpen(false)}
                     setSelectedCurrency={handleSetSelectedCurrency}
                   />
-                </div>
+                </div> */}
                 <div
                   style={{
                     display:
@@ -8017,6 +8017,7 @@ json.dumps(result)
                     predictResults={predictResultData}
                     setSelectedCurrency={handleSetSelectedCurrency}
                     isPredicting={isPredicting}
+                    selectedCurrency={selectedCurrency}
                     predictionStatus={predictionStatus}
                   />
                 </div>
@@ -8150,7 +8151,7 @@ json.dumps(result)
                         onClose={closeToolbox}
                       />
 
-                      {/* ── Go To Date Tooltip Overlay ── */}
+                      {/* �"?�"? Go To Date Tooltip Overlay �"?�"? */}
                       {goToMarker && (
                         <div
                           style={{
@@ -8216,7 +8217,7 @@ json.dumps(result)
                           </div>
                         </div>
                       )}
-                      {/* Unified chart transition overlay — covers during symbol/timeframe change */}
+                      {/* Unified chart transition overlay �?" covers during symbol/timeframe change */}
                       {(symbolTransitioning ||
                         mainChartLoading ||
                         indicatorLoading) &&
@@ -8538,85 +8539,73 @@ json.dumps(result)
                       </div>
 
                       {/* Buy / Sell - Top Right */}
-                        <div
-                          ref={actionButtonsRef}
+                      <div
+                        ref={actionButtonsRef}
+                        style={{
+                          position: "absolute",
+                          top: "8px",
+                          right: "90px",
+                          zIndex: 50,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          opacity: currentCandleRef.current ? 1 : 0,
+                          transition: "opacity 0.2s ease-in-out",
+                          pointerEvents: "auto",
+                        }}
+                      >
+                        <button
+                          className="buy-sell-btn"
+                          onClick={() => {
+                            const price = currentCandleRef.current?.close;
+                            const state = {
+                              stock: selectedCurrency?.name,
+                              action: "BUY",
+                              price: price,
+                            };
+                            const key = `trade_${Date.now()}`;
+                            sessionStorage.setItem(key, JSON.stringify(state));
+                            window.open(`/dashboard?tradeKey=${key}`, "_blank");
+                          }}
                           style={{
-                            position: "absolute",
-                            top: "8px",
-                            right: "90px",
-                            zIndex: 50,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            opacity: currentCandleRef.current ? 1 : 0,
-                            transition: "opacity 0.2s ease-in-out",
-                            pointerEvents: "auto",
+                            padding: "2px 6px",
+                            border: "1px solid green",
+                            background: "rgba(16, 185, 129, 0.15)",
+                            color: "green",
+                            borderRadius: "6px",
+                            cursor: "pointer",
+                            fontWeight: "600",
                           }}
                         >
-                          <button
-                            className="buy-sell-btn"
-                            onClick={() => {
-                              const price = currentCandleRef.current?.close;
-                              const state = {
-                                stock: selectedCurrency?.name,
-                                action: "BUY",
-                                price: price,
-                              };
-                              const key = `trade_${Date.now()}`;
-                              sessionStorage.setItem(
-                                key,
-                                JSON.stringify(state),
-                              );
-                              window.open(
-                                `/dashboard?tradeKey=${key}`,
-                                "_blank",
-                              );
-                            }}
-                            style={{
-                              padding: "4px 8px",
-                              border: "1px solid green",
-                              background: "rgba(16, 185, 129, 0.15)",
-                              color: "green",
-                              borderRadius: "6px",
-                              cursor: "pointer",
-                              fontWeight: "600",
-                            }}
-                          >
-                            Buy @<span data-buy-price>--</span>
-                          </button>
+                          Buy @<span data-buy-price>--</span>
+                        </button>
 
-                          <button
-                            className="buy-sell-btn"
-                            onClick={() => {
-                              const price = currentCandleRef.current?.close;
-                              const state = {
-                                stock: selectedCurrency?.name,
-                                action: "SELL",
-                                price: price,
-                              };
-                              const key = `trade_${Date.now()}`;
-                              sessionStorage.setItem(
-                                key,
-                                JSON.stringify(state),
-                              );
-                              window.open(
-                                `/dashboard?tradeKey=${key}`,
-                                "_blank",
-                              );
-                            }}
-                            style={{
-                              padding: "4px 8px",
-                              border: "1px solid red",
-                              background: "rgba(239, 68, 68, 0.15)",
-                              color: "red",
-                              borderRadius: "6px",
-                              cursor: "pointer",
-                              fontWeight: "600",
-                            }}
-                          >
-                            Sell @<span data-sell-price>--</span>
-                          </button>
-                        </div>
+                        <button
+                          className="buy-sell-btn"
+                          onClick={() => {
+                            const price = currentCandleRef.current?.close;
+                            const state = {
+                              stock: selectedCurrency?.name,
+                              action: "SELL",
+                              price: price,
+                            };
+                            const key = `trade_${Date.now()}`;
+                            sessionStorage.setItem(key, JSON.stringify(state));
+                            window.open(`/dashboard?tradeKey=${key}`, "_blank");
+                          }}
+                          style={{
+                            padding: "2px 6px",
+                            border: "1px solid red",
+                            background: "rgba(239, 68, 68, 0.15)",
+                            color: "red",
+                            borderRadius: "6px",
+                            cursor: "pointer",
+                            fontWeight: "600",
+                          }}
+                        >
+                          Sell @<span data-sell-price>--</span>
+                        </button>
+                      </div>
 
                       {/* -----------------INDICATOR BAR------------------- */}
 

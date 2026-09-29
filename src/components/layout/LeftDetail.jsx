@@ -1,5 +1,12 @@
-import React, { useState } from "react";
-import { FiX, FiPlus, FiMinus, FiMoreHorizontal, FiMaximize2, FiZap } from "react-icons/fi";
+﻿import React, { useState } from "react";
+import {
+  FiX,
+  FiPlus,
+  FiMinus,
+  FiMoreHorizontal,
+  FiMaximize2,
+  FiZap,
+} from "react-icons/fi";
 import { BsGrid } from "react-icons/bs";
 import { AiOutlineEdit } from "react-icons/ai";
 import { ListingModal } from "../tradingModals/ListingModal";
@@ -43,7 +50,8 @@ const LeftDetail = ({
       background: "var(--bg-primary)",
       color: "var(--text-primary)",
       borderRight: "1px solid var(--border-color)",
-      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      fontFamily:
+        "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     },
     header: {
       display: "flex",
@@ -78,7 +86,9 @@ const LeftDetail = ({
       fontWeight: active ? 600 : 400,
       color: active ? "var(--text-primary)" : "var(--text-secondary)",
       cursor: "pointer",
-      borderBottom: active ? "2px solid var(--accent-color)" : "2px solid transparent",
+      borderBottom: active
+        ? "2px solid var(--accent-color)"
+        : "2px solid transparent",
       transition: "all 0.15s",
       display: "flex",
       alignItems: "center",
@@ -220,16 +230,29 @@ const LeftDetail = ({
   return (
     <div style={styles.container}>
       <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: var(--bg-primary); }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
-        .left-detail-list-item:hover { background: var(--border-color); }
-      `}</style>
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+  }
+
+  .left-detail-list-item:hover,
+  .left-detail-list-item.active {
+    background: var(--border-color);
+  }
+`}</style>
 
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.headerTitle}>
-          Watchlist 
+          Watchlist
           {/* <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginLeft: "4px" }}>▼</span> */}
         </div>
         <div style={styles.headerIcons}>
@@ -296,42 +319,75 @@ const LeftDetail = ({
               </div>
             ) : (
               detailsList.map((stock, idx) => {
-              const high = parseFloat(stock.high || 0);
-              const low = parseFloat(stock.low || 0);
-              const calculatedChange = high - low;
-              const calculatedPercentChange =
-                low !== 0 ? (calculatedChange / low) * 100 : 0;
-              const isPositive = calculatedChange >= 0;
-              const color = isPositive ? "#22ab94" : "var(--danger-color)";
-
-              return (
-                <div
-                  key={idx}
-                  className="left-detail-list-item"
-                  style={styles.listItem}
-                  onClick={() => setSelectedCurrency(stock)}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <div style={{
-                      width: "24px", height: "24px", borderRadius: "50%",
-                      background: idx % 2 === 0 ? "var(--accent-color)" : "var(--bg-secondary)",
-                      display: "flex", justifyContent: "center", alignItems: "center",
-                      fontSize: "0.6rem", fontWeight: "bold",
-                    }}>
-                      {stock.name ? stock.name.substring(0, 1) : "S"}
+                const high = parseFloat(stock.high || 0);
+                const low = parseFloat(stock.low || 0);
+                const calculatedChange = high - low;
+                const calculatedPercentChange =
+                  low !== 0 ? (calculatedChange / low) * 100 : 0;
+                const isPositive = calculatedChange >= 0;
+                const color = isPositive ? "#22ab94" : "var(--danger-color)";
+                const isActive =
+                  (stock.token &&
+                    selectedCurrency?.token &&
+                    String(stock.token) === String(selectedCurrency.token)) ||
+                  (stock.symbol || stock.name || "").toUpperCase() ===
+                    (
+                      selectedCurrency?.symbol ||
+                      selectedCurrency?.name ||
+                      ""
+                    ).toUpperCase();
+                return (
+                  <div
+                    key={idx}
+                    className={`left-detail-list-item ${
+                      isActive ? "active" : ""
+                    }`}
+                    style={styles.listItem}
+                    onClick={() => setSelectedCurrency(stock)}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "24px",
+                          height: "24px",
+                          borderRadius: "50%",
+                          background:
+                            idx % 2 === 0
+                              ? "var(--accent-color)"
+                              : "var(--bg-secondary)",
+                          display: "flex",
+                          justifyContent: "center",
+                          alignItems: "center",
+                          fontSize: "0.6rem",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {stock.name ? stock.name.substring(0, 1) : "S"}
+                      </div>
+                      <div style={styles.stockName}>{stock.name}</div>
                     </div>
-                    <div style={styles.stockName}>{stock.name}</div>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "20px",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div style={{ ...styles.stockChange, color }}>
+                        {calculatedChange.toFixed(2)}
+                      </div>
+                      <div style={{ ...styles.stockChange, color }}>
+                        {`${calculatedPercentChange.toFixed(2)}%`}
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ display: "flex", gap: "20px", alignItems: "center" }}>
-                    <div style={{ ...styles.stockChange, color }}>
-                      {calculatedChange.toFixed(2)}
-                    </div>
-                    <div style={{ ...styles.stockChange, color }}>
-                      {`${calculatedPercentChange.toFixed(2)}%`}
-                    </div>
-                  </div>
-                </div>
-              );
+                );
               })
             )}
           </div>
@@ -348,17 +404,33 @@ const LeftDetail = ({
               <span>
                 {scanner.indicator} {scanner.condition} {scanner.value}
               </span>
-              <span style={{ marginLeft: "auto", color: "var(--text-secondary)", cursor: "pointer" }}
-                onClick={() => setIsScannerOpen(true)}>
+              <span
+                style={{
+                  marginLeft: "auto",
+                  color: "var(--text-secondary)",
+                  cursor: "pointer",
+                }}
+                onClick={() => setIsScannerOpen(true)}
+              >
                 Edit
               </span>
             </div>
           ) : (
-            <div style={{ ...styles.scannerActiveBar, color: "var(--text-secondary)", background: "var(--bg-secondary)" }}>
+            <div
+              style={{
+                ...styles.scannerActiveBar,
+                color: "var(--text-secondary)",
+                background: "var(--bg-secondary)",
+              }}
+            >
               <FiZap size={11} />
               <span>No scanner active —</span>
               <span
-                style={{ color: "var(--accent-color)", cursor: "pointer", marginLeft: 4 }}
+                style={{
+                  color: "var(--accent-color)",
+                  cursor: "pointer",
+                  marginLeft: 4,
+                }}
                 onClick={() => setIsScannerOpen(true)}
               >
                 Configure
@@ -380,7 +452,9 @@ const LeftDetail = ({
                 <FiZap size={24} style={{ marginBottom: 8, opacity: 0.3 }} />
                 <div>No matches yet</div>
                 <div style={{ marginTop: 4, fontSize: "0.72rem" }}>
-                  {scanner ? "Waiting for conditions to trigger…" : "Set up a scanner to start"}
+                  {scanner
+                    ? "Waiting for conditions to trigger…"
+                    : "Set up a scanner to start"}
                 </div>
               </div>
             ) : (
@@ -391,11 +465,17 @@ const LeftDetail = ({
                   style={styles.scannerItem}
                   onClick={() => setSelectedCurrency({ name: coin.symbol })}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={styles.badge}>{coin.symbol.substring(0, 1)}</div>
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 10 }}
+                  >
+                    <div style={styles.badge}>
+                      {coin.symbol.substring(0, 1)}
+                    </div>
                     <div>
                       <div style={styles.stockName}>{coin.symbol}</div>
-                      <div style={styles.rsiTag}>{coin.indicator || "RSI"}: {coin.rsi} · {coin.condition}</div>
+                      <div style={styles.rsiTag}>
+                        {coin.indicator || "RSI"}: {coin.rsi} · {coin.condition}
+                      </div>
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
@@ -411,11 +491,17 @@ const LeftDetail = ({
       {/* Footer */}
       <div style={styles.footer}>
         <div style={styles.footerLeft}>
-          <div style={{
-            width: "24px", height: "24px", borderRadius: "50%",
-            background: "var(--accent-color)", display: "flex",
-            justifyContent: "center", alignItems: "center",
-          }}>
+          <div
+            style={{
+              width: "24px",
+              height: "24px",
+              borderRadius: "50%",
+              background: "var(--accent-color)",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
             <span style={{ fontSize: "0.8rem" }}>D</span>
           </div>
           {selectedCurrency?.name || "STOCK"}
@@ -441,7 +527,10 @@ const LeftDetail = ({
                 {!isAdded ? (
                   <button
                     style={styles.addBtn}
-                    onClick={(e) => { e.stopPropagation(); handleAddStock(stock); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAddStock(stock);
+                    }}
                     title="Add to watchlist"
                     aria-label="Add to watchlist"
                   >
@@ -450,7 +539,10 @@ const LeftDetail = ({
                 ) : (
                   <button
                     style={styles.deleteBtn}
-                    onClick={(e) => { e.stopPropagation(); handleDeleteStock(stock.symbol); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteStock(stock.symbol);
+                    }}
                     title="Remove from watchlist"
                     aria-label="Remove from watchlist"
                   >

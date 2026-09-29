@@ -1,10 +1,11 @@
-import React from "react";
+﻿import React from "react";
 import { FiX } from "react-icons/fi";
 import { Spinner } from "../tradingModals/Spinner";
 
 const LeftDepth = ({
   onClose,
   predictResults,
+  selectedCurrency,
   setSelectedCurrency,
   isPredicting,
   predictionStatus,
@@ -19,7 +20,9 @@ const LeftDepth = ({
   const progressPercent =
     Number(predictionStatus?.processed) > 0 && Number(predictionStatus?.total)
       ? Math.round(
-          (Number(predictionStatus.processed) / Number(predictionStatus.total)) * 100,
+          (Number(predictionStatus.processed) /
+            Number(predictionStatus.total)) *
+            100,
         )
       : 0;
 
@@ -56,7 +59,7 @@ const LeftDepth = ({
 
       {/* Progress bar */}
       {predictionStatus?.status === "running" && (
-        <div className="px-4 py-4 border-b border-[var(--border-color)] bg-[var(--bg-secondary)]">
+        <div className="px-3 py-2 border-b border-[var(--border-color)] bg-[var(--bg-secondary)]">
           <div className="flex justify-between text-[0.85rem] mb-2 font-semibold">
             <span>
               {predictionStatus?.phase === "predicting"
@@ -90,6 +93,15 @@ const LeftDepth = ({
             const type = item.response?.type || "UNKNOWN";
             const isCall = type.toUpperCase() === "CALL";
 
+            // Check if this result is the currently selected chart symbol
+            const isActive =
+              (item?.symbol || "").toUpperCase() ===
+              (
+                selectedCurrency?.symbol ||
+                selectedCurrency?.name ||
+                ""
+              ).toUpperCase();
+
             const timeStr = item.tick?.datetime || item.response?.entry_time;
             let displayTime = "N/A";
             if (timeStr) {
@@ -114,7 +126,13 @@ const LeftDepth = ({
             return (
               <div
                 key={item.uuid || idx}
-                className="flex flex-col gap-1.5 px-4 py-3 border-b border-[var(--border-color)] cursor-pointer transition-colors hover:bg-[var(--bg-secondary)]"
+                className={`
+                    flex flex-col gap-1.5 px-3 py-2
+                    border-b border-[var(--border-color)]
+                    cursor-pointer transition-colors
+                    hover:bg-[var(--bg-secondary)]
+                    ${isActive ? "bg-[var(--bg-secondary)]" : ""}
+                  `}
                 onClick={() => {
                   if (setSelectedCurrency && item.symbol) {
                     setSelectedCurrency({
@@ -173,9 +191,9 @@ const LeftDepth = ({
                 </div>
 
                 {/* Row 3: Time */}
-                <div className="text-[0.75rem] text-[var(--text-secondary)]">
+                {/* <div className="text-[0.75rem] text-[var(--text-secondary)]">
                   {displayTime}
-                </div>
+                </div> */}
               </div>
             );
           })
