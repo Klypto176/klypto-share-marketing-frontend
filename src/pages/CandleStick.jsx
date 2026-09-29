@@ -1,4 +1,4 @@
-﻿import { throttleChartEvents } from "../util/throttleChartEvents";
+import { throttleChartEvents } from "../util/throttleChartEvents";
 import {
   createChart,
   CandlestickSeries,
@@ -4887,7 +4887,7 @@ json.dumps(result)
   // RENDER INDICATOR VALUE
 
   const renderValue = (id, type, value) => {
-    const emptySymbol = "�~";
+    const emptySymbol = "Φ";
     const showPercent = type === "AROON";
 
     const toFullOpacity = (c) => {
@@ -5409,7 +5409,7 @@ json.dumps(result)
           const isAroon = el.getAttribute("data-type") === "AROON";
           el.textContent = Number.isFinite(val)
             ? `${Number(val).toFixed(2)}${isAroon ? "%" : ""}`
-            : "�~";
+            : "Φ";
           if (dynamicColor) {
             el.style.color = dynamicColor;
           } else {
@@ -5474,7 +5474,7 @@ json.dumps(result)
               mainEl.textContent =
                 val != null && Number.isFinite(Number(val))
                   ? `${Number(val).toFixed(2)}${isAroon ? "%" : ""}`
-                  : "�~";
+                  : "Φ";
             } else if (group) {
               Object.keys(group).forEach((key) => {
                 const el = document.getElementById(
@@ -5493,7 +5493,7 @@ json.dumps(result)
                     el.textContent =
                       val != null && Number.isFinite(Number(val))
                         ? `${Number(val).toFixed(2)}${isAroon ? "%" : ""}`
-                        : "�~";
+                        : "Φ";
                     if (lastData.color) {
                       el.style.color = lastData.color;
                     } else {
@@ -5502,7 +5502,7 @@ json.dumps(result)
                       if (defaultColor) el.style.color = defaultColor;
                     }
                   } else {
-                    el.textContent = "�~";
+                    el.textContent = "Φ";
                   }
                 }
               });
@@ -7338,13 +7338,18 @@ json.dumps(result)
     });
 
     requestIdsByType.forEach((requestId, type) => {
-      emit(EVENTS.INDICATOR.LIVE_UNSUBSCRIBE, {
+      const unsubscribePayload = {
         symbol: previousContext.symbol,
         interval: previousContext.interval,
         type,
         requestId,
         exchange: previousContext.exchange,
-      });
+      };
+      console.log(
+        "[INDICATOR] unsubscribeIndicator payload:",
+        unsubscribePayload,
+      );
+      emit(EVENTS.INDICATOR.LIVE_UNSUBSCRIBE, unsubscribePayload);
     });
 
     liveIndicatorContextRef.current = nextContext;
