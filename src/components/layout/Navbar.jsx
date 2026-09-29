@@ -872,15 +872,15 @@ const Navbar = ({
                 onClick={() => setIsProfileMenuOpen((open) => !open)}
               >
                 <div style={styles.avatar}>
-                  {user?.name
-                    ? user.name.split(" ").map((name) => name[0]).join("").substring(0, 2).toUpperCase()
+                  {user?.firstName
+                    ? user.firstName.split(" ").map((name) => name[0]).join("").substring(0, 2).toUpperCase()
                     : "U"}
                 </div>
               </button>
               {isProfileMenuOpen && (
                 <div style={styles.profileDropdown} role="menu">
                   <div style={styles.profileInfo}>
-                    <div style={styles.profileName}>{user?.name || "User"}</div>
+                    <div style={styles.profileName}>{user?.firstName + " " + user?.lastName}</div>
                     <div style={styles.profileEmail}>{user?.email || ""}</div>
                   </div>
                   <div style={styles.profileInfoDivider} />
