@@ -6718,7 +6718,12 @@ json.dumps(result)
               to: requestMeta.preserveVisibleRange.to,
             });
           } else if (mergeMode === "replace") {
-            chartRef.current?.timeScale().fitContent();
+            const defaultVisibleBars = 200;
+            const lastLogicalIndex = mergedData.length - 1;
+            chartRef.current?.timeScale().setVisibleLogicalRange({
+              from: Math.max(0, lastLogicalIndex - defaultVisibleBars + 1),
+              to: lastLogicalIndex,
+            });
           }
         } catch (e) {
           if (!e?.message?.includes("Object is disposed"))
