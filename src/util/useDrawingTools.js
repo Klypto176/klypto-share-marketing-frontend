@@ -199,6 +199,13 @@ export default function useDrawingTools({ chartRef, seriesRef, containerRef, sym
       }
       const chart = chartRef.current;
       const { horizontalLines, trendLines } = drawingsRef.current;
+      const getPointCoordinate = (point) => {
+        const timeCoordinate = chart.timeScale().timeToCoordinate(point.time);
+        if (timeCoordinate !== null) return timeCoordinate;
+        return Number.isFinite(point.logicalIndex)
+          ? chart.timeScale().logicalToCoordinate(point.logicalIndex)
+          : null;
+      };
 
       let svgContainer = anchorsContainer.querySelector('svg');
       if (!svgContainer) {
@@ -293,9 +300,9 @@ export default function useDrawingTools({ chartRef, seriesRef, containerRef, sym
 
       trendLines.forEach(tl => {
         if (tl.points.length !== 2) return;
-        const x1 = chart.timeScale().timeToCoordinate(tl.points[0].time);
+        const x1 = getPointCoordinate(tl.points[0]);
         const y1 = seriesRef.current.priceToCoordinate(tl.points[0].value);
-        const x2 = chart.timeScale().timeToCoordinate(tl.points[1].time);
+        const x2 = getPointCoordinate(tl.points[1]);
         const y2 = seriesRef.current.priceToCoordinate(tl.points[1].value);
 
         const isSelected = selectedLine && selectedLine.id === tl.id;
@@ -347,9 +354,9 @@ export default function useDrawingTools({ chartRef, seriesRef, containerRef, sym
       // Draw Temp Line
       if (drawingStateRef.current.isDrawing && drawingStateRef.current.tempParam) {
          const { startPoint, tempParam } = drawingStateRef.current;
-         const x1 = chart.timeScale().timeToCoordinate(startPoint.time);
+         const x1 = getPointCoordinate(startPoint);
          const y1 = seriesRef.current.priceToCoordinate(startPoint.value);
-         const x2 = chart.timeScale().timeToCoordinate(tempParam.time);
+         const x2 = getPointCoordinate(tempParam);
          const y2 = seriesRef.current.priceToCoordinate(tempParam.value);
          
          if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
@@ -477,6 +484,17 @@ export default function useDrawingTools({ chartRef, seriesRef, containerRef, sym
     }
   }, [selectedLine, updateHorizontalLine, seriesRef]);
 
+  const resolveChartTime = useCallback((param) => {
+    if (param?.time != null) return param.time;
+    if (!param?.point || !chartRef.current) return null;
+
+    const timeScale = chartRef.current.timeScale();
+    const coordinateTime = timeScale.coordinateToTime(param.point.x);
+    if (coordinateTime != null) return coordinateTime;
+
+    const logicalIndex = timeScale.coordinateToLogical(param.point.x);
+    return Number.isFinite(logicalIndex) ? logicalIndex : null;
+  }, [chartRef]);
   useEffect(() => {
     if (!chartRef.current || !seriesRef.current) return;
 
@@ -491,7 +509,7 @@ export default function useDrawingTools({ chartRef, seriesRef, containerRef, sym
     };
 
     const clickHandler = (param) => {
-      if (!param || !param.point || !param.time) {
+      if (!param || !param.point) {
         setSelectedLine(null);
         setToolboxPos(null);
         return;
@@ -515,17 +533,18 @@ export default function useDrawingTools({ chartRef, seriesRef, containerRef, sym
       } else if (activeTool === 'trendLine') {
         const price = seriesRef.current.coordinateToPrice(param.point.y);
         if (price === null) return;
-        const time = param.time;
+        const time = resolveChartTime(param);
+        if (time == null) return;
 
         if (!drawingStateRef.current.isDrawing) {
           drawingStateRef.current = {
             isDrawing: true,
-            startPoint: { time, value: price },
+            startPoint: { time, value: price, logicalIndex: chart.timeScale().coordinateToLogical(param.point.x) },
             tempParam: null
           };
         } else {
           const startPoint = drawingStateRef.current.startPoint;
-          const endPoint = { time, value: price };
+          const endPoint = { time, value: price, logicalIndex: chart.timeScale().coordinateToLogical(param.point.x) };
           
           drawingStateRef.current = { isDrawing: false, startPoint: null, tempParam: null };
           
@@ -570,12 +589,13 @@ export default function useDrawingTools({ chartRef, seriesRef, containerRef, sym
 
     const moveHandler = (param) => {
       if (activeTool === 'trendLine' && drawingStateRef.current.isDrawing) {
-        if (!param || !param.point || !param.time) return;
+        if (!param || !param.point) return;
         const price = seriesRef.current.coordinateToPrice(param.point.y);
         if (price === null) return;
         
-        const time = param.time;
-        drawingStateRef.current.tempParam = { time, value: price };
+        const time = resolveChartTime(param);
+        if (time == null) return;
+        drawingStateRef.current.tempParam = { time, value: price, logicalIndex: chart.timeScale().coordinateToLogical(param.point.x) };
       }
     };
 
@@ -586,7 +606,7 @@ export default function useDrawingTools({ chartRef, seriesRef, containerRef, sym
       chart.unsubscribeClick(clickHandler);
       chart.unsubscribeCrosshairMove(moveHandler);
     };
-  }, [activeTool, saveDrawings, renderDrawings, chartRef, seriesRef]);
+  }, [activeTool, saveDrawings, renderDrawings, chartRef, seriesRef, resolveChartTime]);
 
   const getAnchorY = useCallback(() => {
     if (seriesRef.current && selectedLine) {

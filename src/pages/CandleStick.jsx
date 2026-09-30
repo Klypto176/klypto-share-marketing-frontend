@@ -1,4 +1,4 @@
-﻿import { throttleChartEvents } from "../util/throttleChartEvents";
+import { throttleChartEvents } from "../util/throttleChartEvents";
 import {
   createChart,
   CandlestickSeries,
@@ -4908,7 +4908,7 @@ json.dumps(result)
   // RENDER INDICATOR VALUE
 
   const renderValue = (id, type, value) => {
-    const emptySymbol = "Φ";
+    const emptySymbol = "F";
     const showPercent = type === "AROON";
 
     const toFullOpacity = (c) => {
@@ -5450,7 +5450,7 @@ json.dumps(result)
           const isAroon = el.getAttribute("data-type") === "AROON";
           el.textContent = Number.isFinite(val)
             ? `${Number(val).toFixed(2)}${isAroon ? "%" : ""}`
-            : "Φ";
+            : "F";
           if (dynamicColor) {
             el.style.color = dynamicColor;
           } else {
@@ -5515,7 +5515,7 @@ json.dumps(result)
               mainEl.textContent =
                 val != null && Number.isFinite(Number(val))
                   ? `${Number(val).toFixed(2)}${isAroon ? "%" : ""}`
-                  : "Φ";
+                  : "F";
             } else if (group) {
               Object.keys(group).forEach((key) => {
                 const el = document.getElementById(
@@ -5534,7 +5534,7 @@ json.dumps(result)
                     el.textContent =
                       val != null && Number.isFinite(Number(val))
                         ? `${Number(val).toFixed(2)}${isAroon ? "%" : ""}`
-                        : "Φ";
+                        : "F";
                     if (lastData.color) {
                       el.style.color = lastData.color;
                     } else {
@@ -5543,7 +5543,7 @@ json.dumps(result)
                       if (defaultColor) el.style.color = defaultColor;
                     }
                   } else {
-                    el.textContent = "Φ";
+                    el.textContent = "F";
                   }
                 }
               });
@@ -8589,9 +8589,10 @@ json.dumps(result)
                         style={{
                           position: "absolute",
                           top: "8px",
-                          right: "90px",
+                          right: "85px",
                           zIndex: 50,
                           display: "flex",
+                          fontSize: "12px",
                           alignItems: "center",
                           gap: "6px",
                           opacity: currentCandleRef.current ? 1 : 0,

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   LuMousePointer2,
   LuTrash2,
@@ -34,20 +34,35 @@ const channelTools = [
 
 const DrawingToolbar = ({ activeTool, setActiveTool, clearAllDrawings }) => {
   const [isLineMenuOpen, setIsLineMenuOpen] = useState(false);
+  const [selectedLineTool, setSelectedLineTool] = useState(lineTools[0]);
+  const lineToolMenuRef = useRef(null);
+  const SelectedLineToolIcon = selectedLineTool.icon;
 
-  const selectTool = (tool) => {
-    // Only existing drawing tool IDs are selected; the added menu items are UI-only.
-    if (tool.activeTool) setActiveTool(tool.activeTool);
-    setIsLineMenuOpen(false);
-  };
+  useEffect(() => {
+    if (!isLineMenuOpen) return undefined;
 
-  const iconButtonStyle = (isActive) => ({
+    const closeWhenOutside = (event) => {
+      if (!lineToolMenuRef.current?.contains(event.target)) {
+        setIsLineMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", closeWhenOutside);
+    document.addEventListener("wheel", closeWhenOutside, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", closeWhenOutside);
+      document.removeEventListener("wheel", closeWhenOutside, true);
+    };
+  }, [isLineMenuOpen]);
+
+  const iconButtonStyle = (isActive, width = "28px") => ({
     background: isActive ? "var(--bg-tertiary)" : "transparent",
     border: "none",
     color: isActive ? "#2962FF" : "#94a3b8",
     cursor: "pointer",
     padding: 0,
-    width: "28px",
+    width,
     height: "28px",
     borderRadius: "4px",
     display: "flex",
@@ -55,6 +70,12 @@ const DrawingToolbar = ({ activeTool, setActiveTool, clearAllDrawings }) => {
     alignItems: "center",
     transition: "all 0.2s",
   });
+
+  const selectTool = (tool) => {
+    setSelectedLineTool(tool);
+    setActiveTool(tool.id);
+    setIsLineMenuOpen(false);
+  };
 
   const renderMenuItem = (tool) => {
     const Icon = tool.icon;
@@ -68,7 +89,6 @@ const DrawingToolbar = ({ activeTool, setActiveTool, clearAllDrawings }) => {
         onClick={() => selectTool(tool)}
         style={{
           width: "100%",
-          height: "32px",
           minHeight: "32px",
           display: "flex",
           alignItems: "center",
@@ -82,23 +102,17 @@ const DrawingToolbar = ({ activeTool, setActiveTool, clearAllDrawings }) => {
           fontSize: "12px",
           textAlign: "left",
         }}
-        onMouseEnter={(event) => {
-          event.currentTarget.style.background = "var(--bg-tertiary)";
-        }}
-        onMouseLeave={(event) => {
-          event.currentTarget.style.background = "transparent";
-        }}
+        onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-tertiary)"; }}
+        onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
       >
         <Icon size={17} color="var(--text-secondary)" />
         <span style={{ flex: 1 }}>{tool.label}</span>
-        {tool.shortcut && (
-          <span style={{ color: "var(--text-secondary)", fontSize: "10px" }}>
-            {tool.shortcut}
-          </span>
-        )}
+        {tool.shortcut && <span style={{ color: "var(--text-secondary)", fontSize: "10px" }}>{tool.shortcut}</span>}
       </button>
     );
   };
+
+  const selectedToolIsActive = activeTool === selectedLineTool.activeTool;
 
   return (
     <div
@@ -122,32 +136,36 @@ const DrawingToolbar = ({ activeTool, setActiveTool, clearAllDrawings }) => {
         title="Cursor"
         onClick={() => setActiveTool("cursor")}
         style={iconButtonStyle(activeTool === "cursor")}
-        onMouseEnter={(event) => {
-          if (activeTool !== "cursor") event.currentTarget.style.background = "var(--bg-tertiary)";
-        }}
-        onMouseLeave={(event) => {
-          if (activeTool !== "cursor") event.currentTarget.style.background = "transparent";
-        }}
+        onMouseEnter={(event) => { if (activeTool !== "cursor") event.currentTarget.style.background = "var(--bg-tertiary)"; }}
+        onMouseLeave={(event) => { if (activeTool !== "cursor") event.currentTarget.style.background = "transparent"; }}
       >
         <LuMousePointer2 size={16} />
       </button>
 
-      <div style={{ position: "relative" }}>
+      <div ref={lineToolMenuRef} style={{ position: "relative", display: "flex", alignItems: "center" }}>
+        <button
+          type="button"
+          title={selectedLineTool.label}
+          aria-label={selectedLineTool.label}
+          onClick={() => {
+            if (selectedLineTool.activeTool) setActiveTool(selectedLineTool.activeTool);
+          }}
+          style={iconButtonStyle(selectedToolIsActive, "24px")}
+          onMouseEnter={(event) => { if (!selectedToolIsActive) event.currentTarget.style.background = "var(--bg-tertiary)"; }}
+          onMouseLeave={(event) => { if (!selectedToolIsActive) event.currentTarget.style.background = "transparent"; }}
+        >
+          <SelectedLineToolIcon size={16} />
+        </button>
         <button
           type="button"
           title="Line tools"
           aria-label="Line tools"
           aria-expanded={isLineMenuOpen}
           onClick={() => setIsLineMenuOpen((open) => !open)}
-          style={{ ...iconButtonStyle(activeTool === "trendLine" || activeTool === "horizontalLine"), gap: "1px" }}
-          onMouseEnter={(event) => {
-            if (activeTool !== "trendLine" && activeTool !== "horizontalLine") event.currentTarget.style.background = "var(--bg-tertiary)";
-          }}
-          onMouseLeave={(event) => {
-            if (activeTool !== "trendLine" && activeTool !== "horizontalLine") event.currentTarget.style.background = "transparent";
-          }}
+          style={iconButtonStyle(isLineMenuOpen, "12px")}
+          onMouseEnter={(event) => { if (!isLineMenuOpen) event.currentTarget.style.background = "var(--bg-tertiary)"; }}
+          onMouseLeave={(event) => { if (!isLineMenuOpen) event.currentTarget.style.background = "transparent"; }}
         >
-          <MdTimeline size={16} />
           <LuChevronRight size={10} style={{ transform: isLineMenuOpen ? "rotate(90deg)" : "none" }} />
         </button>
 
@@ -168,14 +186,10 @@ const DrawingToolbar = ({ activeTool, setActiveTool, clearAllDrawings }) => {
               zIndex: 100,
             }}
           >
-            <div style={{ padding: "2px 6px 6px", color: "var(--text-secondary)", fontSize: "10px", fontWeight: 700 }}>
-              LINES
-            </div>
+            <div style={{ padding: "2px 6px 6px", color: "var(--text-secondary)", fontSize: "10px", fontWeight: 700 }}>LINES</div>
             {lineTools.map(renderMenuItem)}
             <div style={{ height: "1px", background: "var(--border-color)", margin: "7px 0" }} />
-            <div style={{ padding: "0 6px 6px", color: "var(--text-secondary)", fontSize: "10px", fontWeight: 700 }}>
-              CHANNELS
-            </div>
+            <div style={{ padding: "0 6px 6px", color: "var(--text-secondary)", fontSize: "10px", fontWeight: 700 }}>CHANNELS</div>
             {channelTools.map(renderMenuItem)}
           </div>
         )}
