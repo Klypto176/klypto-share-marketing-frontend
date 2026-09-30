@@ -3517,6 +3517,32 @@ json.dumps(result)
   const intervalSecRef = useRef(TIMEFRAME_TO_SECONDS[timeframeValue] ?? 60);
   const IST_OFFSET = 19800;
   const LIVE_BAR_RENDER_INTERVAL_MS = 450;
+  const historicalLiveGuardLogRef = useRef({
+    liveSkip: "",
+    reconcileSkip: "",
+    liveEligible: "",
+  });
+
+  const getLoadedCandleRange = useCallback(() => {
+    const loadedCandles = candlesRef.current;
+    if (!Array.isArray(loadedCandles) || loadedCandles.length === 0) {
+      return { firstTime: null, lastTime: null, firstDate: null, lastDate: null };
+    }
+
+    const firstTime = Number(loadedCandles[0]?.time);
+    const lastTime = Number(loadedCandles[loadedCandles.length - 1]?.time);
+    const toDateString = (chartTime) =>
+      Number.isFinite(chartTime)
+        ? new Date((chartTime - IST_OFFSET) * 1000).toISOString().split("T")[0]
+        : null;
+
+    return {
+      firstTime: Number.isFinite(firstTime) ? firstTime : null,
+      lastTime: Number.isFinite(lastTime) ? lastTime : null,
+      firstDate: toDateString(firstTime),
+      lastDate: toDateString(lastTime),
+    };
+  }, []);
 
   const buildLiveBarSignature = useCallback((bar) => {
     if (!bar) return "";
@@ -5910,6 +5936,12 @@ json.dumps(result)
     const newToDate =
       newTo > today ? todayStr : newTo.toISOString().split("T")[0];
 
+    console.log("[HISTORY][FORWARD]", {
+      lastLoadedDate: getLoadedCandleRange().lastDate,
+      requestFrom: currentToStr,
+      requestTo: newToDate,
+    });
+
     if (
       newToDate === toDate ||
       (lastAutoForwardToRef.current === newToDate &&
@@ -5945,7 +5977,7 @@ json.dumps(result)
           : null,
       },
     );
-  }, [toDate, requestHistoricalData, selectedCurrency, timeframeValue]);
+  }, [toDate, requestHistoricalData, selectedCurrency, timeframeValue, getLoadedCandleRange]);
 
   const flushPendingLiveBar = useCallback(() => {
     liveBarFlushTimerRef.current = null;
@@ -6058,6 +6090,21 @@ json.dumps(result)
     ) {
       return false;
     }
+
+    const { lastDate: lastLoadedDate } = getLoadedCandleRange();
+    const today = getTodayDateString();
+    if (!lastLoadedDate || lastLoadedDate < today) {
+      const logKey = `${lastLoadedDate || "none"}|${today}`;
+      if (historicalLiveGuardLogRef.current.reconcileSkip !== logKey) {
+        historicalLiveGuardLogRef.current.reconcileSkip = logKey;
+        console.log("[RECONCILE][SKIP-HISTORICAL]", {
+          lastLoadedDate,
+          today,
+        });
+      }
+      return false;
+    }
+
     reconciliationRunningRef.current = true;
     const now = new Date();
     const recentFromDate = new Date(now.getTime() - 10 * 60 * 1000);
@@ -6070,7 +6117,7 @@ json.dumps(result)
       reconciliationRunningRef.current = false;
     }, 10000);
     return requested;
-  }, [selectedCurrency, timeframeValue, requestHistoricalData]); // "?"? Central Socket Hook "?"?
+  }, [selectedCurrency, timeframeValue, requestHistoricalData, getLoadedCandleRange]); // "?"? Central Socket Hook "?"?
   const normalizeCandle = useCallback((candle) => {
     if (!candle) return null;
     let time = Number(candle.time ?? candle.timestamp ?? candle.datetime);
@@ -6876,6 +6923,25 @@ json.dumps(result)
         if (!Number.isFinite(normalizedTime) || normalizedTime <= 0) {
           console.warn("[LIVE TICK] normalizedTime invalid, skipping");
           return;
+        }
+
+        const { lastDate: lastLoadedDate } = getLoadedCandleRange();
+        const today = getTodayDateString();
+        const logKey = `${lastLoadedDate || "none"}|${today}`;
+        if (!lastLoadedDate || lastLoadedDate < today) {
+          if (historicalLiveGuardLogRef.current.liveSkip !== logKey) {
+            historicalLiveGuardLogRef.current.liveSkip = logKey;
+            console.log("[LIVE][SKIP-HISTORICAL]", {
+              lastLoadedDate,
+              today,
+            });
+          }
+          return;
+        }
+
+        if (historicalLiveGuardLogRef.current.liveEligible !== logKey) {
+          historicalLiveGuardLogRef.current.liveEligible = logKey;
+          console.log("[LIVE][ELIGIBLE]", { lastLoadedDate, today });
         }
 
         lastValidTickAtRef.current = Date.now();

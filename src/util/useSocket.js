@@ -63,7 +63,7 @@ const useSocket = (props = {}) => {
       },
       
       [EVENTS.OVERVIEW.RESPONSE]: (tick) => {
-        // console.log(`[SOCKET] ${EVENTS.OVERVIEW.RESPONSE} (strategyLiveTick) received:`, tick);
+        console.log(`[SOCKET] ${EVENTS.OVERVIEW.RESPONSE} (strategyLiveTick) received:`, tick);
         if (propsRef.current.handleOverviewTick) {
           propsRef.current.handleOverviewTick(tick);
           return;
