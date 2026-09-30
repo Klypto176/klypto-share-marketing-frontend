@@ -419,6 +419,7 @@ export default function Candlestick() {
   const pendingHistoricalFromDateRef = useRef(null);
   const pendingHistoricalToDateRef = useRef(null);
   const suppressNextHistoricalReloadRef = useRef(false);
+  const pendingGotoRef = useRef(null);
   const historicalRequestOptionsRef = useRef(new Map());
   const activeHistoricalRequestRef = useRef(null);
   const latestReplaceRequestIdRef = useRef(null);
@@ -4904,6 +4905,7 @@ json.dumps(result)
 
     return () => {
       themeObserver.disconnect();
+      pendingGotoRef.current = null;
       chartDisposedRef.current = true;
       if (chartRef.current) {
         chartRef.current.remove();
@@ -5779,7 +5781,9 @@ json.dumps(result)
         return false;
       }
       lastHistoricalRequestRef.current = { key: requestKey, at: now };
-      const requestId = `hist-${now}-${Math.random().toString(36).slice(2, 8)}`;
+      const requestId =
+        options.requestId ||
+        `hist-${now}-${Math.random().toString(36).slice(2, 8)}`;
       const historicalPayload = {
         ...historicalPayloadBase,
         pendingToDate: options.pendingToDate || null,
@@ -5836,6 +5840,7 @@ json.dumps(result)
   );
 
   const requestOlderHistoricalChunk = useCallback(() => {
+    if (pendingGotoRef.current) return false;
     if (
       !chartRef.current ||
       !selectedCurrency ||
@@ -5904,6 +5909,7 @@ json.dumps(result)
   }, [fromDate, requestHistoricalData, selectedCurrency, timeframeValue]);
 
   const requestNewerHistoricalChunk = useCallback(() => {
+    if (pendingGotoRef.current) return false;
     if (
       !chartRef.current ||
       !selectedCurrency ||
@@ -6082,6 +6088,7 @@ json.dumps(result)
   }, []);
 
   const requestLastThreeCandles = useCallback(() => {
+    if (pendingGotoRef.current) return false;
     if (
       reconciliationRunningRef.current ||
       !selectedCurrency ||
@@ -6264,6 +6271,25 @@ json.dumps(result)
       const requestMeta = requestId
         ? historicalRequestOptionsRef.current.get(requestId)
         : activeHistoricalRequestRef.current;
+      const pendingGoto = pendingGotoRef.current;
+      const isGotoResponse = Boolean(
+        pendingGoto && requestId && requestId === pendingGoto.requestId,
+      );
+      const isStaleGotoResponse = Boolean(
+        requestId?.startsWith("goto-") &&
+          (!pendingGoto || requestId !== pendingGoto.requestId),
+      );
+
+      if (isStaleGotoResponse) {
+        historicalRequestOptionsRef.current.delete(requestId);
+        console.log("[GoTo] stale response ignored", { requestId });
+        return;
+      }
+
+      if (isGotoResponse) {
+        console.log("[GoTo] matching historical response", { requestId });
+      }
+
       if (requestId) {
         historicalRequestOptionsRef.current.delete(requestId);
       }
@@ -6376,6 +6402,10 @@ json.dumps(result)
       }
 
       if (raw.length === 0) {
+        if (isGotoResponse && pendingGotoRef.current?.requestId === requestId) {
+          pendingGotoRef.current = null;
+          console.log("[GoTo] request failed", { requestId, reason: "no candles" });
+        }
         historicalMergeModeRef.current = "replace";
         pendingHistoricalFromDateRef.current = null;
         historyBackfillInFlightRef.current = false;
@@ -6716,6 +6746,32 @@ json.dumps(result)
 
       seriesReadyRef.current = true;
 
+      if (isGotoResponse) {
+        const gotoRequestId = requestId;
+        requestAnimationFrame(() => {
+          const activeGoto = pendingGotoRef.current;
+          if (!activeGoto || activeGoto.requestId !== gotoRequestId) return;
+
+          console.log("[GoTo] applying target", {
+            requestId: gotoRequestId,
+            targetDate: activeGoto.targetDate,
+          });
+          if (applyGoToTarget(activeGoto.targetDate)) {
+            suppressNextHistoricalReloadRef.current = true;
+            handleSetFromDate(activeGoto.fromDate);
+            setToDate(activeGoto.toDate);
+            pendingGotoRef.current = null;
+            console.log("[GoTo] completed", { requestId: gotoRequestId });
+          } else if (pendingGotoRef.current?.requestId === gotoRequestId) {
+            pendingGotoRef.current = null;
+            console.warn("[GoTo] request failed", {
+              requestId: gotoRequestId,
+              reason: "target could not be applied",
+            });
+          }
+        });
+      }
+
       // Sequential indicator fetch removed to enable parallel loading.
       // Indicators are fetched simultaneously via the selectedIndicator useEffect.
 
@@ -6764,7 +6820,7 @@ json.dumps(result)
               from: requestMeta.preserveVisibleRange.from,
               to: requestMeta.preserveVisibleRange.to,
             });
-          } else if (mergeMode === "replace") {
+          } else if (mergeMode === "replace" && !isGotoResponse) {
             const defaultVisibleBars = 200;
             const lastLogicalIndex = mergedData.length - 1;
             chartRef.current?.timeScale().setVisibleLogicalRange({
@@ -6840,6 +6896,15 @@ json.dumps(result)
       }, 150);
     },
     handleHistoricalError: (err) => {
+      const failedRequestId =
+        err?.requestId || err?.meta?.requestId || err?.data?.requestId || null;
+      if (
+        failedRequestId &&
+        pendingGotoRef.current?.requestId === failedRequestId
+      ) {
+        pendingGotoRef.current = null;
+        console.log("[GoTo] request failed", { requestId: failedRequestId });
+      }
       if (backfillTimeoutRef.current) {
         clearTimeout(backfillTimeoutRef.current);
         backfillTimeoutRef.current = null;
@@ -6943,6 +7008,8 @@ json.dumps(result)
           historicalLiveGuardLogRef.current.liveEligible = logKey;
           console.log("[LIVE][ELIGIBLE]", { lastLoadedDate, today });
         }
+
+        if (pendingGotoRef.current) return;
 
         lastValidTickAtRef.current = Date.now();
 
@@ -7663,81 +7730,20 @@ json.dumps(result)
     charts.forEach((chart) => chart.timeScale().fitContent());
   };
 
-  const pendingGoToDateRef = useRef(null);
   const [goToMarker, setGoToMarker] = useState(null); // { x, label }
   const goToMarkerCleanupRef = useRef(null);
+  const ignoreNextScrollRef = useRef(false);
 
-  useEffect(() => {
-    if (!mainChartLoading && pendingGoToDateRef.current) {
-      const targetDate = pendingGoToDateRef.current;
-      pendingGoToDateRef.current = null;
-      // Slight delay to ensure chart has plotted the new series data
-      setTimeout(() => {
-        handleGoToDate(targetDate);
-      }, 100);
-    }
-  }, [mainChartLoading]);
-
-  const handleGoToDate = (targetDate) => {
-    if (!chartRef.current) return;
-
-    if (targetDate === "latest") {
-      const todayStr = getTodayDateString();
-      const d = getInitialLookbackDate(timeframeValue);
-      const minDate = new Date("2024-10-01");
-      const initialFrom =
-        d < minDate ? "2024-10-01" : d.toISOString().split("T")[0];
-
-      if (toDate !== todayStr) {
-        setMainChartLoading(true);
-        handleSetFromDate(initialFrom);
-        setToDate(todayStr);
-        // Scroll to real time after data loads
-        setTimeout(() => {
-          if (chartRef.current) chartRef.current.timeScale().scrollToRealTime();
-        }, 1000);
-      } else {
-        chartRef.current.timeScale().scrollToRealTime();
-      }
-      return;
+  const applyGoToTarget = (targetDate) => {
+    if (
+      !chartRef.current ||
+      !seriesRef.current ||
+      chartDisposedRef.current ||
+      !candlesRef.current?.length
+    ) {
+      return false;
     }
 
-    const targetTimeMs = targetDate.getTime();
-    const currentFromTimeMs = new Date(fromDate).getTime();
-    const currentToTimeMs = new Date(toDate).getTime();
-
-    // Check if target date is outside currently fetched range [fromDate, toDate]
-    const isOutsideRange =
-      targetTimeMs < currentFromTimeMs || targetTimeMs > currentToTimeMs;
-
-    if (isOutsideRange) {
-      pendingGoToDateRef.current = targetDate;
-      setMainChartLoading(true);
-
-      const chunkDays = getBackfillChunkDays(timeframeValue);
-      // Fetch a window centered around targetDate
-      const windowStart = new Date(targetTimeMs);
-      windowStart.setDate(windowStart.getDate() - Math.max(15, chunkDays));
-      const windowStartStr = windowStart.toISOString().split("T")[0];
-
-      const windowEnd = new Date(targetTimeMs);
-      windowEnd.setDate(windowEnd.getDate() + Math.max(15, chunkDays));
-      const today = new Date();
-      const windowEndStr =
-        windowEnd > today
-          ? today.toISOString().split("T")[0]
-          : windowEnd.toISOString().split("T")[0];
-
-      handleSetFromDate(windowStartStr);
-      setToDate(windowEndStr);
-      return; // The useEffect above will call handleGoToDate again once loaded
-    }
-
-    if (!candlesRef.current?.length) return;
-
-    // The candles are stored such that their UNIX timestamp directly corresponds
-    // to the IST time (e.g., 9:15 IST corresponds to 9:15 UTC in lightweight charts).
-    // So we just take the user's input time (which was parsed as local) and get the UTC timestamp.
     const targetTimeSec = Math.floor(
       Date.UTC(
         targetDate.getFullYear(),
@@ -7750,17 +7756,13 @@ json.dumps(result)
     );
     const isMidnight =
       targetDate.getHours() === 0 && targetDate.getMinutes() === 0;
-
-    // Find the closest candle
     let closestIndex = 0;
 
     if (isMidnight) {
       closestIndex = candlesRef.current.findIndex(
         (c) => c.time >= targetTimeSec,
       );
-      if (closestIndex === -1) {
-        closestIndex = candlesRef.current.length - 1;
-      }
+      if (closestIndex === -1) closestIndex = candlesRef.current.length - 1;
     } else {
       let minDiff = Infinity;
       for (let i = 0; i < candlesRef.current.length; i++) {
@@ -7774,61 +7776,22 @@ json.dumps(result)
     }
 
     const closestCandle = candlesRef.current[closestIndex];
-    console.log("[GoTo] Debug:", {
-      targetDateString: targetDate.toString(),
-      targetTimeSec,
-      isMidnight,
-      closestIndex,
-      closestCandleTime: closestCandle?.time,
-      diff: closestCandle ? Math.abs(closestCandle.time - targetTimeSec) : null,
-    });
-
-    // The candle-array index can differ from the chart's logical index when
-    // indicators add earlier time points. Use the chart's own time index so
-    // the exact matched candle is brought into view.
     const timeScale = chartRef.current.timeScale();
-    const targetLogicalIndex = timeScale.timeToIndex(closestCandle.time, true);
-    if (!Number.isFinite(targetLogicalIndex)) return;
+    const targetLogicalIndex = timeScale.timeToIndex(closestCandle?.time, true);
+    if (!closestCandle || !Number.isFinite(targetLogicalIndex)) return false;
 
-    const fromIndex = Math.max(0, targetLogicalIndex - 25);
-    const toIndex = targetLogicalIndex + 25;
-
-    const setGoToViewport = () => {
-      if (!chartRef.current || chartDisposedRef.current) return;
-      chartRef.current.timeScale().setVisibleLogicalRange({
-        from: fromIndex,
-        to: toIndex,
-      });
-    };
-
-    setGoToViewport();
-    // Historical/indicator redraws can restore their own range immediately
-    // after navigation. Reapply the target range through that redraw window.
-    requestAnimationFrame(setGoToViewport);
-    window.setTimeout(setGoToViewport, 100);
-    window.setTimeout(setGoToViewport, 250);
-
-    // Keep the selected candle and its local price range visible after Go To.
-    setMainChartAutoScale(true);
-
-    // Ignore the immediate scroll events triggered by our own navigation
     ignoreNextScrollRef.current = true;
+    timeScale.setVisibleLogicalRange({
+      from: Math.max(0, targetLogicalIndex - 25),
+      to: targetLogicalIndex + 25,
+    });
+    setMainChartAutoScale(true);
     setTimeout(() => {
       ignoreNextScrollRef.current = false;
     }, 500);
 
-    // "?"? Show floating Go To Date marker "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
-    // Give the chart a frame to settle then compute pixel X of the candle
-    setTimeout(() => {
-      setGoToViewport();
-      if (!chartRef.current || !containerRef.current) {
-        console.log("[GoTo] Error: chartRef or containerRef missing");
-        return;
-      }
-
-      const closestCandle = candlesRef.current[closestIndex];
-      if (!closestCandle) {
-        console.log("[GoTo] Error: closestCandle missing");
+    requestAnimationFrame(() => {
+      if (!chartRef.current || !containerRef.current || chartDisposedRef.current) {
         return;
       }
 
@@ -7838,44 +7801,19 @@ json.dumps(result)
         xPixel = chartRef.current
           .timeScale()
           .timeToCoordinate(closestCandle.time);
-
-        if (
-          seriesRef.current &&
-          typeof seriesRef.current.priceToCoordinate === "function"
-        ) {
+        if (typeof seriesRef.current?.priceToCoordinate === "function") {
           yPixel = seriesRef.current.priceToCoordinate(closestCandle.high);
         }
       } catch (e) {
         console.error("[GoTo] Error getting coordinate", e);
       }
 
-      console.log(
-        "[GoTo] xPixel:",
-        xPixel,
-        "yPixel:",
-        yPixel,
-        "candle.time:",
-        closestCandle.time,
-      );
-
-      // Build a human-readable label in IST
-      // closestCandle.time is already UTC + IST_OFFSET seconds
       const candleLocalMs = (closestCandle.time - IST_OFFSET) * 1000;
-      const candleDateIST = new Date(candleLocalMs + 5.5 * 60 * 60 * 1000); // shift to IST
+      const candleDateIST = new Date(candleLocalMs + 5.5 * 60 * 60 * 1000);
       const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
       const months = [
-        "Jan",
-        "Feb",
-        "Mar",
-        "Apr",
-        "May",
-        "Jun",
-        "Jul",
-        "Aug",
-        "Sep",
-        "Oct",
-        "Nov",
-        "Dec",
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
       ];
       const dayName = weekdays[candleDateIST.getUTCDay()];
       const dd = String(candleDateIST.getUTCDate()).padStart(2, "0");
@@ -7884,48 +7822,119 @@ json.dumps(result)
       const hh = String(candleDateIST.getUTCHours()).padStart(2, "0");
       const mm = String(candleDateIST.getUTCMinutes()).padStart(2, "0");
       const isIntraday = [
-        "1m",
-        "3m",
-        "5m",
-        "15m",
-        "30m",
-        "1h",
-        "2h",
-        "4h",
-        "60m",
-        "120m",
-        "240m",
+        "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h",
+        "60m", "120m", "240m",
       ].includes(timeframeValue);
       const label = isIntraday
         ? `${dayName} ${dd} ${mon} '${String(yr).slice(-2)}\n${hh}:${mm}`
         : `${dayName} ${dd} ${mon} '${String(yr).slice(-2)}`;
 
       if (xPixel == null || !Number.isFinite(xPixel)) {
-        // Fallback: place in center of container
-        const w = containerRef.current.getBoundingClientRect().width;
-        xPixel = w / 2;
+        xPixel = containerRef.current.getBoundingClientRect().width / 2;
       }
 
-      console.log("[GoTo] Setting marker:", { x: xPixel, y: yPixel, label });
-
-      // Clear any previous auto-dismiss timer
       if (goToMarkerCleanupRef.current) {
         clearTimeout(goToMarkerCleanupRef.current);
         goToMarkerCleanupRef.current = null;
       }
-
       setGoToMarker({ x: xPixel, y: yPixel, label, time: closestCandle.time });
-
-      // Auto-dismiss after 10 seconds
       goToMarkerCleanupRef.current = setTimeout(() => {
         setGoToMarker(null);
         goToMarkerCleanupRef.current = null;
       }, 10000);
-    }, 300);
+    });
+
+    return true;
   };
 
-  const ignoreNextScrollRef = useRef(false);
+  const handleGoToDate = (targetDate) => {
+    if (!chartRef.current) return;
 
+    if (targetDate === "latest") {
+      pendingGotoRef.current = null;
+      const todayStr = getTodayDateString();
+      const d = getInitialLookbackDate(timeframeValue);
+      const minDate = new Date("2024-10-01");
+      const initialFrom =
+        d < minDate ? "2024-10-01" : d.toISOString().split("T")[0];
+
+      if (toDate !== todayStr) {
+        setMainChartLoading(true);
+        handleSetFromDate(initialFrom);
+        setToDate(todayStr);
+        setTimeout(() => {
+          if (chartRef.current) chartRef.current.timeScale().scrollToRealTime();
+        }, 1000);
+      } else {
+        chartRef.current.timeScale().scrollToRealTime();
+      }
+      return;
+    }
+
+    const targetTimeMs = targetDate.getTime();
+    const targetDayStart = Math.floor(
+      Date.UTC(
+        targetDate.getFullYear(),
+        targetDate.getMonth(),
+        targetDate.getDate(),
+      ) / 1000,
+    );
+    const targetDayEnd = targetDayStart + 24 * 60 * 60 - 1;
+    const firstLoadedTime = Number(candlesRef.current?.[0]?.time);
+    const lastLoadedTime = Number(
+      candlesRef.current?.[candlesRef.current.length - 1]?.time,
+    );
+    const isTargetLoaded =
+      Number.isFinite(firstLoadedTime) &&
+      Number.isFinite(lastLoadedTime) &&
+      targetDayEnd >= firstLoadedTime &&
+      targetDayStart <= lastLoadedTime;
+
+    if (isTargetLoaded) {
+      pendingGotoRef.current = null;
+      applyGoToTarget(targetDate);
+      return;
+    }
+
+    const chunkDays = getBackfillChunkDays(timeframeValue);
+    const windowStart = new Date(targetTimeMs);
+    windowStart.setDate(windowStart.getDate() - Math.max(15, chunkDays));
+    const windowStartStr =
+      windowStart.toISOString().split("T")[0] < MIN_HISTORICAL_DATE
+        ? MIN_HISTORICAL_DATE
+        : windowStart.toISOString().split("T")[0];
+    const windowEnd = new Date(targetTimeMs);
+    windowEnd.setDate(windowEnd.getDate() + Math.max(15, chunkDays));
+    const today = new Date();
+    const windowEndStr =
+      windowEnd > today
+        ? today.toISOString().split("T")[0]
+        : windowEnd.toISOString().split("T")[0];
+    const requestId = `goto-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    pendingGotoRef.current = {
+      targetDate,
+      requestId,
+      fromDate: windowStartStr,
+      toDate: windowEndStr,
+    };
+    console.log("[GoTo] request", {
+      requestId,
+      targetDate,
+      fromDate: windowStartStr,
+      toDate: windowEndStr,
+    });
+    setMainChartLoading(true);
+    const requested = requestHistoricalData(
+      true,
+      { fromDate: windowStartStr, toDate: windowEndStr },
+      { mergeMode: "replace", requestId },
+    );
+    if (!requested && pendingGotoRef.current?.requestId === requestId) {
+      pendingGotoRef.current = null;
+      setMainChartLoading(false);
+    }
+  };
   // Continually track marker position to prevent any detachment during layout shifts
   useEffect(() => {
     if (!goToMarker || !goToMarker.time || !chartRef.current) return;

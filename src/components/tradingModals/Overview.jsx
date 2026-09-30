@@ -571,14 +571,9 @@ const Overview = ({ selectedCurrency, onBack }) => {
         <div style={{ width: 1, background: "var(--border-color)" }} />
         <TopStat label="Prev Close" value={fmt(close)} />
         <div style={{ width: 1, background: "var(--border-color)" }} />
-        <TopStat
-          label="Avg Price"
-          value={fmt(overview.avg_traded_price || "--")}
-        />
         <div style={{ width: 1, background: "var(--border-color)" }} />
         <TopStat label="Volume" value={fmt(tradeVolume, 0)} />
         <div style={{ width: 1, background: "var(--border-color)" }} />
-        <TopStat label="OI" value={fmt(opnInterest, 0)} />
       </div>
 
       {/* ── WIDGETS ── */}
@@ -598,36 +593,21 @@ const Overview = ({ selectedCurrency, onBack }) => {
         />
         <RangeWidget
           title="52 Week Range"
-          low={overview["52WeekLow"]}
-          high={overview["52WeekHigh"]}
+          low={week52Low}
+          high={week52High}
           current={ltp}
           icon={FiTrendingUp}
         />
         <BadgeWidget
-          title="Lower Circuit"
-          value={fmt(overview.lowerCircuit)}
-          icon={FiShield}
-          iconColor="#eab308"
-          valueColor="var(--danger-color)"
-        />
-
-        <BadgeWidget
-          title="Upper Circuit"
-          value={fmt(overview.upperCircuit)}
-          icon={FiShield}
-          iconColor="#22c55e"
-          valueColor="var(--success-color)"
-        />
-        <BadgeWidget
           title="Total Buy Qty"
-          value={fmt(overview.totBuyQuan, 0)}
+          value={fmt(totBuyQuan, 0)}
           icon={FiClock}
           iconColor="#3b82f6"
           valueColor="var(--success-color)"
         />
         <BadgeWidget
           title="Total Sell Qty"
-          value={fmt(overview.totSellQuan, 0)}
+          value={fmt(totSellQuan, 0)}
           icon={FiClock}
           iconColor="#ef4444"
           valueColor="var(--danger-color)"
@@ -662,7 +642,6 @@ const Overview = ({ selectedCurrency, onBack }) => {
             <div style={{ flex: "1 1 200px" }}>
               <InfoRow label="Exchange" value={exchange} />
               <InfoRow label="Trading Symbol" value={tradingSymbol} />
-              <InfoRow label="Symbol Token" value={symbolToken} />
               <InfoRow
                 label="Last Traded Price (LTP)"
                 value={fmt(ltp)}
@@ -710,12 +689,7 @@ const Overview = ({ selectedCurrency, onBack }) => {
                 value={fmt(week52High)}
                 color="var(--success-color)"
               />
-              <div style={{ height: 16 }} /> {/* Spacer */}
-              <InfoRow label="Total Buy Quantity" value={fmt(totBuyQuan, 0)} />
-              <InfoRow
-                label="Total Sell Quantity"
-                value={fmt(totSellQuan, 0)}
-              />
+              
             </div>
           </div>
         </div>
