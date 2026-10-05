@@ -4318,6 +4318,14 @@ json.dumps(result)
   };
 
   const clearIndicatorSeries = () => {
+    // Series markers are plugins on the main candle series, so they are not
+    // removed by chart.removeSeries(). Clear them before dropping the refs.
+    Object.values(indicatorSeriesRef.current || {}).forEach((group) => {
+      try {
+        group?.baseCrossMarkersPlugin?.setMarkers([]);
+      } catch (e) {}
+    });
+
     if (allCreatedSeriesRef.current) {
       allCreatedSeriesRef.current.forEach((item) => {
         try {
@@ -4666,6 +4674,7 @@ json.dumps(result)
       }
 
       const entry = indicatorSeriesRef.current[instanceId];
+      entry?.baseCrossMarkersPlugin?.setMarkers([]);
       if (!entry) return;
 
       const paneKey = instanceId; // each instance has its own pane key
