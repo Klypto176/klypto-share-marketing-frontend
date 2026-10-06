@@ -1,430 +1,129 @@
-// import React, { useState, useEffect, useMemo, useRef, startTransition } from "react";
-// import { FiSearch, FiSettings, FiX, FiPlus, FiMaximize2 } from "react-icons/fi";
-// import useSocket, { globalCache } from "../../util/useSocket";
-// import EVENTS from "../../services/websocket/socketEvent";
-// import { Spinner } from "../tradingModals/Spinner";
+import React, { useState } from "react";
+import { FiMinus, FiMoreHorizontal, FiPlus, FiX } from "react-icons/fi";
+import { BsGrid } from "react-icons/bs";
+import { AiOutlineEdit } from "react-icons/ai";
+import { ListingModal } from "../tradingModals/ListingModal";
 
-// const normalizeWatchlistItem = (item) => ({
-//   ...item,
-//   percent_change:
-//     item?.percent_change ??
-//     item?.pChange ??
-//     item?.percentChange ??
-//     "0.00",
-// });
+const getSymbolKey = (symbol) =>
+  String(symbol || "").replace(/\s+/g, " ").trim().toUpperCase();
 
-// const mergeRealtimeIntoWatchlistItem = (stock, payload) => {
-//   const livePrice =
-//     payload?.ltp ??
-//     payload?.last_traded_price ??
-//     payload?.data?.last_traded_price ??
-//     payload?.data?.close ??
-//     stock?.ltp ??
-//     "0.00";
+const LeftWatchlist = ({
+  onClose,
+  selectedCurrency,
+  detailsList,
+  onAddStock,
+  onRemoveStock,
+  setSelectedCurrency,
+  liveLtpBySymbol,
+}) => {
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-//   const closeRefRaw =
-//     payload?.close_price ??
-//     payload?.close ??
-//     payload?.raw?.close_price ??
-//     payload?.raw?.close ??
-//     0;
+  const styles = {
+    container: { display: "flex", flexDirection: "column", height: "calc(100vh - 60px)", background: "var(--panel-background)", color: "var(--text-primary)", borderRight: "1px solid var(--border-color)", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" },
+    header: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid var(--border-color)" },
+    headerTitle: { display: "flex", alignItems: "center", gap: "4px", fontWeight: "600", fontSize: "0.95rem" },
+    headerIcons: { display: "flex", gap: "12px", color: "var(--text-secondary)", cursor: "pointer", alignItems: "center" },
+    subHeader: { display: "flex", justifyContent: "space-between", padding: "8px 16px", fontSize: "0.7rem", color: "var(--text-secondary)", textTransform: "uppercase", borderBottom: "1px solid var(--border-color)" },
+    listContainer: { flex: 1, overflowY: "auto" },
+    listItem: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: "1px solid var(--bg-secondary)", cursor: "pointer" },
+    stockName: { fontWeight: "600", fontSize: "0.85rem", color: "var(--text-primary)" },
+    stockChange: { fontSize: "0.75rem", minWidth: "34px", textAlign: "right" },
+    footer: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderTop: "1px solid var(--border-color)", background: "var(--bg-secondary)" },
+    footerLeft: { display: "flex", alignItems: "center", gap: "8px", fontSize: "0.9rem", fontWeight: "600", color: "var(--text-primary)" },
+    footerIcons: { display: "flex", gap: "16px", color: "var(--text-secondary)", cursor: "pointer" },
+    btnContainer: { display: "flex", gap: "8px" },
+    addBtn: { background: "var(--accent-color)", color: "white", border: "none", borderRadius: "4px", padding: "4px 8px", fontSize: "0.75rem", cursor: "pointer" },
+    deleteBtn: { background: "var(--danger-color)", color: "white", border: "none", borderRadius: "4px", padding: "4px 8px", fontSize: "0.75rem", cursor: "pointer" },
+  };
 
-//   const lastPrice = parseFloat(livePrice);
-//   const closeRef = parseFloat(closeRefRaw);
-//   const canRecalc = Number.isFinite(lastPrice) && Number.isFinite(closeRef) && closeRef > 0;
-//   const computedChange = canRecalc ? lastPrice - closeRef : null;
-//   const computedPercent = canRecalc ? ((computedChange / closeRef) * 100).toFixed(2) : null;
+  return (
+    <div style={styles.container}>
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: var(--bg-primary); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+        .left-watchlist-item:hover, .left-watchlist-item.active { background: var(--border-color); }
+      `}</style>
 
-//   return normalizeWatchlistItem({
-//     ...stock,
-//     ...payload,
-//     ltp: Number.isFinite(lastPrice) ? lastPrice.toFixed(2) : stock?.ltp,
-//     change:
-//       payload?.change ??
-//       payload?.net_change ??
-//       payload?.raw?.net_change ??
-//       (computedChange !== null
-//         ? `${computedChange >= 0 ? "+" : ""}${computedChange.toFixed(2)}`
-//         : stock?.change),
-//     percent_change:
-//       payload?.percent_change ??
-//       payload?.pChange ??
-//       payload?.percentChange ??
-//       payload?.raw?.percent_change ??
-//       payload?.raw?.percentChange ??
-//       computedPercent ??
-//       stock?.percent_change,
-//   });
-// };
+      <div style={styles.header}>
+        <div style={styles.headerTitle}>Watchlist</div>
+        <div style={styles.headerIcons}>
+          <FiPlus onClick={() => setIsModalOpen(true)} title="Add Symbol" />
+          <FiX onClick={onClose} />
+        </div>
+      </div>
 
-// const LeftWatchlist = ({ onClose, setSelectedCurrency }) => {
-//   const [searchTerm, setSearchTerm] = useState("");
-//   const [stocksData, setStocksData] = useState([]);
-//   const [isLoading, setIsLoading] = useState(true);
-//   const pendingRealtimeUpdatesRef = useRef(new Map());
-//   const realtimeFlushTimerRef = useRef(null);
+      <div style={styles.subHeader}>
+        <span>Symbol</span>
+        <div style={{ display: "flex", gap: "12px" }}>
+          <span>LTP</span>
+          {/* <span>Chg</span> */}
+          <span>Chg%</span>
+        </div>
+      </div>
 
-//   const flushRealtimeUpdates = () => {
-//     realtimeFlushTimerRef.current = null;
-//     const pendingUpdates = pendingRealtimeUpdatesRef.current;
-//     if (!pendingUpdates.size) return;
+      <div className="custom-scrollbar" style={styles.listContainer}>
+        {detailsList.length === 0 ? (
+          <div style={{ padding: "24px 16px", color: "var(--text-secondary)", fontSize: "0.8rem", lineHeight: 1.5, textAlign: "center" }}>
+            Add symbols to your watchlist using the "+" symbol.
+          </div>
+        ) : detailsList.map((stock, idx) => {
+          const high = parseFloat(stock.high || 0);
+          const low = parseFloat(stock.low || 0);
+          const calculatedChange = high - low;
+          const calculatedPercentChange = low !== 0 ? (calculatedChange / low) * 100 : 0;
+          const isPositive = calculatedChange >= 0;
+          const color = isPositive ? "#22ab94" : "var(--danger-color)";
+          const isActive = (stock.token && selectedCurrency?.token && String(stock.token) === String(selectedCurrency.token)) || (stock.symbol || stock.name || "").toUpperCase() === (selectedCurrency?.symbol || selectedCurrency?.name || "").toUpperCase();
+          const liveLtp = liveLtpBySymbol?.[getSymbolKey(stock.name)] ?? liveLtpBySymbol?.[getSymbolKey(stock.symbol)] ?? stock.ltp;
+          const formattedLtp = Number.isFinite(Number(liveLtp)) ? Number(liveLtp).toFixed(2) : "—";
 
-//     pendingRealtimeUpdatesRef.current = new Map();
+          return (
+            <div key={idx} className={`left-watchlist-item ${isActive ? "active" : ""}`} style={styles.listItem} onClick={() => setSelectedCurrency(stock)}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: idx % 2 === 0 ? "var(--accent-color)" : "var(--bg-secondary)", display: "flex", justifyContent: "center", alignItems: "center", fontSize: "0.6rem", fontWeight: "bold" }}>
+                  {stock.name ? stock.name.substring(0, 1) : "S"}
+                </div>
+                <div style={styles.stockName}>{stock.name}</div>
+              </div>
+              <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                <div style={{ ...styles.stockChange, color: "var(--text-primary)" }}>{formattedLtp}</div>
+                {/* <div style={{ ...styles.stockChange, color }}>{calculatedChange.toFixed(2)}</div> */}
+                <div style={{ ...styles.stockChange, color }}>{`${calculatedPercentChange.toFixed(2)}%`}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
-//     startTransition(() => {
-//       setStocksData((prev) => {
-//         let hasChanges = false;
-//         const next = prev.map((stock) => {
-//           const payload = pendingUpdates.get(String(stock.token));
-//           if (!payload) return stock;
-//           hasChanges = true;
-//           return mergeRealtimeIntoWatchlistItem(stock, payload);
-//         });
+      {/* <div style={styles.footer}>
+        <div style={styles.footerLeft}>
+          <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: "var(--accent-color)", display: "flex", justifyContent: "center", alignItems: "center" }}><span style={{ fontSize: "0.8rem" }}>D</span></div>
+          {selectedCurrency?.name || "STOCK"}
+        </div>
+        <div style={styles.footerIcons}>
+            <BsGrid /><AiOutlineEdit /><FiMoreHorizontal />
+            </div>
+      </div> */}
 
-//         return hasChanges ? next : prev;
-//       });
-//     });
-//   };
+      {isModalOpen && (
+        <ListingModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          title="Symbol Search"
+          setSelectedCurrency={setSelectedCurrency}
+          renderActions={(stock) => {
+            const isAdded = detailsList.some((item) => item.symbol === stock.symbol);
+            return <div style={styles.btnContainer}>{!isAdded ? (
+              <button style={styles.addBtn} onClick={(event) => { event.stopPropagation(); onAddStock(stock); }} title="Add to watchlist" aria-label="Add to watchlist"><FiPlus size={14} /></button>
+            ) : (
+              <button style={styles.deleteBtn} onClick={(event) => { event.stopPropagation(); onRemoveStock(stock.symbol); }} title="Remove from watchlist" aria-label="Remove from watchlist"><FiMinus size={14} /></button>
+            )}</div>;
+          }}
+        />
+      )}
+    </div>
+  );
+};
 
-//   const queueRealtimeUpdate = (payload) => {
-//     if (!payload?.token) return;
-
-//     pendingRealtimeUpdatesRef.current.set(String(payload.token), payload);
-//     if (!realtimeFlushTimerRef.current) {
-//       realtimeFlushTimerRef.current = setTimeout(flushRealtimeUpdates, 120);
-//     }
-//   };
-
-//   const { emit } = useSocket({
-//     handleWatchlistResponse: (data) => {
-//       const payload = data?.data || data;
-//       let equity = [], futures = [], options = [], indices = [];
-      
-//       if (Array.isArray(payload)) {
-//          equity = payload.map(item => ({...item, category: "EQ"}));
-//       } else if (payload) {
-//          equity = (payload.equity || []).map((item) => ({ ...item, category: "EQ" }));
-//          futures = (payload.futures || []).map((item) => ({ ...item, category: "FUT" }));
-//          options = (payload.trendingOptions || []).map((item) => ({ ...item, category: "OPT" }));
-//          indices = (payload.indices || []).map((item) => ({ ...item, category: "IDX" }));
-//       }
-
-//       const combined = [...indices, ...equity, ...futures, ...options].map(
-//         normalizeWatchlistItem,
-//       );
-//       // console.log("LeftWatchlist mapped stocks count:", combined.length);
-//       setStocksData(combined);
-//       setIsLoading(false);
-//     },
-//     handleStockUpdate: (updatedStock) => {
-//       queueRealtimeUpdate(updatedStock);
-//     },
-//     handleLiveTick: (tick) => {
-//       queueRealtimeUpdate(tick);
-//     }
-//   });
-
-//   useEffect(() => {
-//     if (globalCache.watchList) {
-//       return;
-//     }
-//     emit(EVENTS.WATCHLIST.GET);
-//   }, [emit]);
-
-//   useEffect(() => {
-//     return () => {
-//       if (realtimeFlushTimerRef.current) {
-//         clearTimeout(realtimeFlushTimerRef.current);
-//         realtimeFlushTimerRef.current = null;
-//       }
-//       pendingRealtimeUpdatesRef.current.clear();
-//     };
-//   }, []);
-
-//   const styles = {
-//     container: {
-//       display: "flex",
-//       flexDirection: "column",
-//       height: "calc(100vh - 60px)", // Assuming navbar is 60px
-//       backgroundColor: "#ffffff", // Light theme based on user's image snippet for the left part? Wait, user asked for darktheme. Let me make it dark.
-//       // Wait, user explicitly said "this is the view i want for my application in darktheme". The image looks light theme, but they WANT dark theme.
-//       background: "var(--bg-primary)",
-//       color: "var(--text-primary)",
-//       borderRight: "1px solid var(--border-color)",
-//       fontFamily:
-//         "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-//     },
-//     header: {
-//       display: "flex",
-//       justifyContent: "space-between",
-//       alignItems: "center",
-//       padding: "12px 16px",
-//       borderBottom: "1px solid var(--border-color)",
-//       fontWeight: "600",
-//       fontSize: "0.95rem",
-//     },
-//     headerIcons: {
-//       display: "flex",
-//       gap: "12px",
-//       color: "var(--text-secondary)",
-//       cursor: "pointer",
-//     },
-//     tabsContainer: {
-//       display: "flex",
-//       padding: "0 16px",
-//       borderBottom: "1px solid var(--border-color)",
-//       gap: "16px",
-//     },
-//     tabActive: {
-//       padding: "12px 0",
-//       color: "var(--accent-color)",
-//       borderBottom: "2px solid var(--accent-color)",
-//       fontWeight: "500",
-//       fontSize: "0.9rem",
-//       cursor: "pointer",
-//     },
-//     searchContainer: {
-//       padding: "12px 16px",
-//       borderBottom: "1px solid var(--border-color)",
-//     },
-//     searchBox: {
-//       display: "flex",
-//       alignItems: "center",
-//       backgroundColor: "var(--bg-secondary)",
-//       borderRadius: "4px",
-//       padding: "6px 12px",
-//       border: "1px solid var(--border-color)",
-//     },
-//     searchInput: {
-//       border: "none",
-//       background: "transparent",
-//       color: "var(--text-primary)",
-//       outline: "none",
-//       width: "100%",
-//       marginLeft: "8px",
-//       fontSize: "0.85rem",
-//     },
-//     listContainer: {
-//       flex: 1,
-//       height: "100%",
-//       width: "100%",
-//       overflowY: "auto",
-//       overflowX: "hidden",
-//     },
-//     listItem: {
-//       display: "flex",
-//       justifyContent: "space-between",
-//       alignItems: "center",
-//       padding: "10px 14px",
-//       borderBottom: "1px solid var(--bg-secondary)",
-//       cursor: "pointer",
-//     },
-//     stockLeft: {
-//       display: "flex",
-//       flexDirection: "column",
-//     },
-//     stockName: {
-//       fontWeight: "600",
-//       fontSize: "0.85rem",
-//       color: "var(--text-primary)",
-//       display: "flex",
-//       alignItems: "center",
-//       gap: "8px",
-//     },
-//     segment: {
-//       fontSize: "0.6rem",
-//       color: "var(--text-secondary)",
-//     },
-//     stockRight: {
-//       display: "flex",
-//       flexDirection: "column",
-//       alignItems: "flex-end",
-//     },
-//     ltp: {
-//       fontWeight: "600",
-//       fontSize: "0.85rem",
-//       display: "flex",
-//       alignItems: "center",
-//       gap: "4px",
-//     },
-//     changeData: {
-//       fontSize: "0.75rem",
-//     },
-//     footer: {
-//       padding: "12px 16px",
-//       borderTop: "1px solid var(--border-color)",
-//       fontSize: "0.8rem",
-//       color: "var(--accent-color)",
-//       cursor: "pointer",
-//       display: "flex",
-//       justifyContent: "space-between",
-//     },
-//   };
-
-//   return (
-//     <div style={styles.container}>
-//       <style>{`
-//         .custom-scrollbar::-webkit-scrollbar {
-//           width: 6px;
-//         }
-//         .custom-scrollbar::-webkit-scrollbar-track {
-//           background: var(--bg-primary);
-//         }
-//         .custom-scrollbar::-webkit-scrollbar-thumb {
-//           background: var(--border-color);
-//           border-radius: 4px;
-//         }
-//         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-//           background: #363a45;
-//         }
-//       `}</style>
-//       <div style={styles.header}>
-//         <span>Watchlist</span>
-//         <div style={styles.headerIcons}>
-//           {/* <FiSettings /> */}
-//           <FiX onClick={onClose} />
-//         </div>
-//       </div>
-
-//       {/*
-//         <div style={styles.tabsContainer}>
-//         <div style={styles.tabActive}>mywatchlist</div>
-//         <div
-//           style={{
-//             ...styles.tabActive,
-//             color: "var(--text-secondary)",
-//             borderBottom: "none",
-//             display: "flex",
-//             alignItems: "center",
-//             gap: "8px",
-//           }}
-//         >
-//           <FiPlus /> <FiMaximize2 size={12} />
-//         </div>
-//       </div>
-//       */}
-
-//       <div style={styles.searchContainer}>
-//         <div style={styles.searchBox}>
-//           <FiSearch color="var(--text-secondary)" size={14} />
-//           <input
-//             style={styles.searchInput}
-//             placeholder="Search"
-//             value={searchTerm}
-//             onChange={(e) => setSearchTerm(e.target.value)}
-//           />
-//           {/* <FiSettings
-//             color="var(--text-secondary)"
-//             size={14}
-//             style={{ cursor: "pointer" }}
-//           /> */}
-//         </div>
-//       </div>
-
-//       <div className="custom-scrollbar" style={styles.listContainer}>
-//         {isLoading ? (
-//           <div style={{ display: "flex", height: "100%", justifyContent: "center", alignItems: "center" }}>
-//             <Spinner />
-//           </div>
-//         ) : (
-//           <div style={{ height: "100%", width: "100%" }}>
-//             {(() => {
-//               const filteredStocks = stocksData.filter((s) =>
-//                 (s.name || s.symbol || "").toLowerCase().includes(searchTerm.toLowerCase()),
-//               );
-
-//               return filteredStocks.map((stock, index) => {
-//                 const pChange = parseFloat(stock.percent_change);
-//                 const rawChange = parseFloat(stock.change);
-//                 const isPositive =
-//                   (!isNaN(pChange) ? pChange : !isNaN(rawChange) ? rawChange : 0) >= 0;
-//                 const color = isPositive
-//                   ? "var(--success-color)"
-//                   : "var(--danger-color)"; // TradingView green/red
-//                 const Arrow = isPositive ? "▲" : "▼";
-
-//                 return (
-//                   <div
-//                     key={`${stock.token || 'notoken'}-${index}`}
-//                     style={{ ...styles.listItem, borderBottom: "1px solid var(--bg-secondary)" }}
-//                     onClick={() =>
-//                       setSelectedCurrency((prev) => {
-//                         if (prev?.token === stock.token) return prev;
-//                         return {
-//                           symbol: stock.symbol,
-//                           name: stock.name,
-//                           token: stock.token,
-//                           segment: stock.segment || "NSE",
-//                           type: stock.type || "currency",
-//                           userCode: stock.userCode,
-//                         };
-//                       })
-//                     }
-//                     onMouseEnter={(e) =>
-//                       (e.currentTarget.style.backgroundColor = "var(--border-color)")
-//                     }
-//                     onMouseLeave={(e) =>
-//                       (e.currentTarget.style.backgroundColor = "transparent")
-//                     }
-//                   >
-//                     <div style={styles.stockLeft}>
-//                       <div style={styles.stockName}>
-//                         {/* CATEGORY CIRCLE */}
-//                         <div
-//                           style={{
-//                             width: 22,
-//                             height: 22,
-//                             minWidth: 22,
-//                             borderRadius: "50%",
-//                             background:
-//                               stock.category === "EQ"
-//                                 ? "#2563eb"
-//                                 : stock.category === "FUT"
-//                                   ? "#7c3aed"
-//                                   : stock.category === "OPT"
-//                                     ? "#ea580c"
-//                                     : "#475569",
-//                             color: "#fff",
-//                             display: "flex",
-//                             alignItems: "center",
-//                             justifyContent: "center",
-//                             fontSize: "9px",
-//                             fontWeight: 700,
-//                           }}
-//                         >
-//                           {stock.category}
-//                         </div>
-
-//                         {/* SYMBOL */}
-//                         <div style={{ display: "flex", flexDirection: "column" }}>
-//                           <span>{stock?.name}</span>
-//                         </div>
-//                       </div>
-//                     </div>
-//                     <div style={styles.stockRight}>
-//                       <div style={{ ...styles.ltp, color }}>
-//                         {stock?.ltp} <span> {Arrow} </span>
-//                       </div>
-//                       <div style={{ ...styles.changeData, color }}>
-//                         {stock?.change} (
-//                         {isPositive && stock.percent_change > 0 ? "+" : ""}
-//                         {stock.percent_change}%)
-//                       </div>
-//                     </div>
-//                   </div>
-//                 );
-//               });
-//             })()}
-//           </div>
-//         )}
-//       </div>
-
-//       {/*<div style={styles.footer}>
-//         <span>OPTIONS QUICK LIST</span>
-//         <span>{">"}</span>
-//       </div>*/}
-//     </div>
-//   );
-// };
-
-// export default LeftWatchlist;
+export default LeftWatchlist;

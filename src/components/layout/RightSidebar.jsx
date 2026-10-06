@@ -41,9 +41,9 @@ const RightSidebar = ({
   };
 
   const menuItems = [
-    { id: 'details', icon: <FiList size={16} />, label: "Watchlist", active: isDetailsOpen },
+    { id: 'watchlist', icon: <FiList size={16} />, label: "Watchlist", active: isWatchlistOpen },
     { id: 'depth', icon: <FiLayers size={16} />, label: "Results", active: isDepthOpen },
-    // { id: 'alerts', icon: <FiAlignLeft size={16} />, label: "Alerts" ,active: isAlertsOpen},
+    { id: 'details', icon: <FiAlignLeft size={16} />, label: "Scanner" ,active: isDetailsOpen},
     { id: 'options', icon: <BsLink45Deg size={16} />, label: "Option\nChain" },
     // { id: 'more', icon: <FiMoreVertical size={20} />, label: "More" },
   ];

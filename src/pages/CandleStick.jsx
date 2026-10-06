@@ -17,7 +17,7 @@ import { RiResetRightLine } from "react-icons/ri";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import ChartHeader from "../components/tradingModals/ChartHeader";
 import Navbar from "../components/layout/Navbar";
-// import LeftWatchlist from "../components/layout/LeftWatchlist";
+import LeftWatchlist from "../components/layout/LeftWatchlist";
 import RightSidebar from "../components/layout/RightSidebar";
 import ChartTabs from "../components/layout/ChartTabs";
 import LeftDepth from "../components/layout/LeftDepth";
@@ -560,6 +560,7 @@ export default function Candlestick() {
       return [];
     }
   });
+  const [liveLtpBySymbol, setLiveLtpBySymbol] = useState({});
   const [activeTab, setActiveTab] = useState("Chart");
   const [timeframeValue, setTimeframeValue] = useState("5m");
 
@@ -6936,8 +6937,42 @@ json.dumps(result)
       const ticks = Array.isArray(tickOrArray) ? tickOrArray : [tickOrArray];
 
       ticks.forEach((tick) => {
+        const liveData = tick?.data || tick?.tick || tick || {};
+        const rawData = tick?.raw || tick?.overview || {};
+        const tickSymbol = normalize(
+          tick?.symbol ?? liveData?.symbol ?? rawData?.symbol,
+        );
+        const ltp = Number(
+          tick?.raw?.last_traded_price ??
+            tick?.overview?.ltp ??
+            tick?.overview?.last_traded_price ??
+            liveData?.last_traded_price ??
+            liveData?.ltp ??
+            liveData?.price,
+        );
+
+        if (tickSymbol && Number.isFinite(ltp) && ltp > 0) {
+          setLiveLtpBySymbol((previous) => {
+            const matchingKeys = detailsList.flatMap((stock) => {
+              const keys = [normalize(stock?.name), normalize(stock?.symbol)];
+              return keys.some((key) => isSameSymbolName(key, tickSymbol))
+                ? keys.filter(Boolean)
+                : [];
+            });
+
+            if (!matchingKeys.length || matchingKeys.every((key) => previous[key] === ltp)) {
+              return previous;
+            }
+
+            const next = { ...previous };
+            matchingKeys.forEach((key) => {
+              next[key] = ltp;
+            });
+            return next;
+          });
+        }
+
         const activeSymbol = normalize(selectedCurrency?.name);
-        const tickSymbol = normalize(tick.symbol);
 
         if (!isSameSymbolName(tickSymbol, activeSymbol)) return;
 
@@ -6952,9 +6987,6 @@ json.dumps(result)
           chartDisposedRef.current
         )
           return;
-
-        const liveData = tick?.data || tick?.tick || tick || {};
-        const rawData = tick?.raw || tick?.overview || {};
 
         let rawTickTime =
           tick?.raw?.datetime ??
@@ -6975,16 +7007,6 @@ json.dumps(result)
         const adjustedTime = tickTime + IST_OFFSET;
         const normalizedTime =
           Math.floor(adjustedTime / intervalSec) * intervalSec;
-
-        // Use LTP (last_traded_price) as the real current price
-        const ltp = Number(
-          tick?.raw?.last_traded_price ??
-            tick?.overview?.ltp ??
-            tick?.overview?.last_traded_price ??
-            liveData?.last_traded_price ??
-            liveData?.ltp ??
-            liveData?.price,
-        );
 
         if (!Number.isFinite(ltp) || ltp <= 0) {
           console.warn("[LIVE TICK] LTP is invalid, skipping");
@@ -8097,7 +8119,7 @@ json.dumps(result)
                     setActiveTab={setActiveTab}
                   />
                 </div>
-                {/* <div
+                <div
                   style={{
                     display:
                       activeTab !== "Alerts" && isWatchlistOpen
@@ -8108,9 +8130,14 @@ json.dumps(result)
                 >
                   <LeftWatchlist
                     onClose={() => setIsWatchlistOpen(false)}
+                    selectedCurrency={selectedCurrency}
+                    detailsList={detailsList}
+                    onAddStock={addStockToDetails}
+                    onRemoveStock={removeStockFromDetails}
                     setSelectedCurrency={handleSetSelectedCurrency}
+                    liveLtpBySymbol={liveLtpBySymbol}
                   />
-                </div> */}
+                </div>
                 <div
                   style={{
                     display:
@@ -8123,9 +8150,6 @@ json.dumps(result)
                   <LeftDetail
                     onClose={() => setIsDetailsOpen(false)}
                     selectedCurrency={selectedCurrency}
-                    detailsList={detailsList}
-                    onAddStock={addStockToDetails}
-                    onRemoveStock={removeStockFromDetails}
                     setSelectedCurrency={handleSetSelectedCurrency}
                     addAlert={addAlert}
                     clearAllCoins={clearAllCoins}
