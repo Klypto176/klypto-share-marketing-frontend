@@ -1231,6 +1231,7 @@ sell_breakout = df["close"] < rolling_low.shift(1)
 
 const DEFAULT_TEMPLATE_ID = "ema-crossover";
 const CUSTOM_TEMPLATE_ID = "__custom__";
+const NEW_STRATEGY_TEMPLATE_ID = "__new_strategy__";
 const TEMPLATE_STORAGE_KEY = "strategyEditorSelectedTemplateId";
 
 const findTemplateIdByCode = (code) => {
@@ -1372,6 +1373,7 @@ const CodeEditorPanel = ({
   onUpdate,
   onClear,
   onEdit,
+  onNewStrategy,
   editorCode,
   setEditorCode,
   isDeployed,
@@ -1426,6 +1428,10 @@ const CodeEditorPanel = ({
       return;
     }
 
+    if (!editorCode.trim() && selectedTemplateId === NEW_STRATEGY_TEMPLATE_ID) {
+      return;
+    }
+
     setSelectedTemplateId((current) =>
       current === CUSTOM_TEMPLATE_ID ? current : CUSTOM_TEMPLATE_ID,
     );
@@ -1450,20 +1456,23 @@ const CodeEditorPanel = ({
 
   const applyTemplate = useCallback(
     (templateId) => {
+      const isNewStrategy = templateId === NEW_STRATEGY_TEMPLATE_ID;
       const template = STRATEGY_EDITOR_TEMPLATES.find(
         (item) => item.id === templateId,
       );
-      if (!template) return;
+      if (!isNewStrategy && !template) return;
 
+      const nextCode = isNewStrategy ? "" : template.code;
       setSelectedTemplateId(templateId);
       localStorage.setItem(TEMPLATE_STORAGE_KEY, templateId);
-      setEditorCode(template.code);
+      setEditorCode(nextCode);
       if (editorRef.current) {
-        editorRef.current.setValue(template.code);
+        editorRef.current.setValue(nextCode);
       }
       if (onEdit) onEdit();
+      if (onNewStrategy) onNewStrategy();
     },
-    [onEdit, setEditorCode],
+    [onEdit, onNewStrategy, setEditorCode],
   );
 
 
@@ -1644,7 +1653,7 @@ const CodeEditorPanel = ({
       </div>
       <div
         style={{
-          padding: "12px 16px",
+          padding: "6px 14px",
           borderBottom: "1px solid var(--border-color)",
           display: "flex",
           gap: "8px",
@@ -1679,6 +1688,7 @@ const CodeEditorPanel = ({
           }}
         >
           <option value={CUSTOM_TEMPLATE_ID}>Current Custom Code</option>
+          <option value={NEW_STRATEGY_TEMPLATE_ID}>New Strategy</option>
           {STRATEGY_EDITOR_TEMPLATES.map((template) => (
             <option key={template.id} value={template.id}>
               {template.label}
@@ -1698,7 +1708,7 @@ const CodeEditorPanel = ({
             width: "100%",
             display: "flex",
             alignItems: "center",
-            justifyContent: "flex-start",
+            justifyContent: "space-between",
             gap: "8px",
           }}
         >
@@ -1710,7 +1720,7 @@ const CodeEditorPanel = ({
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
-                fontSize: "12px",
+                fontSize: "14px",
                 fontWeight: 600,
                 color: "var(--text-primary)",
               }}
@@ -1718,12 +1728,43 @@ const CodeEditorPanel = ({
               {loadedStrategyName}
             </span>
           )}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <button
+              onClick={() =>
+                canShowUpdate
+                  ? onUpdate(editorCode)
+                  : onSave(editorCode, { requireStrategyName: true })
+              }
+              disabled={isSaving || isDeploying || isUpdating || hasErrors}
+              style={{
+                padding: "7px",
+                background:
+                  isSaving || isDeploying || isUpdating || hasErrors
+                    ? "var(--bg-secondary)"
+                    : "rgba(34,197,94,0.14)",
+                color:
+                  isSaving || isDeploying || isUpdating || hasErrors
+                    ? "var(--text-secondary)"
+                    : "#86efac",
+                border: "1px solid rgba(34,197,94,0.35)",
+                borderRadius: "6px",
+                cursor:
+                  isSaving || isDeploying || isUpdating || hasErrors ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                opacity: isSaving || isDeploying || isUpdating || hasErrors ? 0.7 : 1,
+              }}
+              aria-label={canShowUpdate ? "Update strategy" : "Save strategy"}
+              title={canShowUpdate ? "Update strategy" : "Save strategy"}
+            >
+              <FaSave size={11} />
+            </button>
           {!isDeployed && (
             <button
               onClick={() => onDeploy(editorCode)}
               disabled={isDeploying || hasErrors}
               style={{
-                padding: "8px",
+                padding: "7px",
                 background:
                   isDeploying || hasErrors
                     ? "var(--bg-secondary)"
@@ -1747,6 +1788,7 @@ const CodeEditorPanel = ({
               <FaPlay size={11} />
             </button>
           )}
+          </div>
         </div>
       </div>
       <div
@@ -1796,11 +1838,11 @@ const CodeEditorPanel = ({
           borderTop: "1px solid var(--border-color)",
           background:
             "linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%)",
-          display: "flex",
+          display: isDeployed ? "flex" : "none",
           gap: "10px",
         }}
       >
-        <button
+        <button hidden
           onClick={() => onSave(editorCode, { requireStrategyName: true })}
           disabled={isSaving || isDeploying || isUpdating || hasErrors}
           style={{
@@ -1843,7 +1885,7 @@ const CodeEditorPanel = ({
           )}
         </button>
         {canShowUpdate && (
-          <button
+          <button hidden
             onClick={() => onUpdate(editorCode)}
             disabled={!canUpdate || isSaving || isDeploying || isUpdating || hasErrors}
             style={{

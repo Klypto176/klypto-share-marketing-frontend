@@ -1050,10 +1050,11 @@ export default function Candlestick() {
         );
 
         const response = await saveNotebookStrategy(payload);
-        if (response?.data) {
-          setActiveStrategyRecord(response.data);
-          setIsStrategyDirty(false);
+        const savedStrategy = response?.data || response;
+        if (savedStrategy?.id || savedStrategy?._id) {
+          setActiveStrategyRecord(savedStrategy);
         }
+        setIsStrategyDirty(false);
 
         toast.success(
           response?.message || "Strategy payload logged successfully.",
@@ -1087,7 +1088,8 @@ export default function Candlestick() {
 
   const handleUpdateStrategy = useCallback(
     async (code) => {
-      if (!activeStrategyRecord?.id) {
+      const strategyId = activeStrategyRecord?.id || activeStrategyRecord?._id;
+      if (!strategyId) {
         Swal.fire({
           icon: "warning",
           title: "No Saved Strategy",
@@ -1123,6 +1125,7 @@ export default function Candlestick() {
 
         const strategyName =
           activeStrategyRecord?.name ||
+          activeStrategyRecord?.strategyName ||
           `${symbolName} ${timeframeValue} Notebook Strategy`;
 
         const payload = {
@@ -1141,7 +1144,7 @@ export default function Candlestick() {
         );
 
         const response = await updateNotebookStrategy(
-          activeStrategyRecord.id,
+          strategyId,
           payload,
         );
         if (response?.data) {
@@ -2346,6 +2349,13 @@ export default function Candlestick() {
     });
   }, [applyStrategyVisualVisibility]);
 
+  const handleStartNewStrategy = useCallback(() => {
+    setActiveStrategyRecord(null);
+    setDraftStrategyName("");
+    setIsStrategyDirty(false);
+    setIsDeployed(false);
+  }, []);
+
   const handleOpenStrategyEditor = useCallback(() => {
     setIsCodeEditorOpen(true);
   }, []);
@@ -3198,6 +3208,10 @@ json.dumps(result)
 
   const handleSelectSavedStrategy = useCallback(
     async (strategy) => {
+      console.log(
+        "[Strategy] Selected strategy name:",
+     strategy?.strategyName,
+      );
       const strategyCode =
         typeof strategy?.code === "string" && strategy.code.trim()
           ? strategy.code
@@ -9021,17 +9035,15 @@ json.dumps(result)
                           setIsStrategyDirty(true);
                         }
                       }}
+                      onNewStrategy={handleStartNewStrategy}
                       editorCode={editorCode}
                       setEditorCode={setEditorCode}
                       isDeployed={isDeployed}
                       isDeploying={isDeploying}
                       isSaving={isSavingStrategy}
                       isUpdating={isUpdatingStrategy}
-                      canUpdate={
-                        Boolean(activeStrategyRecord?.id) && isStrategyDirty
-                      }
-                      canShowUpdate={Boolean(activeStrategyRecord?.id)}
-                      loadedStrategyName={activeStrategyRecord?.name || draftStrategyName || ""}
+                      canShowUpdate={Boolean(activeStrategyRecord?.id || activeStrategyRecord?._id)}
+                      loadedStrategyName={activeStrategyRecord?.strategyName || activeStrategyRecord?.name || draftStrategyName || "Untitled"}
                     />
                   )}
 

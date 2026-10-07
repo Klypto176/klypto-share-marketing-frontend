@@ -483,7 +483,12 @@ export default function ChartHeader({
         setAlertResult={setAlertResult}
         alertResult={alertResult}
         timeframeValue={timeframeValue}
-        onSelectStrategy={onSelectStrategy}
+        onSelectStrategy={async (strategy) => {
+          if (typeof onSelectStrategy === "function") {
+            await onSelectStrategy(strategy);
+          }
+          closeModal();
+        }}
         onSubmit={(data) => {
           if (addAlert) addAlert(data);
           closeModal();
