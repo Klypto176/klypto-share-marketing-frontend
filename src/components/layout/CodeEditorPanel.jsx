@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Editor from "@monaco-editor/react";
 import { IoCloseSharp } from "react-icons/io5";
-import { FaBookOpen, FaPlay, FaSave, FaTrash, FaSyncAlt } from "react-icons/fa";
+import { FaBookOpen, FaPlay, FaSave, FaTrash, FaSyncAlt, FaPencilAlt } from "react-icons/fa";
 import { Spinner } from "../tradingModals/Spinner";
 import chartlabGuideMarkdown from "../../assets/chartlab-build-guide.md?raw";
 
@@ -1371,6 +1371,7 @@ const CodeEditorPanel = ({
   onDeploy,
   onSave,
   onUpdate,
+  onRename,
   onClear,
   onEdit,
   onNewStrategy,
@@ -1759,6 +1760,28 @@ const CodeEditorPanel = ({
             >
               <FaSave size={11} />
             </button>
+          {canShowUpdate && (
+            <button
+              onClick={() => onRename(editorCode)}
+              disabled={isSaving || isDeploying || isUpdating || hasErrors}
+              style={{
+                padding: "7px",
+                background: "rgba(245,158,11,0.14)",
+                color: "#fbbf24",
+                border: "1px solid rgba(245,158,11,0.35)",
+                borderRadius: "6px",
+                cursor:
+                  isSaving || isDeploying || isUpdating || hasErrors ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                opacity: isSaving || isDeploying || isUpdating || hasErrors ? 0.7 : 1,
+              }}
+              aria-label="Rename strategy"
+              title="Rename strategy"
+            >
+              <FaPencilAlt size={11} />
+            </button>
+          )}
           {!isDeployed && (
             <button
               onClick={() => onDeploy(editorCode)}

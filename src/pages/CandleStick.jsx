@@ -1087,7 +1087,7 @@ export default function Candlestick() {
   );
 
   const handleUpdateStrategy = useCallback(
-    async (code) => {
+    async (code, options = {}) => {
       const strategyId = activeStrategyRecord?.id || activeStrategyRecord?._id;
       if (!strategyId) {
         Swal.fire({
@@ -1124,6 +1124,7 @@ export default function Candlestick() {
         }
 
         const strategyName =
+          options?.strategyName?.trim() ||
           activeStrategyRecord?.name ||
           activeStrategyRecord?.strategyName ||
           `${symbolName} ${timeframeValue} Notebook Strategy`;
@@ -1147,10 +1148,16 @@ export default function Candlestick() {
           strategyId,
           payload,
         );
-        if (response?.data) {
-          setActiveStrategyRecord(response.data);
-          setIsStrategyDirty(false);
+        const updatedStrategy = response?.data || response;
+        if (updatedStrategy?.id || updatedStrategy?._id) {
+          setActiveStrategyRecord(updatedStrategy);
+        } else {
+          setActiveStrategyRecord((current) =>
+            current ? { ...current, strategyName } : current,
+          );
         }
+        setDraftStrategyName(strategyName);
+        setIsStrategyDirty(false);
 
         toast.success(response?.message || "Strategy updated successfully.");
       } catch (err) {
@@ -1179,6 +1186,35 @@ export default function Candlestick() {
     ],
   );
 
+
+  const handleRenameStrategy = useCallback(
+    async (code) => {
+      const currentName =
+        activeStrategyRecord?.strategyName || activeStrategyRecord?.name || "";
+      const { value } = await Swal.fire({
+        title: "Rename Strategy",
+        input: "text",
+        inputLabel: "Enter the new strategy name",
+        inputValue: currentName,
+        showCancelButton: true,
+        inputValidator: (value) =>
+          value?.trim() ? undefined : "Strategy name is required.",
+        background: "var(--bg-secondary)",
+        color: "var(--text-primary)",
+      });
+
+      if (!value?.trim()) {
+        return;
+      }
+
+      await handleUpdateStrategy(code, { strategyName: value.trim() });
+    },
+    [
+      activeStrategyRecord?.name,
+      activeStrategyRecord?.strategyName,
+      handleUpdateStrategy,
+    ],
+  );
 
   const renderSandboxPlots = useCallback(
     (chartContract) => {
@@ -9028,6 +9064,7 @@ json.dumps(result)
                       onDeploy={handleDeployCode}
                       onSave={handleSaveStrategy}
                       onUpdate={handleUpdateStrategy}
+                      onRename={handleRenameStrategy}
                       onClear={handleClearCode}
                       onEdit={() => {
                         setIsDeployed(false);
