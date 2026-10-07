@@ -65,7 +65,6 @@ import {
   saveNotebookStrategy,
   updateNotebookStrategy,
 } from "../services/notebookStrategyService";
-import { generateStrategyAgent } from "../services/strategyAgentService";
 import { executeIndicatorSandbox } from "../services/sandboxService";
 import { getUser } from "./auth/protected";
 import useDrawingTools from "../util/useDrawingTools";
@@ -75,13 +74,8 @@ import DrawingToolbox from "../components/tradingModals/DrawingToolbox";
 import {
   buildDiagnosticHtml,
   extractSandboxErrorText,
-  getSandboxDependencies,
-  isDirectChartLabScript,
   prepareSandboxCompatibleCode,
 } from "../util/sandboxCodeUtils";
-import {
-  buildStrategyAgentPrompt,
-} from "../util/strategyAgentUtils";
 
 const getInitialLookbackDate = (timeframe) => {
   const d = new Date();
@@ -2771,10 +2765,6 @@ export default function Candlestick() {
       const effectiveFromDate = runtimeContext?.fromDate || fromDate;
       const requestedToDate = runtimeContext?.toDate || toDate;
       const effectiveToDate = requestedToDate || getTodayDateString();
-      const effectiveRuntimeProfile =
-        runtimeContext?.runtimeProfile ||
-        activeStrategyRecord?.config?.runtimeProfile ||
-        DEFAULT_RUNTIME_PROFILE_ID;
       const shouldPreserveChartState = Boolean(runtimeContext?.preserveChartState);
       const rangeBeforeDeploy =
         runtimeContext?.preserveVisibleRange ||
@@ -3019,8 +3009,6 @@ json.dumps(result)
           setIsCodeEditorOpen(false);
         }
 
-        const localUser = JSON.parse(localStorage.getItem("session") || "{}");
-        const userId = localUser?.user?.id || localUser?.user?._id || "123";
 
         // Guard: do not call the API if code is effectively empty
         if (!code || !code.trim()) {
@@ -3028,64 +3016,7 @@ json.dumps(result)
           return;
         }
 
-        const shouldBypassStrategyAgent = isDirectChartLabScript(code);
-        let generationReply = "";
-        let runnableCode = code.trim();
-
-        if (!shouldBypassStrategyAgent) {
-          const generated = await generateStrategyAgent({
-            prompt: buildStrategyAgentPrompt(
-              code,
-              effectiveLookupSymbol || effectiveSymbol,
-              effectiveTimeframeLabel,
-            ),
-            session_id: strategyAgentSessionIdRef.current,
-            user_id: userId,
-            current_file_path: "strategy.py",
-            current_editor_code: code,
-            project_summary:
-              "ChartLab Python strategy editor. Convert editor strategies into runnable sandbox code and preserve signal behavior.",
-            timeframe: effectiveTimeframeLabel,
-            market: effectiveLookupSymbol || effectiveSymbol,
-            constraints: [
-              "Return only executable Python code.",
-              "Use ChartLab-compatible Python.",
-              "Emit BUY/SELL/EXIT events with signal(...) so patterns can be backtested.",
-              "For pattern detection, signal only on the confirmation candle to avoid lookahead bias.",
-            ],
-          });
-
-          if (generated?.session_id) {
-            strategyAgentSessionIdRef.current = generated.session_id;
-          }
-
-          generationReply = generated?.reply || "";
-
-          const canReplaceEditor =
-            generated?.replace_editor_code === true &&
-            typeof generated?.code === "string" &&
-            generated.code.trim().length > 0 &&
-            generated?.meta?.code_validation_passed === true &&
-            generated?.meta?.security_validation_passed === true;
-
-          if (!canReplaceEditor) {
-            Swal.fire({
-              icon: "warning",
-              title: generated?.title || "Strategy Generation Failed",
-              text:
-                generated?.reply ||
-                "The strategy agent could not produce runnable code from the editor content.",
-              background: "var(--bg-secondary)",
-              color: "var(--text-primary)",
-            });
-            setIsDeploying(false);
-            toast.dismiss("compiling");
-            return;
-          }
-
-          runnableCode = generated.code.trim();
-          setEditorCode(runnableCode);
-        }
+        const runnableCode = code.trim();
 
         const sandboxCode = prepareSandboxCompatibleCode(runnableCode);
 
@@ -3094,17 +3025,7 @@ json.dumps(result)
           resetBeforeExecution: Boolean(sandboxSessionIdRef.current),
           timeoutSeconds: 300,
           mode: "indicator",
-          runtimeProfile: effectiveRuntimeProfile,
-          resourcePolicy: {
-            cpu_cores: 4,
-            memory_mb: 4096,
-            disk_mb: 4096,
-            timeout_seconds: 420,
-            max_processes: 32,
-            network_access: false,
-            gpu_access: false,
-          },
-          dependencies: getSandboxDependencies(sandboxCode),
+
           code: sandboxCode,
           inputs: {
             symbol: effectiveSymbol,
@@ -3138,7 +3059,6 @@ json.dumps(result)
             message:
               fetchError ||
               extractSandboxErrorText(firstError) ||
-              generationReply ||
               "The strategy code could not be executed in the sandbox.",
           };
           Swal.fire({

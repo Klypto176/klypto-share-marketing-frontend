@@ -8,9 +8,6 @@ export async function executeIndicatorSandbox(payload) {
     resetBeforeExecution: Boolean(payload?.resetBeforeExecution),
     timeoutSeconds,
     mode: payload?.mode || "indicator",
-    runtimeProfile: payload?.runtimeProfile,
-    resourcePolicy: payload?.resourcePolicy,
-    dependencies: Array.isArray(payload?.dependencies) ? payload.dependencies : [],
     code: payload?.code || "",
     inputs: {
       symbol: payload?.inputs?.symbol,
