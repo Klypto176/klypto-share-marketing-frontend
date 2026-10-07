@@ -24,7 +24,7 @@ export async function generateStrategyAgent(payload) {
   };
 
   const response = await axios.post(
-    `https://api2.klypto.in/sandbox/execute`,
+    `${STRATEGY_AGENT_BASE_URL}/sandbox/execute`,
     sanitizedPayload,
     {
       timeout: 180000,

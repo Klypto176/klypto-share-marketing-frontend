@@ -46,11 +46,11 @@ export async function executeIndicatorSandbox(payload) {
       throw error;
     }
 
-    const fallbackResponse = await axios.post(
-      `${baseUrl}/sandbox/execute`,
-      sanitizedPayload,
-      requestConfig,
-    );
-    return fallbackResponse?.data || fallbackResponse;
+    // const fallbackResponse = await axios.post(
+    //   `${baseUrl}/sandbox/execute`,
+    //   sanitizedPayload,
+    //   requestConfig,
+    // );
+    // return fallbackResponse?.data || fallbackResponse;
   }
 }
