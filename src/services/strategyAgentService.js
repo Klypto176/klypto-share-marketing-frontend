@@ -1,10 +1,10 @@
 import axios from "axios";
 import { getToken } from "../pages/auth/protected";
+import apiService from "./apiServices";
 
 const STRATEGY_AGENT_BASE_URL =
   import.meta.env.VITE_STRATEGY_API_URL ||
-  import.meta.env.VITE_API_BASE_URL ||
-  "http://localhost:5000";
+  import.meta.env.VITE_API_BASE_URL 
 
 export async function generateStrategyAgent(payload) {
   const token = getToken();
@@ -23,7 +23,7 @@ export async function generateStrategyAgent(payload) {
     constraints: Array.isArray(payload?.constraints) ? payload.constraints : [],
   };
 
-  const response = await axios.post(
+  const response = await apiService.post(
     `${STRATEGY_AGENT_BASE_URL}/sandbox/execute`,
     sanitizedPayload,
     {

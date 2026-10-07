@@ -1,13 +1,12 @@
 import axios from "axios";
-import { getToken } from "../pages/auth/protected";
+import { getToken, getUser } from "../pages/auth/protected";
+import apiService from "./apiServices";
+import Swal from "sweetalert2";
 
 const STRATEGY_ENGINE_BASE_URL = (
-  import.meta.env.VITE_STRATEGY_API_URL ||
-  import.meta.env.VITE_API_BASE_URL ||
-  "http://127.0.0.1:4001"
+  import.meta.env.VITE_STRATEGY_API_URL
 ).replace(/\/+$/, "");
-
-const LOCAL_PYTHON_FALLBACK_URL = "http://127.0.0.1:4001";
+const userId = getUser()?.id;
 
 function buildRequestConfig() {
   const token = getToken();
@@ -21,73 +20,47 @@ function buildRequestConfig() {
 }
 
 export async function saveNotebookStrategy(payload) {
-  const requestConfig = buildRequestConfig();
 
   try {
-    const response = await axios.post(
-      `${STRATEGY_ENGINE_BASE_URL}/api/strategy/notebook-strategies`,
+    const response = await apiService.post("api/strategy/user-strategies",
       payload,
-      requestConfig,
     );
+    await Swal.fire({
+            toast: true,
+            position: "top-end",
+            icon: "success",
+            title: "Saved successfully",
+            showConfirmButton: false,
+            timer: 1800,
+            timerProgressBar: true,
+          });
     return response?.data || response;
   } catch (error) {
     if (
-      error?.response?.status !== 404 ||
-      STRATEGY_ENGINE_BASE_URL === LOCAL_PYTHON_FALLBACK_URL
+      error?.response?.status !== 404
     ) {
       throw error;
     }
-
-    const fallbackResponse = await axios.post(
-      `${LOCAL_PYTHON_FALLBACK_URL}/api/strategy/notebook-strategies`,
-      payload,
-      requestConfig,
-    );
-    return fallbackResponse?.data || fallbackResponse;
   }
 }
 
-export async function getNotebookStrategies(params = {}) {
-  const requestConfig = {
-    ...buildRequestConfig(),
-    params: {
-      search: params?.search || undefined,
-      userId: params?.userId || undefined,
-      limit: params?.limit ?? 50,
-      offset: params?.offset ?? 0,
-    },
-  };
-
+export async function getNotebookStrategies() {
   try {
-    const response = await axios.get(
-      `${STRATEGY_ENGINE_BASE_URL}/api/strategy/notebook-strategies`,
-      requestConfig,
-    );
+    const response = await apiService.get(`/api/strategy/user-strategies?userId=${userId}`);
     return response?.data || response;
   } catch (error) {
     if (
-      error?.response?.status !== 404 ||
-      STRATEGY_ENGINE_BASE_URL === LOCAL_PYTHON_FALLBACK_URL
+      error?.response?.status !== 404
     ) {
       throw error;
     }
-
-    const fallbackResponse = await axios.get(
-      `${LOCAL_PYTHON_FALLBACK_URL}/api/strategy/notebook-strategies`,
-      requestConfig,
-    );
-    return fallbackResponse?.data || fallbackResponse;
   }
 }
 
 export async function updateNotebookStrategy(strategyId, payload) {
-  const requestConfig = buildRequestConfig();
-
   try {
-    const response = await axios.put(
-      `${STRATEGY_ENGINE_BASE_URL}/api/strategy/notebook-strategies/${strategyId}`,
+    const response = await apiService.put(`/api/strategy/user-strategies/${strategyId}`,
       payload,
-      requestConfig,
     );
     return response?.data || response;
   } catch (error) {
@@ -97,12 +70,5 @@ export async function updateNotebookStrategy(strategyId, payload) {
     ) {
       throw error;
     }
-
-    const fallbackResponse = await axios.put(
-      `${LOCAL_PYTHON_FALLBACK_URL}/api/strategy/notebook-strategies/${strategyId}`,
-      payload,
-      requestConfig,
-    );
-    return fallbackResponse?.data || fallbackResponse;
   }
 }

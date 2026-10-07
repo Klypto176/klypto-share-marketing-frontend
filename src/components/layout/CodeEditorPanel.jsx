@@ -1466,7 +1466,6 @@ const CodeEditorPanel = ({
     [onEdit, setEditorCode],
   );
 
-  const isCustomStrategy = selectedTemplateId === CUSTOM_TEMPLATE_ID;
 
   return (
     <>
@@ -1694,6 +1693,61 @@ const CodeEditorPanel = ({
           <FaBookOpen size={11} />
           Guide
         </button>
+        <div
+          style={{
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-start",
+            gap: "8px",
+          }}
+        >
+          {loadedStrategyName && (
+            <span
+              title={loadedStrategyName}
+              style={{
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontSize: "12px",
+                fontWeight: 600,
+                color: "var(--text-primary)",
+              }}
+            >
+              {loadedStrategyName}
+            </span>
+          )}
+          {!isDeployed && (
+            <button
+              onClick={() => onDeploy(editorCode)}
+              disabled={isDeploying || hasErrors}
+              style={{
+                padding: "8px",
+                background:
+                  isDeploying || hasErrors
+                    ? "var(--bg-secondary)"
+                    : "linear-gradient(135deg, var(--accent-color) 0%, #1a4fd6 100%)",
+                color: isDeploying || hasErrors ? "var(--text-secondary)" : "#fff",
+                border:
+                  isDeploying || hasErrors
+                    ? "1px solid var(--border-color)"
+                    : "1px solid rgba(41,98,255,0.6)",
+                borderRadius: "6px",
+                cursor: isDeploying || hasErrors ? "not-allowed" : "pointer",
+                fontWeight: 600,
+                fontSize: "12px",
+                display: "flex",
+                alignItems: "center",
+                opacity: isDeploying || hasErrors ? 0.7 : 1,
+              }}
+              aria-label="Deploy"
+              title={hasErrors ? "Please fix syntax errors before deploying" : "Deploy"}
+            >
+              <FaPlay size={11} />
+            </button>
+          )}
+        </div>
       </div>
       <div
         style={{
@@ -1747,9 +1801,7 @@ const CodeEditorPanel = ({
         }}
       >
         <button
-          onClick={() =>
-            onSave(editorCode, { requireStrategyName: isCustomStrategy })
-          }
+          onClick={() => onSave(editorCode, { requireStrategyName: true })}
           disabled={isSaving || isDeploying || isUpdating || hasErrors}
           style={{
             flex: 1,
@@ -1875,69 +1927,7 @@ const CodeEditorPanel = ({
             <FaTrash size={11} />
             Clear
           </button>
-        ) : (
-          <button
-            onClick={() =>
-              onDeploy(editorCode, { requireStrategyName: isCustomStrategy })
-            }
-            disabled={isDeploying || hasErrors}
-            style={{
-              flex: 1,
-              padding: "11px 16px",
-              background:
-                isDeploying || hasErrors
-                  ? "var(--bg-secondary)"
-                  : "linear-gradient(135deg, var(--accent-color) 0%, #1a4fd6 100%)",
-              color:
-                isDeploying || hasErrors ? "var(--text-secondary)" : "#fff",
-              border:
-                isDeploying || hasErrors
-                  ? "1px solid var(--border-color)"
-                  : "1px solid rgba(41,98,255,0.6)",
-              borderRadius: "6px",
-              cursor: isDeploying || hasErrors ? "not-allowed" : "pointer",
-              fontWeight: 600,
-              fontSize: "13px",
-              letterSpacing: "0.04em",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              gap: "7px",
-              transition: "all 0.15s ease",
-              boxShadow:
-                isDeploying || hasErrors
-                  ? "none"
-                  : "0 2px 12px rgba(41,98,255,0.25), inset 0 1px 0 rgba(255,255,255,0.1)",
-              opacity: isDeploying || hasErrors ? 0.7 : 1,
-            }}
-            title={hasErrors ? "Please fix syntax errors before deploying" : ""}
-            onMouseEnter={(e) => {
-              if (isDeploying || hasErrors) return;
-              e.currentTarget.style.background =
-                "linear-gradient(135deg, #3d74ff 0%, var(--accent-color) 100%)";
-              e.currentTarget.style.boxShadow =
-                "0 4px 20px rgba(41,98,255,0.4), inset 0 1px 0 rgba(255,255,255,0.15)";
-              e.currentTarget.style.transform = "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              if (isDeploying || hasErrors) return;
-              e.currentTarget.style.background =
-                "linear-gradient(135deg, var(--accent-color) 0%, #1a4fd6 100%)";
-              e.currentTarget.style.boxShadow =
-                "0 2px 12px rgba(41,98,255,0.25), inset 0 1px 0 rgba(255,255,255,0.1)";
-              e.currentTarget.style.transform = "translateY(0)";
-            }}
-          >
-            {isDeploying ? (
-              <>Deploying...</>
-            ) : (
-              <>
-                <FaPlay size={11} />
-                Deploy
-              </>
-            )}
-          </button>
-        )}
+        ) : null}
       </div>
     </div>
     {isGuideOpen && (

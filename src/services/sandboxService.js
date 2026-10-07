@@ -1,5 +1,6 @@
 import axios from "axios";
 import { getToken } from "../pages/auth/protected";
+import apiService from "./apiServices";
 
 export async function executeIndicatorSandbox(payload) {
   const sanitizedPayload = {
@@ -22,9 +23,7 @@ export async function executeIndicatorSandbox(payload) {
 
   const token = getToken();
   const baseUrl = (
-    import.meta.env.VITE_STRATEGY_API_URL ||
-    import.meta.env.VITE_API_BASE_URL ||
-    "http://localhost:4000"
+    import.meta.env.VITE_STRATEGY_API_URL
   ).replace(/\/+$/, "");
   const requestConfig = {
     timeout: 120000,
@@ -35,10 +34,9 @@ export async function executeIndicatorSandbox(payload) {
   };
 
   try {
-    const response = await axios.post(
-      `${baseUrl}/sandbox/execute`,
+    const response = await apiService.post(
+      `/api/strategy/user-strategies`,
       sanitizedPayload,
-      requestConfig,
     );
     return response?.data || response;
   } catch (error) {

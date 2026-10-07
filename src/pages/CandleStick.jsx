@@ -990,7 +990,7 @@ export default function Candlestick() {
           existingStrategyName ||
           `${symbolName} ${timeframeValue} Notebook Strategy`;
 
-        if (options?.requireStrategyName && !existingStrategyName) {
+        if (options?.requireStrategyName) {
           const { value } = await Swal.fire({
             title: "Strategy Name Required",
             input: "text",
@@ -1025,35 +1025,27 @@ export default function Candlestick() {
         }
 
         const payload = {
-          id: resolvedUserId,
           userId: resolvedUserId,
-          userName: resolvedUserName || null,
-          user: {
-            id: resolvedUserId,
-            userId: resolvedUserId,
-            name: resolvedUserName || null,
-          },
-          strategyName,
-          name: strategyName,
-          strategy_type: "custom_notebook",
+          strategyName: strategyName,
+          strategyType: "editor",
           language: "python",
           code,
-          config: {
-            symbol: symbolName,
-            lookupSymbol: selectedCurrency?.symbol || null,
-            token: selectedCurrency?.token || null,
-            exchange:
-              selectedCurrency?.exchange || selectedCurrency?.segment || "NSE",
-            timeframe: timeframeValue,
-            fromDate,
-            toDate,
-          },
+          // config: {
+          //   symbol: symbolName,
+          //   lookupSymbol: selectedCurrency?.symbol || null,
+          //   token: selectedCurrency?.token || null,
+          //   exchange:
+          //     selectedCurrency?.exchange || selectedCurrency?.segment || "NSE",
+          //   timeframe: timeframeValue,
+          //   fromDate,
+          //   toDate,
+          // },
           isActive: false,
           isDeployed: Boolean(isDeployed),
         };
 
         console.log(
-          "[Strategy.saveNotebookStrategy] Frontend payload:",
+          "[Save user Strategy] Frontend payload:",
           payload,
         );
 
@@ -1124,12 +1116,6 @@ export default function Candlestick() {
         const currentUser = getUser();
         const resolvedUserId =
           currentUser?.id || currentUser?._id || currentUser?.userId || "";
-        const resolvedUserName =
-          currentUser?.name ||
-          currentUser?.username ||
-          currentUser?.fullName ||
-          currentUser?.firstName ||
-          "";
 
         if (!resolvedUserId) {
           throw new Error("User id not found in session.");
@@ -1140,34 +1126,13 @@ export default function Candlestick() {
           `${symbolName} ${timeframeValue} Notebook Strategy`;
 
         const payload = {
-          id: resolvedUserId,
           userId: resolvedUserId,
-          userName: resolvedUserName || null,
-          user: {
-            id: resolvedUserId,
-            userId: resolvedUserId,
-            name: resolvedUserName || null,
-          },
           strategyName,
-          name: strategyName,
-          strategy_type:
-            activeStrategyRecord?.strategy_type || "custom_notebook",
-          language: activeStrategyRecord?.language || "python",
+          strategyType: "editor",
+          language: "python",
           code,
-          config: {
-            ...(activeStrategyRecord?.config || {}),
-            symbol: symbolName,
-            lookupSymbol: selectedCurrency?.symbol || null,
-            token: selectedCurrency?.token || null,
-            exchange:
-              selectedCurrency?.exchange || selectedCurrency?.segment || "NSE",
-            timeframe: timeframeValue,
-            fromDate,
-            toDate,
-          },
-          isActive: Boolean(activeStrategyRecord?.isActive),
+          isActive: false,
           isDeployed: Boolean(isDeployed),
-          version: activeStrategyRecord?.version || 1,
         };
 
         console.log(
@@ -1211,44 +1176,6 @@ export default function Candlestick() {
     ],
   );
 
-  const ensureStrategyName = useCallback(
-    async ({ requireStrategyName } = {}) => {
-      let strategyName =
-        activeStrategyRecord?.name?.trim() || draftStrategyName?.trim() || "";
-
-      if (strategyName) {
-        return strategyName;
-      }
-
-      const symbolName =
-        selectedCurrency?.name || selectedCurrency?.symbol || "Strategy";
-      const { value } = await Swal.fire({
-        title: "Strategy Name Required",
-        input: "text",
-        inputLabel: "Enter a name for this strategy",
-        inputPlaceholder: `${symbolName} ${timeframeValue} Strategy`,
-        inputValidator: (value) =>
-          value?.trim() ? undefined : "Strategy name is required.",
-        showCancelButton: true,
-        background: "var(--bg-secondary)",
-        color: "var(--text-primary)",
-      });
-
-      if (!value?.trim()) {
-        return null;
-      }
-
-      strategyName = value.trim();
-      setDraftStrategyName(strategyName);
-      return strategyName;
-    },
-    [
-      activeStrategyRecord?.name,
-      draftStrategyName,
-      selectedCurrency,
-      timeframeValue,
-    ],
-  );
 
   const renderSandboxPlots = useCallback(
     (chartContract) => {
@@ -2860,11 +2787,6 @@ export default function Candlestick() {
     async (code, runtimeContext = {}) => {
       if (!chartRef.current) return;
 
-      const resolvedStrategyName = await ensureStrategyName(runtimeContext);
-      if (runtimeContext?.requireStrategyName && !resolvedStrategyName) {
-        return;
-      }
-
       const effectiveSymbol =
         runtimeContext?.symbol ||
         selectedCurrency?.name ||
@@ -3265,7 +3187,6 @@ json.dumps(result)
     },
     [
       handleClearCode,
-      ensureStrategyName,
       fromDate,
       isMarketOpen,
       renderSandboxPlots,
@@ -9110,7 +9031,7 @@ json.dumps(result)
                         Boolean(activeStrategyRecord?.id) && isStrategyDirty
                       }
                       canShowUpdate={Boolean(activeStrategyRecord?.id)}
-                      loadedStrategyName={activeStrategyRecord?.name || ""}
+                      loadedStrategyName={activeStrategyRecord?.name || draftStrategyName || ""}
                     />
                   )}
 

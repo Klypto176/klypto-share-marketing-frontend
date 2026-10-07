@@ -719,8 +719,7 @@ export const ListingModal = ({
                       `Strategy ${index + 1}`;
                     const symbol =
                       strategy?.config?.symbol ||
-                      strategy?.config?.lookupSymbol ||
-                      "--";
+                      strategy?.config?.lookupSymbol 
                     const timeframe =
                       strategy?.config?.timeframe || timeframeValue || "--";
                     const updatedAt =

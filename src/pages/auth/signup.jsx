@@ -392,9 +392,12 @@ export default function Signup() {
                 country={"in"}
                 enableSearch={true}
                 value={phoneUI}
-                onChange={(value) => {
+                onChange={(value, countryData) => {
                   setPhoneUI(value);
-                  setForm((prev) => ({ ...prev, mobile: value }));
+                  setForm((prev) => ({
+                    ...prev,
+                    mobile: value.slice(countryData?.dialCode?.length || 0),
+                  }));
                 }}
                 inputStyle={{
                   width: "100%",
