@@ -4,7 +4,7 @@ import apiService from "./apiServices";
 import Swal from "sweetalert2";
 
 const STRATEGY_ENGINE_BASE_URL = (
-  import.meta.env.VITE_STRATEGY_API_URL
+  import.meta.env.VITE_STRATEGY_API_URL || import.meta.env.VITE_API_BASE_URL || ""
 ).replace(/\/+$/, "");
 const userId = getUser()?.id;
 
@@ -65,8 +65,7 @@ export async function updateNotebookStrategy(strategyId, payload) {
     return response?.data || response;
   } catch (error) {
     if (
-      error?.response?.status !== 404 ||
-      STRATEGY_ENGINE_BASE_URL === LOCAL_PYTHON_FALLBACK_URL
+      error?.response?.status !== 404
     ) {
       throw error;
     }

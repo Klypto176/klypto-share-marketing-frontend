@@ -23,7 +23,7 @@ export async function executeIndicatorSandbox(payload) {
 
   const token = getToken();
   const baseUrl = (
-    import.meta.env.VITE_STRATEGY_API_URL
+    import.meta.env.VITE_STRATEGY_API_URL || import.meta.env.VITE_API_BASE_URL || ""
   ).replace(/\/+$/, "");
   const requestConfig = {
     timeout: 120000,
